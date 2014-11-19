@@ -17,22 +17,16 @@ class FormulaEq a where
     eq :: a -> a -> Formula
 
 ----------------------------------------------------------------------------------------------------
--- Atom
+-- Variable
 ----------------------------------------------------------------------------------------------------
 
-newtype Atom = Atom {atomName :: String}
+newtype Variable = Variable {variableName :: String} deriving (Eq, Ord)
 
-instance Show Atom where
-    show = atomName
+instance Show Variable where
+    show = variableName
 
-instance Eq Atom where
-    a1 == a2 = (atomName a1) == (atomName a2)
-
-instance Ord Atom where
-    compare a1 a2 = compare (atomName a1) (atomName a2)
-
-instance FormulaEq Atom where
-    eq a1 a2 = if a1 == a2 then T else Equals a1 a2
+instance FormulaEq Variable where
+    eq x1 x2 = if x1 == x2 then T else Equals x1 x2
 
 
 ----------------------------------------------------------------------------------------------------
@@ -40,7 +34,7 @@ instance FormulaEq Atom where
 ----------------------------------------------------------------------------------------------------
 
 data Formula = T | F | And Formula Formula | Or Formula Formula | Not Formula
-    |Imply Formula Formula | Equivalent Formula Formula | Equals Atom Atom
+    |Imply Formula Formula | Equivalent Formula Formula | Equals Variable Variable
 
 -- and
 (/\) :: Formula -> Formula -> Formula
@@ -125,13 +119,13 @@ showFormula f = show f
 instance Show Formula where
     show T = "True"
     show F = "False"
-    show (And f1 f2) = showFormula f1 ++ " /\\ " ++ showFormula f2
-    show (Or f1 f2) = showFormula f1 ++ " \\/ " ++ showFormula f2
-    show (Not (Equals x1 x2)) = show x1 ++ " != " ++ show x2
-    show (Not f) = "!(" ++ show f ++ ")"
+    show (And f1 f2) = showFormula f1 ++ " ∧ " ++ showFormula f2
+    show (Or f1 f2) = showFormula f1 ++ " ∨ " ++ showFormula f2
+    show (Not (Equals x1 x2)) = show x1 ++ " ≠ " ++ show x2
+    show (Not f) = "¬(" ++ show f ++ ")"
     show (Equals x1 x2) = show x1 ++ " = " ++ show x2
-    show (Imply f1 f2) = showFormula f1 ++ " ==> " ++ showFormula f2
-    show (Equivalent f1 f2) = showFormula f1 ++ " <==> " ++ showFormula f2
+    show (Imply f1 f2) = showFormula f1 ++ " → " ++ showFormula f2
+    show (Equivalent f1 f2) = showFormula f1 ++ " ↔ " ++ showFormula f2
 
 instance Eq Formula where
     T == T = True
@@ -149,21 +143,21 @@ instance Eq Formula where
 -- Solving
 ----------------------------------------------------------------------------------------------------
 
--- get atoms
-atomsSet :: Formula -> Set.Set Atom
-atomsSet T = Set.empty
-atomsSet F = Set.empty
-atomsSet (And f1 f2) = Set.union (atomsSet f1) (atomsSet f2)
-atomsSet (Or f1 f2) = Set.union (atomsSet f1) (atomsSet f2)
-atomsSet (Not f) = atomsSet f
-atomsSet (Imply f1 f2) = Set.union (atomsSet f1) (atomsSet f2)
-atomsSet (Equivalent f1 f2) = Set.union (atomsSet f1) (atomsSet f2)
-atomsSet (Equals x1 x2) = Set.fromList [x1, x2]
+-- get variables
+variablesSet :: Formula -> Set.Set Variable
+variablesSet T = Set.empty
+variablesSet F = Set.empty
+variablesSet (And f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
+variablesSet (Or f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
+variablesSet (Not f) = variablesSet f
+variablesSet (Imply f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
+variablesSet (Equivalent f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
+variablesSet (Equals x1 x2) = Set.fromList [x1, x2]
 
-atoms :: Formula -> [Atom]
-atoms = Set.toList . atomsSet
+variables :: Formula -> [Variable]
+variables = Set.toList . variablesSet
 
-interpret :: Formula -> Map.Map Atom SBV.SInt8 -> SBV.SBool
+interpret :: Formula -> Map.Map Variable SBV.SInt8 -> SBV.SBool
 interpret T env = SBV.true
 interpret F env = SBV.false
 interpret (And f1 f2) env = (interpret f1 env) SBV.&&& (interpret f2 env)
@@ -171,12 +165,12 @@ interpret (Or f1 f2) env = (interpret f1 env) SBV.||| (interpret f2 env)
 interpret (Not f) env = SBV.bnot (interpret f env)
 interpret (Imply f1 f2) env = (interpret f1 env) SBV.==> (interpret f2 env)
 interpret (Equivalent f1 f2) env = (interpret f1 env) SBV.<=> (interpret f2 env)
-interpret (Equals a1 a2) env = (env Map.! a1) SBV..== (env Map.! a2)
+interpret (Equals x1 x2) env = (env Map.! x1) SBV..== (env Map.! x2)
 
 quantifiedFormula :: (String -> SBV.Symbolic SBV.SInt8) -> Formula -> SBV.Symbolic SBV.SBool
-quantifiedFormula q f = ssyms >>= (\syms -> return . interpret f $ Map.fromList (zip as syms))
-  where as = atoms f
-        ssyms = mapM q $ fmap atomName as
+quantifiedFormula q f = ssyms >>= (\syms -> return . interpret f $ Map.fromList (zip vs syms))
+  where vs = variables f
+        ssyms = mapM q $ fmap variableName vs
 
 instance SBV.Provable Formula where
   forAll_ = quantifiedFormula SBV.forall
@@ -196,23 +190,26 @@ solve :: Formula -> IO SBV.SatResult
 solve = SBV.sat . SBV.forSome_
 
 isTrueIO :: Formula -> IO Bool
-isTrueIO T = return $ True
+isTrueIO T = return True
 isTrueIO f = do
     result <- (SBV.isSatisfiable Nothing) $ SBV.forAll_ f
     return $ Data.Maybe.fromJust result
 
---isFalseIO :: Formula -> IO (Maybe Bool)
---isFalseIO F = return Just False
+isFalseIO :: Formula -> IO Bool
+isFalseIO F = return False
 isFalseIO f = do
     result <- (SBV.isSatisfiable Nothing) $ SBV.forSome_ f
     return $ if Data.Maybe.fromJust result then False else True
 
+ifFormula :: Formula -> a -> a -> Maybe a
+ifFormula f v1 v2 = if isTrue f then Just v1 else if isFalse f then Just v2 else Nothing
+
 ----------------------------------------------------------------------------------------------------
 -- Examples
 ----------------------------------------------------------------------------------------------------
-x = Atom "x"
-y = Atom "y"
-z = Atom "z"
+x = Variable "x"
+y = Variable "y"
+z = Variable "z"
 c = eq x y
 ce = (eq x y) /\ (eq y z) /\ (eq z x)
 nce =  (eq x y) /\ (eq y z) /\ not (eq z x)
