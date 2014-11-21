@@ -10,13 +10,6 @@ import Data.Maybe (fromJust)
 
 
 ----------------------------------------------------------------------------------------------------
--- FormulaEq
-----------------------------------------------------------------------------------------------------
-
-class FormulaEq a where
-    eq :: a -> a -> Formula
-
-----------------------------------------------------------------------------------------------------
 -- Variable
 ----------------------------------------------------------------------------------------------------
 
@@ -24,10 +17,6 @@ newtype Variable = Variable {variableName :: String} deriving (Eq, Ord)
 
 instance Show Variable where
     show = variableName
-
-instance FormulaEq Variable where
-    eq x1 x2 = if x1 == x2 then T else Equals x1 x2
-
 
 ----------------------------------------------------------------------------------------------------
 -- Formula
@@ -109,9 +98,6 @@ iff = (<==>)
 -- Formula instances
 ----------------------------------------------------------------------------------------------------
 
-instance FormulaEq Formula where
-    eq = iff
-
 showFormula :: Formula -> String
 showFormula f@(And f1 f2) = "(" ++ show f ++ ")"
 showFormula f@(Or f1 f2) = "(" ++ show f ++ ")"
@@ -141,12 +127,23 @@ instance Eq Formula where
     (Equals f11 f12) == (Equals f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
     _ == _ = False
 
+----------------------------------------------------------------------------------------------------
+-- FormulaEq
+----------------------------------------------------------------------------------------------------
+
+class FormulaEq a where
+    eq :: a -> a -> Formula
+
+instance FormulaEq Formula where
+    eq = iff
+
+instance FormulaEq Variable where
+    eq x1 x2 = if x1 == x2 then T else Equals x1 x2
 
 ----------------------------------------------------------------------------------------------------
 -- Solving
 ----------------------------------------------------------------------------------------------------
 
--- get variables
 variablesSet :: Formula -> Set.Set Variable
 variablesSet T = Set.empty
 variablesSet F = Set.empty

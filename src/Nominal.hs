@@ -132,12 +132,13 @@ isSubset :: FormulaEq a => Set a -> Set a -> Formula
 isSubset s1 s2 = forall (contains s2) s1
 
 ----------------------------------------------------------------------------------------------------
+-- Examples
+----------------------------------------------------------------------------------------------------
 
 a = atom "a"
 b = atom "b"
+c = atom "c"
 cond = eq a b
 at = iF cond a b
 set1 = add a $ just b
 set2 = just at
-
-
