@@ -202,7 +202,10 @@ isFalseIO f = do
     return $ if Data.Maybe.fromJust result then False else True
 
 ifFormula :: Formula -> a -> a -> Maybe a
-ifFormula f v1 v2 = if isTrue f then Just v1 else if isFalse f then Just v2 else Nothing
+ifFormula f v1 v2
+         | isTrue f  = Just v1
+         | isFalse f = Just v2
+         | otherwise = Nothing
 
 ----------------------------------------------------------------------------------------------------
 -- Examples
