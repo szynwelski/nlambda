@@ -36,6 +36,9 @@ instance FormulaEq a => FormulaEq (Variant a) where
 class Variants a where
     iF :: Formula -> a -> a -> a
 
+instance Variants Formula where
+    iF f1 f2 f3 = (f1 /\ f2) \/ (not f1 /\ f3)
+
 ----------------------------------------------------------------------------------------------------
 -- Atom
 ----------------------------------------------------------------------------------------------------
