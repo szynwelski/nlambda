@@ -109,6 +109,9 @@ iff = (<==>)
 -- Formula instances
 ----------------------------------------------------------------------------------------------------
 
+instance FormulaEq Formula where
+    eq = iff
+
 showFormula :: Formula -> String
 showFormula f@(And f1 f2) = "(" ++ show f ++ ")"
 showFormula f@(Or f1 f2) = "(" ++ show f ++ ")"
@@ -213,7 +216,7 @@ ifFormula f v1 v2
 x = Variable "x"
 y = Variable "y"
 z = Variable "z"
-c = eq x y
+cc = eq x y
 ce = (eq x y) /\ (eq y z) /\ (eq z x)
 nce =  (eq x y) /\ (eq y z) /\ not (eq z x)
 ice = (eq x y) /\ (eq y z) ==> (eq z x)
