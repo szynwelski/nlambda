@@ -1,279 +1,140 @@
 module Nominal where
 
 import Prelude hiding (or, and, not, sum, map, filter)
+import Formula
 import Data.List.Utils (join)
-import Data.IORef
-
-
-----------------------------------------------------------------------------------------------------
-
-variables = [ c : s | s <- "": variables, c <- ['a'..'z']]
+import Data.Maybe (fromMaybe)
 
 ----------------------------------------------------------------------------------------------------
-
-class NominalEq a where
-    eq :: a -> a -> Formula
-
+-- Variant
 ----------------------------------------------------------------------------------------------------
 
-newtype Atom = Atom {atomName :: String}
+data Variant a = Variant {value :: a, condition :: Formula} deriving Eq
 
-atom :: String -> Nominal Atom
-atom a = nominal (Atom a)
+variant :: a -> Variant a
+variant = flip Variant T
+
+variantIf :: Formula -> Variant a -> Variant a
+variantIf c v = Variant (value v) (condition v /\ c)
+
+variantsIf :: Formula -> [Variant a] -> [Variant a]
+variantsIf = fmap . ($) . variantIf
+
+instance Show a => Show (Variant a) where
+    show (Variant v c) = show v ++ (if (isTrue c) then "" else " : " ++ show c)
+
+instance Functor Variant where
+    fmap f (Variant v c) = Variant (f v) c
+
+instance FormulaEq a => FormulaEq (Variant a) where
+    eq (Variant v1 c1) (Variant v2 c2) = (eq v1 v2) /\ c1 /\ c2
+
+----------------------------------------------------------------------------------------------------
+-- Variants
+----------------------------------------------------------------------------------------------------
+
+class Variants a where
+    iF :: Formula -> a -> a -> a
+
+----------------------------------------------------------------------------------------------------
+-- Atom
+----------------------------------------------------------------------------------------------------
+
+data Atom = Atom {atomVariants :: [Variant Variable]}
+
+atom :: String -> Atom
+atom a = Atom [Variant (Variable a) T]
 
 instance Show Atom where
-    show = atomName
+    show a = join " | " (fmap show (atomVariants a))
 
-instance Eq Atom where
-    a1 == a2 = (atomName a1) == (atomName a2)
+instance Variants Atom where
+    iF f a1 a2 = fromMaybe (ifAtom f a1 a2) (ifFormula f a1 a2)
+      where atomIf f = (variantsIf f) . atomVariants
+            ifAtom f a1 a2 = Atom $ (atomIf f a1) ++ (atomIf (not f) a2)
 
-instance NominalEq Atom where
-    eq a1 a2 = if a1 == a2 then T else Equals a1 a2
-
-----------------------------------------------------------------------------------------------------
-
-data Formula = T | F | And Formula Formula | Or Formula Formula | Not Formula
-    |Imply Formula Formula | Equivalent Formula Formula | Equals Atom Atom
-
-showFormula :: Formula -> String
-showFormula f@(And f1 f2) = "(" ++ show f ++ ")"
-showFormula f@(Or f1 f2) = "(" ++ show f ++ ")"
-showFormula f@(Imply f1 f2) = "(" ++ show f ++ ")"
-showFormula f@(Equivalent f1 f2) = "(" ++ show f ++ ")"
-showFormula f = show f
-
-instance Show Formula where
-    show T = "True"
-    show F = "False"
-    show (And f1 f2) = showFormula f1 ++ " /\\ " ++ showFormula f2
-    show (Or f1 f2) = showFormula f1 ++ " \\/ " ++ showFormula f2
-    show (Not (Equals x1 x2)) = show x1 ++ " != " ++ show x2
-    show (Not f) = "!(" ++ show f ++ ")"
-    show (Equals x1 x2) = show x1 ++ " = " ++ show x2
-    show (Imply x1 x2) = showFormula x1 ++ " ==> " ++ showFormula x2
-    show (Equivalent x1 x2) = showFormula x1 ++ " <==> " ++ showFormula x2
-
-instance Eq Formula where
-    T == T = True
-    F == F = True
-    (And f11 f12) == (And f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    (Or f11 f12) == (Or f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    (Not f1) == (Not f2) = f1 == f2
-    (Imply f11 f12) == (Imply f21 f22) = (f11 == f21) && (f12 == f22)
-    (Equivalent f11 f12) == (Equivalent f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    (Equals f11 f12) == (Equals f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    _ == _ = False
-
-instance NominalEq Formula where
-    eq = iff
-
-
-(/\) :: Formula -> Formula -> Formula
-T /\ f = f
-F /\ _ = F
-f /\ T = f
-_ /\ F = F
-(Not f1) /\ (Not f2) = (not (f1 \/ f2))
-f1 /\ f2
-    | f1 == f2       = f1
-    | (not f1) == f2 = F
-    | otherwise      = And f1 f2
-
-and :: [Formula] -> Formula
-and [] = T
-and fs = foldr1 (/\) fs
-
-(\/) :: Formula -> Formula -> Formula
-F \/ f = f
-T \/ _ = T
-f \/ F = f
-_ \/ T = T
-(Not f1) \/ (Not f2) = (not (f1 /\ f2))
-f1 \/ f2
-    | f1 == f2       = f1
-    | (not f1) == f2 = T
-    | otherwise      = Or f1 f2
-
-or :: [Formula] -> Formula
-or [] = F
-or fs = foldr1 (\/) fs
-
-not :: Formula -> Formula
-not F = T
-not T = F
-not (Not f) = f
-not f = Not f
-
-(==>) :: Formula -> Formula -> Formula
-T ==> f = f
-F ==> _ = T
-_ ==> T = T
-f ==> F = f
-(Not f1) ==> (Not f2) = f2 ==> f1
-f1 ==> f2
-    | f1 == f2       = T
-    | (not f1) == f2 = Not f1
-    | otherwise      = Imply f1 f2
-
-implies :: Formula -> Formula -> Formula
-implies = (==>)
-
-(<==>) :: Formula -> Formula -> Formula
-T <==> T = T
-F <==> F = T
-F <==> T = F
-T <==> F = F
-(Not f1) <==> (Not f2) = f1 <==> f2
-f1 <==> f2
-    | f1 == f2       = T
-    | (not f1) == f2 = F
-    | otherwise      = Equivalent f1 f2
-
-iff :: Formula -> Formula -> Formula
-iff = (<==>)
-
-isTrue :: Formula -> Bool
-isTrue T = True
-isTrue _ = False
-
-isFalse :: Formula -> Bool
-isFalse F = True
-isFalse _ = False
+instance FormulaEq Atom where
+    eq (Atom av1) (Atom av2) = or [(eq a1 a2) | a1 <- av1, a2 <- av2]
 
 ----------------------------------------------------------------------------------------------------
-
-data Branch a = Branch {value :: a, condition :: Formula}
-
-instance Show a => Show (Branch a) where
---    show (Branch v c) = show v ++ " : " ++ show c --(if (isTrue c) then "" else " : " ++ show c)
-    show (Branch v c) = show v ++ (if (isTrue c) then "" else " : " ++ show c)
-
-instance Functor Branch where
-    fmap f (Branch v c) = Branch (f v) c
-
-instance Monad Branch where
-    return = branch
-    b >>= f = branchIf (condition b) (f $ value b)
-
-instance NominalEq a => NominalEq (Branch a) where
-    eq (Branch v1 c1) (Branch v2 c2) = (eq v1 v2) /\ c1 /\ c2
-
-branch :: a -> Branch a
-branch v = Branch v T
-
-branchIf :: Formula -> Branch a -> Branch a
-branchIf c b = Branch (value b) (condition b /\ c)
-
+-- Set
 ----------------------------------------------------------------------------------------------------
 
-data Nominal a = Nominal {branches :: [Branch a]}
-
-instance Show a => Show (Nominal a) where
-    show e = join " | " (fmap show (branches e))
-
-instance Functor Nominal where
-    fmap f (Nominal bs) = Nominal $ fmap (fmap f) bs
-
-instance Monad Nominal where
-    return = nominal
-    n >>= f = Nominal $ concat $ fmap branches $ fmap (\b -> nominalIf (condition b) (value b)) (branches $ fmap f n)
-
-instance NominalEq a => NominalEq (Nominal a) where
-    eq (Nominal bs1) (Nominal bs2) = or [(eq b1 b2) | b1 <- bs1, b2 <- bs2]
-
-nominal :: a -> Nominal a
-nominal v = Nominal [branch v]
-
-nominalIf :: Formula -> Nominal a -> Nominal a
-nominalIf c n = Nominal $ fmap (branchIf c) (branches n)
-
-----------------------------------------------------------------------------------------------------
-
-iF :: Formula -> Nominal a -> Nominal a -> Nominal a
-iF c (Nominal bs1) (Nominal bs2)
-    | (isTrue c) = Nominal bs1
-    | (isFalse c) = Nominal bs2
-    | otherwise = Nominal $ (fmap (branchIf c) bs1) ++ (fmap (branchIf $ not c) bs2)
-
-----------------------------------------------------------------------------------------------------
-
-data Set a = Set {elements :: [Branch a]}
+data Set a = Set {elements :: [Variant a]}
 
 instance Show a => Show (Set a) where
     show s = "{" ++ (join ", " (fmap show (elements s))) ++ "}"
 
+instance Variants (Set a) where
+    iF f s1 s2 = fromMaybe (ifSet f s1 s2) (ifFormula f s1 s2)
+      where setIf f = (variantsIf f) . elements
+            ifSet f s1 s2 = Set $ (setIf f s1) ++ (setIf (not f) s2)
+
 instance Functor Set where
-    fmap f (Set elems) = Set $ fmap (fmap f) elems
+    fmap f (Set es) = Set $ fmap (fmap f) es
 
-instance Monad Set where
-    return e = Set [branch e]
-    n >>= f = Set $ concat $ fmap elements $ fmap (\b -> setIf (condition b) (value b)) (elements $ fmap f n)
+instance FormulaEq a => FormulaEq (Set a) where
+    eq s1 s2 = (isSubset s1 s2) /\ (isSubset s2 s1)
 
-setIf :: Formula -> Set a -> Set a
-setIf c n = Set $ fmap (branchIf c) (elements n)
+----------------------------------------------------------------------------------------------------
+-- Function
+----------------------------------------------------------------------------------------------------
 
-reduceSet :: Nominal (Set a) -> [Set a]
-reduceSet ns = fmap (\b -> setIf (condition b) (value b)) (branches ns)
+instance Variants b => Variants (a -> b) where
+    iF f f1 f2 = \x -> iF f (f1 x) (f2 x)
 
-emptySet :: Nominal (Set a)
-emptySet = nominal (Set [])
+----------------------------------------------------------------------------------------------------
+-- nLambda
+----------------------------------------------------------------------------------------------------
 
-empty :: Nominal (Set a) -> Formula
-empty ns = or (fmap (\b -> (and (fmap (not . condition) (elements (value b)))) /\ (condition b)) (branches ns))
+emptySet :: Set a
+emptySet = Set []
 
-add :: Nominal a -> Nominal (Set a) -> Nominal (Set a)
-add e = fmap (Set . (branches e ++) . elements)
+isEmpty :: Set a -> Formula
+isEmpty s = and (fmap (not . condition) (elements s))
 
-just :: Nominal a -> Nominal (Set a)
+add :: a -> Set a -> Set a
+add e = Set . ((variant e) :) . elements
+
+map :: (a -> b) -> Set a -> Set b
+map = fmap
+
+sum :: Set (Set a) -> Set a
+sum = Set . concat . (fmap setIf) . elements
+        where setIf e = variantsIf (condition e) $ elements (value e)
+
+----------------------------------------------------------------------------------------------------
+-- Additional functions
+----------------------------------------------------------------------------------------------------
+
+just :: a -> Set a
 just e = add e emptySet
 
-map :: (Nominal a -> Nominal b) -> Nominal (Set a) -> Nominal (Set b)
-map f ns = fmap (\s -> Set $ concat (fmap (\e -> (branches (f (Nominal [e])))) (elements s))) ns
+filter :: (a -> Formula) -> Set a -> Set a
+filter f s = sum $ map (\x -> (iF (f x) (just x) emptySet)) s
 
-sum :: Nominal (Set (Set a)) -> Nominal (Set a)
-sum = fmap (\s -> Set $ concat (fmap (\b -> (fmap (branchIf (condition b)) (elements $ value b))) (elements s)))
+exists :: (a -> Formula) -> Set a -> Formula
+exists f = not . isEmpty . (filter f)
 
-----------------------------------------------------------------------------------------------------
+forall :: (a -> Formula) -> Set a -> Formula
+forall f = isEmpty . (filter $ \x -> not (f x))
 
-filter :: (Nominal a -> Formula) -> Nominal (Set a) -> Nominal (Set a)
-filter f s = sum (map (\x -> (iF (f x) (just x) emptySet)) s)
-
-exists :: (Nominal a -> Formula) -> Nominal (Set a) -> Formula
-exists f s = not (empty (filter f s))
-
-forall :: (Nominal a -> Formula) -> Nominal (Set a) -> Formula
-forall f s = empty (filter (\x -> not (f x)) s)
-
-union :: Nominal (Set a) -> Nominal (Set a) -> Nominal (Set a)
+union :: Set a -> Set a -> Set a
 union s1 s2 = sum (add s1 (add s2 emptySet))
 
-----------------------------------------------------------------------------------------------------
-
-contains :: NominalEq a => Nominal (Set a) -> Nominal a -> Formula
+contains :: FormulaEq a => Set a -> a -> Formula
 contains s e = exists (eq e) s
 
-subset :: NominalEq a => Nominal (Set a) -> Nominal (Set a) -> Formula
-subset s1 s2 = forall (contains s2) s1
-
-instance NominalEq a => NominalEq (Set a) where
-    eq s1 s2 = (subset ns1 ns2) /\ (subset ns2 ns1)
-               where ns1 = (nominal s1)
-                     ns2 = (nominal s2)
-
---instance NominalEq a => NominalEq (Nominal (Set a)) where
---    eq ns1 ns2 = (subset ns1 ns2) /\ (subset ns2 ns1)
+isSubset :: FormulaEq a => Set a -> Set a -> Formula
+isSubset s1 s2 = forall (contains s2) s1
 
 ----------------------------------------------------------------------------------------------------
 
-x = atom "x"
-y = atom "y"
-z = atom "z"
-cond = eq x y
+a = atom "a"
+b = atom "b"
+cond = eq a b
+at = iF cond a b
+set1 = add a $ just b
+set2 = just at
 
-el = iF cond x y
-set = just el
-el1 = iF cond y x
-set1 = just el1
 
-justset = value $ head $ branches set
-condSet = iF cond (just x) emptySet
