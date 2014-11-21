@@ -17,9 +17,6 @@ variant = flip Variant T
 variantIf :: Formula -> Variant a -> Variant a
 variantIf c v = Variant (value v) (condition v /\ c)
 
-variantsIf :: Formula -> [Variant a] -> [Variant a]
-variantsIf = fmap . ($) . variantIf
-
 instance Show a => Show (Variant a) where
     show (Variant v c) = show v ++ (if (isTrue c) then "" else " : " ++ show c)
 
@@ -28,16 +25,6 @@ instance Functor Variant where
 
 instance FormulaEq a => FormulaEq (Variant a) where
     eq (Variant v1 c1) (Variant v2 c2) = (eq v1 v2) /\ c1 /\ c2
-
-----------------------------------------------------------------------------------------------------
--- Variants
-----------------------------------------------------------------------------------------------------
-
-class Variants a where
-    iF :: Formula -> a -> a -> a
-
-instance Variants Formula where
-    iF f1 f2 f3 = (f1 /\ f2) \/ (not f1 /\ f3)
 
 ----------------------------------------------------------------------------------------------------
 -- Atom
@@ -51,11 +38,6 @@ atom a = Atom [Variant (Variable a) T]
 instance Show Atom where
     show a = join " | " (fmap show (atomVariants a))
 
-instance Variants Atom where
-    iF f a1 a2 = fromMaybe (ifAtom f a1 a2) (ifFormula f a1 a2)
-      where atomIf f = (variantsIf f) . atomVariants
-            ifAtom f a1 a2 = Atom $ (atomIf f a1) ++ (atomIf (not f) a2)
-
 instance FormulaEq Atom where
     eq (Atom av1) (Atom av2) = or [(eq a1 a2) | a1 <- av1, a2 <- av2]
 
@@ -68,11 +50,6 @@ data Set a = Set {elements :: [Variant a]}
 instance Show a => Show (Set a) where
     show s = "{" ++ (join ", " (fmap show (elements s))) ++ "}"
 
-instance Variants (Set a) where
-    iF f s1 s2 = fromMaybe (ifSet f s1 s2) (ifFormula f s1 s2)
-      where setIf f = (variantsIf f) . elements
-            ifSet f s1 s2 = Set $ (setIf f s1) ++ (setIf (not f) s2)
-
 instance Functor Set where
     fmap f (Set es) = Set $ fmap (fmap f) es
 
@@ -80,8 +57,25 @@ instance FormulaEq a => FormulaEq (Set a) where
     eq s1 s2 = (isSubset s1 s2) /\ (isSubset s2 s1)
 
 ----------------------------------------------------------------------------------------------------
--- Function
+-- Variants
 ----------------------------------------------------------------------------------------------------
+
+class Variants a where
+    iF :: Formula -> a -> a -> a
+
+instance Variants Formula where
+    iF f1 f2 f3 = (f1 /\ f2) \/ (not f1 /\ f3)
+
+iFVariants :: (a -> [Variant b]) -> ([Variant b] -> a) -> Formula -> a -> a -> a
+iFVariants toVariantList fromVariantList f x1 x2 = fromMaybe (ifVariants f x1 x2) (ifFormula f x1 x2)
+    where toVariantsIf f x = fmap (variantIf f) (toVariantList x)
+          ifVariants f x1 x2 = fromVariantList $ (toVariantsIf f x1) ++ (toVariantsIf (not f) x2)
+
+instance Variants Atom where
+    iF = iFVariants atomVariants Atom
+
+instance Variants (Set a) where
+    iF = iFVariants elements Set
 
 instance Variants b => Variants (a -> b) where
     iF f f1 f2 = \x -> iF f (f1 x) (f2 x)
@@ -104,7 +98,7 @@ map = fmap
 
 sum :: Set (Set a) -> Set a
 sum = Set . concat . (fmap setIf) . elements
-        where setIf e = variantsIf (condition e) $ elements (value e)
+        where setIf e = fmap (variantIf (condition e)) (elements (value e))
 
 ----------------------------------------------------------------------------------------------------
 -- Additional functions
