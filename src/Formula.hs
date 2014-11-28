@@ -7,6 +7,7 @@ import qualified Data.SBV as SBV
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Maybe (fromJust)
+import System.IO.Unsafe (unsafePerformIO)
 
 
 ----------------------------------------------------------------------------------------------------
@@ -144,6 +145,7 @@ instance FormulaEq Variable where
 -- Solving
 ----------------------------------------------------------------------------------------------------
 
+-- variables in formula
 variablesSet :: Formula -> Set.Set Variable
 variablesSet T = Set.empty
 variablesSet F = Set.empty
@@ -157,6 +159,7 @@ variablesSet (Equals x1 x2) = Set.fromList [x1, x2]
 variables :: Formula -> [Variable]
 variables = Set.toList . variablesSet
 
+-- transform formula to SBV types
 interpret :: Formula -> Map.Map Variable SBV.SInt8 -> SBV.SBool
 interpret T env = SBV.true
 interpret F env = SBV.false
@@ -178,6 +181,7 @@ instance SBV.Provable Formula where
   forSome_ = quantifiedFormula SBV.exists
   forSome _ = quantifiedFormula SBV.exists
 
+-- simple solving
 isTrue :: Formula -> Bool
 isTrue T = True
 isTrue _ = False
@@ -186,6 +190,7 @@ isFalse :: Formula -> Bool
 isFalse F = True
 isFalse _ = False
 
+-- SBV solving
 solve :: Formula -> IO SBV.SatResult
 solve = SBV.sat . SBV.forSome_
 
@@ -201,10 +206,38 @@ isFalseIO f = do
     result <- (SBV.isSatisfiable Nothing) $ SBV.forSome_ f
     return $ if Data.Maybe.fromJust result then False else True
 
+-- unsafe SBV solving
+unsafeIsTrue :: Formula -> Bool
+unsafeIsTrue = unsafePerformIO . isTrueIO
+
+unsafeIsFalse :: Formula -> Bool
+unsafeIsFalse = unsafePerformIO . isFalseIO
+
+----------------------------------------------------------------------------------------------------
+-- If with formula
+----------------------------------------------------------------------------------------------------
+
 ifFormula :: Formula -> a -> a -> Maybe a
 ifFormula f v1 v2
          | isTrue f  = Just v1
          | isFalse f = Just v2
+         | otherwise = Nothing
+
+ifFormulaIO :: Formula -> IO (Maybe (a -> a -> a))
+ifFormulaIO f = do
+        trueCond <- isTrueIO f
+        if trueCond
+            then return (Just const)
+            else do
+                 falseCond <- isFalseIO f
+                 if falseCond
+                    then return (Just $ flip const)
+                    else return Nothing
+
+unsafeIfFormula :: Formula -> a -> a -> Maybe a
+unsafeIfFormula f v1 v2
+         | unsafeIsTrue f  = Just v1
+         | unsafeIsFalse f = Just v2
          | otherwise = Nothing
 
 ----------------------------------------------------------------------------------------------------

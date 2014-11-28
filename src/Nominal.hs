@@ -46,7 +46,7 @@ variants :: a -> Variants a
 variants x = Variants [Variant x T]
 
 iFVariants :: (a -> [Variant b]) -> ([Variant b] -> a) -> Formula -> a -> a -> a
-iFVariants toVariantList fromVariantList f x1 x2 = fromMaybe (ifVariants f x1 x2) (ifFormula f x1 x2)
+iFVariants toVariantList fromVariantList f x1 x2 = fromMaybe (ifVariants f x1 x2) (unsafeIfFormula f x1 x2)
     where toVariantsIf f x = fmap (variantIf f) (toVariantList x)
           ifVariants f x1 x2 = fromVariantList $ (toVariantsIf f x1) ++ (toVariantsIf (not f) x2)
 
