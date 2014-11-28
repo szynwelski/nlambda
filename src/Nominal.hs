@@ -6,6 +6,16 @@ import Data.List.Utils (join)
 import Data.Maybe (fromMaybe)
 
 ----------------------------------------------------------------------------------------------------
+-- Conditional
+----------------------------------------------------------------------------------------------------
+
+class Conditional a where
+    iF :: Formula -> a -> a -> a
+
+instance Conditional Formula where
+    iF f1 f2 f3 = (f1 /\ f2) \/ (not f1 /\ f3)
+
+----------------------------------------------------------------------------------------------------
 -- Variant
 ----------------------------------------------------------------------------------------------------
 
@@ -27,19 +37,42 @@ instance FormulaEq a => FormulaEq (Variant a) where
     eq (Variant v1 c1) (Variant v2 c2) = (eq v1 v2) /\ c1 /\ c2
 
 ----------------------------------------------------------------------------------------------------
+-- Variants
+----------------------------------------------------------------------------------------------------
+
+data Variants a = Variants {variantsList :: [Variant a]}
+
+variants :: a -> Variants a
+variants x = Variants [Variant x T]
+
+iFVariants :: (a -> [Variant b]) -> ([Variant b] -> a) -> Formula -> a -> a -> a
+iFVariants toVariantList fromVariantList f x1 x2 = fromMaybe (ifVariants f x1 x2) (ifFormula f x1 x2)
+    where toVariantsIf f x = fmap (variantIf f) (toVariantList x)
+          ifVariants f x1 x2 = fromVariantList $ (toVariantsIf f x1) ++ (toVariantsIf (not f) x2)
+
+instance Show a => Show (Variants a) where
+    show vs = join " | " (fmap show (variantsList vs))
+
+instance Functor Variants where
+    fmap f (Variants vs) = Variants $ fmap (fmap f) vs
+
+instance FormulaEq a => FormulaEq (Variants a) where
+    eq (Variants vl1) (Variants vl2) = or [(eq v1 v2) | v1 <- vl1, v2 <- vl2]
+
+instance Conditional (Variants a) where
+    iF = iFVariants variantsList Variants
+
+iFv :: Formula -> a -> a -> Variants a
+iFv c x1 x2 = iF c (variants x1) (variants x2)
+
+----------------------------------------------------------------------------------------------------
 -- Atom
 ----------------------------------------------------------------------------------------------------
 
-data Atom = Atom {atomVariants :: [Variant Variable]}
+type Atom = Variants Variable
 
 atom :: String -> Atom
-atom a = Atom [Variant (Variable a) T]
-
-instance Show Atom where
-    show a = join " | " (fmap show (atomVariants a))
-
-instance FormulaEq Atom where
-    eq (Atom av1) (Atom av2) = or [(eq a1 a2) | a1 <- av1, a2 <- av2]
+atom name = Variants [variant $ Variable name]
 
 ----------------------------------------------------------------------------------------------------
 -- Set
@@ -56,28 +89,14 @@ instance Functor Set where
 instance FormulaEq a => FormulaEq (Set a) where
     eq s1 s2 = (isSubset s1 s2) /\ (isSubset s2 s1)
 
-----------------------------------------------------------------------------------------------------
--- Variants
-----------------------------------------------------------------------------------------------------
-
-class Variants a where
-    iF :: Formula -> a -> a -> a
-
-instance Variants Formula where
-    iF f1 f2 f3 = (f1 /\ f2) \/ (not f1 /\ f3)
-
-iFVariants :: (a -> [Variant b]) -> ([Variant b] -> a) -> Formula -> a -> a -> a
-iFVariants toVariantList fromVariantList f x1 x2 = fromMaybe (ifVariants f x1 x2) (ifFormula f x1 x2)
-    where toVariantsIf f x = fmap (variantIf f) (toVariantList x)
-          ifVariants f x1 x2 = fromVariantList $ (toVariantsIf f x1) ++ (toVariantsIf (not f) x2)
-
-instance Variants Atom where
-    iF = iFVariants atomVariants Atom
-
-instance Variants (Set a) where
+instance Conditional (Set a) where
     iF = iFVariants elements Set
 
-instance Variants b => Variants (a -> b) where
+----------------------------------------------------------------------------------------------------
+-- Function
+----------------------------------------------------------------------------------------------------
+
+instance Conditional b => Conditional (a -> b) where
     iF f f1 f2 = \x -> iF f (f1 x) (f2 x)
 
 ----------------------------------------------------------------------------------------------------
