@@ -1,5 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Formula where
 
 import Prelude hiding (or, and, not)
@@ -23,8 +21,17 @@ instance Show Variable where
 -- Formula
 ----------------------------------------------------------------------------------------------------
 
-data Formula = T | F | And Formula Formula | Or Formula Formula | Not Formula
-    |Imply Formula Formula | Equivalent Formula Formula | Equals Variable Variable
+data Formula
+    = T
+    | F
+    | Equals Variable Variable
+    | And Formula Formula
+    | Or Formula Formula
+    | Not Formula
+    | Imply Formula Formula
+    | Equivalent Formula Formula
+    | ForAll Variable Formula
+    | Exists Variable Formula
 
 -- and
 (/\) :: Formula -> Formula -> Formula
@@ -95,6 +102,20 @@ f1 <==> f2
 iff :: Formula -> Formula -> Formula
 iff = (<==>)
 
+-- for all
+forall :: Variable -> Formula -> Formula
+forall = ForAll
+
+(∀) :: Variable -> Formula -> Formula
+(∀) = ForAll
+
+-- exists
+exists :: Variable -> Formula -> Formula
+exists = Exists
+
+(∃) :: Variable -> Formula -> Formula
+(∃) = Exists
+
 ----------------------------------------------------------------------------------------------------
 -- Formula instances
 ----------------------------------------------------------------------------------------------------
@@ -104,46 +125,54 @@ showFormula f@(And f1 f2) = "(" ++ show f ++ ")"
 showFormula f@(Or f1 f2) = "(" ++ show f ++ ")"
 showFormula f@(Imply f1 f2) = "(" ++ show f ++ ")"
 showFormula f@(Equivalent f1 f2) = "(" ++ show f ++ ")"
+showFormula (ForAll x f) = "∀" ++ show x ++ "(" ++ show f ++ ")"
+showFormula (Exists x f) = "∃" ++ show x ++ "(" ++ show f ++ ")"
 showFormula f = show f
 
 instance Show Formula where
     show T = "True"
     show F = "False"
+    show (Equals x1 x2) = show x1 ++ " = " ++ show x2
     show (And f1 f2) = showFormula f1 ++ " ∧ " ++ showFormula f2
     show (Or f1 f2) = showFormula f1 ++ " ∨ " ++ showFormula f2
     show (Not (Equals x1 x2)) = show x1 ++ " ≠ " ++ show x2
     show (Not f) = "¬(" ++ show f ++ ")"
-    show (Equals x1 x2) = show x1 ++ " = " ++ show x2
     show (Imply f1 f2) = showFormula f1 ++ " → " ++ showFormula f2
     show (Equivalent f1 f2) = showFormula f1 ++ " ↔ " ++ showFormula f2
+    show (ForAll x f) = "∀" ++ show x ++ " " ++ show f
+    show (Exists x f) = "∃" ++ show x ++ " " ++ show f
 
 instance Eq Formula where
     T == T = True
     F == F = True
+    (Equals f11 f12) == (Equals f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
     (And f11 f12) == (And f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
     (Or f11 f12) == (Or f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
     (Not f1) == (Not f2) = f1 == f2
     (Imply f11 f12) == (Imply f21 f22) = (f11 == f21) && (f12 == f22)
     (Equivalent f11 f12) == (Equivalent f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    (Equals f11 f12) == (Equals f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
+    (ForAll x1 f1) == (ForAll x2 f2) = x1 == x2 && f1 == f2
+    (Exists x1 f1) == (Exists x2 f2) = x1 == x2 && f1 == f2
     _ == _ = False
 
 ----------------------------------------------------------------------------------------------------
 -- Auxiliary functions
 ----------------------------------------------------------------------------------------------------
 
-variablesSet :: Formula -> Set.Set Variable
-variablesSet T = Set.empty
-variablesSet F = Set.empty
-variablesSet (And f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
-variablesSet (Or f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
-variablesSet (Not f) = variablesSet f
-variablesSet (Imply f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
-variablesSet (Equivalent f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
-variablesSet (Equals x1 x2) = Set.fromList [x1, x2]
+freeVariablesSet :: Formula -> Set.Set Variable
+freeVariablesSet T = Set.empty
+freeVariablesSet F = Set.empty
+freeVariablesSet (And f1 f2) = Set.union (freeVariablesSet f1) (freeVariablesSet f2)
+freeVariablesSet (Or f1 f2) = Set.union (freeVariablesSet f1) (freeVariablesSet f2)
+freeVariablesSet (Not f) = freeVariablesSet f
+freeVariablesSet (Imply f1 f2) = Set.union (freeVariablesSet f1) (freeVariablesSet f2)
+freeVariablesSet (Equivalent f1 f2) = Set.union (freeVariablesSet f1) (freeVariablesSet f2)
+freeVariablesSet (Equals x1 x2) = Set.fromList [x1, x2]
+freeVariablesSet (ForAll x f) = Set.delete x (freeVariablesSet f)
+freeVariablesSet (Exists x f) = Set.delete x (freeVariablesSet f)
 
-variables :: Formula -> [Variable]
-variables = Set.toList . variablesSet
+freeVariables :: Formula -> [Variable]
+freeVariables = Set.toList . freeVariablesSet
 
 fromBool :: Bool -> Formula
 fromBool True = T
@@ -167,20 +196,23 @@ instance FormulaEq Variable where
 ----------------------------------------------------------------------------------------------------
 
 -- transform formula to SBV types
-interpret :: Formula -> Map.Map Variable SBV.SInt8 -> SBV.SBool
-interpret T env = SBV.true
-interpret F env = SBV.false
-interpret (And f1 f2) env = (interpret f1 env) SBV.&&& (interpret f2 env)
-interpret (Or f1 f2) env = (interpret f1 env) SBV.||| (interpret f2 env)
-interpret (Not f) env = SBV.bnot (interpret f env)
-interpret (Imply f1 f2) env = (interpret f1 env) SBV.==> (interpret f2 env)
-interpret (Equivalent f1 f2) env = (interpret f1 env) SBV.<=> (interpret f2 env)
-interpret (Equals x1 x2) env = (env Map.! x1) SBV..== (env Map.! x2)
+interpret :: Formula -> Map.Map Variable SBV.SInt8 -> SBV.Symbolic SBV.SBool
+interpret T env = return SBV.true
+interpret F env = return SBV.false
+interpret (Equals x1 x2) env = return $ env Map.! x1 SBV..== env Map.! x2
+interpret (And f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.&&& if2}
+interpret (Or f1 f2) env = do {if1 <- interpret f1 env; if2 <- (interpret f2 env); return $ if1 SBV.||| if2}
+interpret (Not f) env = do {ifo <- interpret f env; return $ SBV.bnot ifo}
+interpret (Imply f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.==> if2}
+interpret (Equivalent f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.<=> if2}
+interpret (ForAll x f) env = do {xx <- SBV.forall (variableName x); interpret f (Map.insert x xx env)}
+interpret (Exists x f) env = do {xx <- SBV.exists (variableName x); interpret f (Map.insert x xx env)}
 
 quantifiedFormula :: (String -> SBV.Symbolic SBV.SInt8) -> Formula -> SBV.Symbolic SBV.SBool
-quantifiedFormula q f = ssyms >>= (\syms -> return . interpret f $ Map.fromList (zip vs syms))
-  where vs = variables f
-        ssyms = mapM q $ fmap variableName vs
+quantifiedFormula q f = do
+    let vs = freeVariables f
+    syms <- mapM q $ fmap variableName vs
+    interpret f $ Map.fromList (zip vs syms)
 
 instance SBV.Provable Formula where
   forAll_ = quantifiedFormula SBV.forall
@@ -188,48 +220,44 @@ instance SBV.Provable Formula where
   forSome_ = quantifiedFormula SBV.exists
   forSome _ = quantifiedFormula SBV.exists
 
--- SBV solving
-solve :: Formula -> IO SBV.SatResult
-solve = SBV.sat . SBV.forSome_
-
+-- check is tautology
 isTrue :: Formula -> IO Bool
 isTrue T = return True
+isTrue F = return False
 isTrue f = do
     result <- (SBV.isSatisfiable Nothing) $ SBV.forAll_ f
-    return $ Data.Maybe.fromJust result
+    return $ fromJust result
 
-isFalse :: Formula -> IO Bool
-isFalse F = return False
-isFalse f = do
-    result <- (SBV.isSatisfiable Nothing) $ SBV.forSome_ f
-    return $ if Data.Maybe.fromJust result then False else True
-
--- unsafe SBV solving
 unsafeIsTrue :: Formula -> Bool
 unsafeIsTrue = unsafePerformIO . isTrue
+
+-- check is contradiction
+isFalse :: Formula -> IO Bool
+isFalse F = return True
+isFalse T = return False
+isFalse f = do
+    result <- (SBV.isSatisfiable Nothing) $ SBV.forSome_ f
+    return $ if fromJust result then False else True
 
 unsafeIsFalse :: Formula -> Bool
 unsafeIsFalse = unsafePerformIO . isFalse
 
-----------------------------------------------------------------------------------------------------
--- If with formula
-----------------------------------------------------------------------------------------------------
-
-ifFormula :: Formula -> IO (Maybe (a -> a -> a))
-ifFormula f = do
+-- solve
+solve :: Formula -> IO (Maybe Bool)
+solve f = do
         trueCond <- isTrue f
         if trueCond
-            then return (Just const)
+            then return (Just True)
             else do
                  falseCond <- isFalse f
                  if falseCond
-                    then return (Just $ flip const)
+                    then return (Just False)
                     else return Nothing
 
-unsafeIfFormula :: Formula -> a -> a -> Maybe a
-unsafeIfFormula f v1 v2
-         | unsafeIsTrue f  = Just v1
-         | unsafeIsFalse f = Just v2
+unsafeSolve :: Formula -> Maybe Bool
+unsafeSolve f
+         | unsafeIsTrue f  = Just True
+         | unsafeIsFalse f = Just False
          | otherwise = Nothing
 
 ----------------------------------------------------------------------------------------------------
@@ -242,3 +270,10 @@ cc = eq x y
 ce = (eq x y) /\ (eq y z) /\ (eq z x)
 nce =  (eq x y) /\ (eq y z) /\ not (eq z x)
 ice = (eq x y) /\ (eq y z) ==> (eq z x)
+af = (∀) x cc
+ef = (∃) x cc
+aef = (∀) x $ (∃) y cc
+eaf = (∃) x $ (∀) y cc
+aaf = (∀) x $ (∀) y cc
+eef = (∃) x $ (∃) y cc
+

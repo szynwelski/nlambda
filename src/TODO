@@ -1,3 +1,4 @@
 - if f v1 v2 - co jak f ==> (eq v1 v2) lub (not f) ==> (eq v1 v2)?
 - powtorzenia w Set, Variants
 - formuly pierwszego rzedu
+- zbiory atomów

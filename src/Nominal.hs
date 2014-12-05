@@ -29,8 +29,7 @@ variantIf c v = Variant (value v) (condition v /\ c)
 
 instance Show a => Show (Variant a) where
     show (Variant v c) = show v ++ (case c of T -> ""
-                                              _ -> ":" ++ show c)
-
+                                              _ -> " : " ++ show c)
 instance Functor Variant where
     fmap f (Variant v c) = Variant (f v) c
 
@@ -47,7 +46,11 @@ variants :: a -> Variants a
 variants x = Variants [Variant x T]
 
 iFVariants :: (a -> [Variant b]) -> ([Variant b] -> a) -> Formula -> a -> a -> a
-iFVariants toVariantList fromVariantList f x1 x2 = fromMaybe (ifVariants f x1 x2) (unsafeIfFormula f x1 x2)
+iFVariants toVariantList fromVariantList f x1 x2 =
+    case unsafeSolve f of
+         Just True -> x1
+         Just False -> x2
+         Nothing -> (ifVariants f x1 x2)
     where toVariantsIf f x = fmap (variantIf f) (toVariantList x)
           ifVariants f x1 x2 = fromVariantList $ (toVariantsIf f x1) ++ (toVariantsIf (not f) x2)
 
@@ -130,20 +133,20 @@ just e = add e emptySet
 filter :: (a -> Formula) -> Set a -> Set a
 filter f s = sum $ map (\x -> (iF (f x) (just x) emptySet)) s
 
-exists :: (a -> Formula) -> Set a -> Formula
-exists f = not . isEmpty . (filter f)
+existsInSet :: (a -> Formula) -> Set a -> Formula
+existsInSet f = not . isEmpty . (filter f)
 
-forall :: (a -> Formula) -> Set a -> Formula
-forall f = isEmpty . (filter $ \x -> not (f x))
+forallInSet :: (a -> Formula) -> Set a -> Formula
+forallInSet f = isEmpty . (filter $ \x -> not (f x))
 
 union :: Set a -> Set a -> Set a
 union s1 s2 = sum (add s1 (add s2 emptySet))
 
 contains :: FormulaEq a => Set a -> a -> Formula
-contains s e = exists (eq e) s
+contains s e = existsInSet (eq e) s
 
 isSubset :: FormulaEq a => Set a -> Set a -> Formula
-isSubset s1 s2 = forall (contains s2) s1
+isSubset s1 s2 = forallInSet (contains s2) s1
 
 ----------------------------------------------------------------------------------------------------
 -- Examples
