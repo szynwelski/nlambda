@@ -129,6 +129,27 @@ instance Eq Formula where
     _ == _ = False
 
 ----------------------------------------------------------------------------------------------------
+-- Auxiliary functions
+----------------------------------------------------------------------------------------------------
+
+variablesSet :: Formula -> Set.Set Variable
+variablesSet T = Set.empty
+variablesSet F = Set.empty
+variablesSet (And f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
+variablesSet (Or f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
+variablesSet (Not f) = variablesSet f
+variablesSet (Imply f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
+variablesSet (Equivalent f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
+variablesSet (Equals x1 x2) = Set.fromList [x1, x2]
+
+variables :: Formula -> [Variable]
+variables = Set.toList . variablesSet
+
+fromBool :: Bool -> Formula
+fromBool True = T
+fromBool False = F
+
+----------------------------------------------------------------------------------------------------
 -- FormulaEq
 ----------------------------------------------------------------------------------------------------
 
@@ -144,20 +165,6 @@ instance FormulaEq Variable where
 ----------------------------------------------------------------------------------------------------
 -- Solving
 ----------------------------------------------------------------------------------------------------
-
--- variables in formula
-variablesSet :: Formula -> Set.Set Variable
-variablesSet T = Set.empty
-variablesSet F = Set.empty
-variablesSet (And f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
-variablesSet (Or f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
-variablesSet (Not f) = variablesSet f
-variablesSet (Imply f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
-variablesSet (Equivalent f1 f2) = Set.union (variablesSet f1) (variablesSet f2)
-variablesSet (Equals x1 x2) = Set.fromList [x1, x2]
-
-variables :: Formula -> [Variable]
-variables = Set.toList . variablesSet
 
 -- transform formula to SBV types
 interpret :: Formula -> Map.Map Variable SBV.SInt8 -> SBV.SBool
