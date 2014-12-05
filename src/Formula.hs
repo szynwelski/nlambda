@@ -181,55 +181,40 @@ instance SBV.Provable Formula where
   forSome_ = quantifiedFormula SBV.exists
   forSome _ = quantifiedFormula SBV.exists
 
--- simple solving
-isTrue :: Formula -> Bool
-isTrue T = True
-isTrue _ = False
-
-isFalse :: Formula -> Bool
-isFalse F = True
-isFalse _ = False
-
 -- SBV solving
 solve :: Formula -> IO SBV.SatResult
 solve = SBV.sat . SBV.forSome_
 
-isTrueIO :: Formula -> IO Bool
-isTrueIO T = return True
-isTrueIO f = do
+isTrue :: Formula -> IO Bool
+isTrue T = return True
+isTrue f = do
     result <- (SBV.isSatisfiable Nothing) $ SBV.forAll_ f
     return $ Data.Maybe.fromJust result
 
-isFalseIO :: Formula -> IO Bool
-isFalseIO F = return False
-isFalseIO f = do
+isFalse :: Formula -> IO Bool
+isFalse F = return False
+isFalse f = do
     result <- (SBV.isSatisfiable Nothing) $ SBV.forSome_ f
     return $ if Data.Maybe.fromJust result then False else True
 
 -- unsafe SBV solving
 unsafeIsTrue :: Formula -> Bool
-unsafeIsTrue = unsafePerformIO . isTrueIO
+unsafeIsTrue = unsafePerformIO . isTrue
 
 unsafeIsFalse :: Formula -> Bool
-unsafeIsFalse = unsafePerformIO . isFalseIO
+unsafeIsFalse = unsafePerformIO . isFalse
 
 ----------------------------------------------------------------------------------------------------
 -- If with formula
 ----------------------------------------------------------------------------------------------------
 
-ifFormula :: Formula -> a -> a -> Maybe a
-ifFormula f v1 v2
-         | isTrue f  = Just v1
-         | isFalse f = Just v2
-         | otherwise = Nothing
-
-ifFormulaIO :: Formula -> IO (Maybe (a -> a -> a))
-ifFormulaIO f = do
-        trueCond <- isTrueIO f
+ifFormula :: Formula -> IO (Maybe (a -> a -> a))
+ifFormula f = do
+        trueCond <- isTrue f
         if trueCond
             then return (Just const)
             else do
-                 falseCond <- isFalseIO f
+                 falseCond <- isFalse f
                  if falseCond
                     then return (Just $ flip const)
                     else return Nothing

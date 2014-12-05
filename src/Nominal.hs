@@ -28,7 +28,8 @@ variantIf :: Formula -> Variant a -> Variant a
 variantIf c v = Variant (value v) (condition v /\ c)
 
 instance Show a => Show (Variant a) where
-    show (Variant v c) = show v ++ (if (isTrue c) then "" else " : " ++ show c)
+    show (Variant v c) = show v ++ (case c of T -> ""
+                                              _ -> ":" ++ show c)
 
 instance Functor Variant where
     fmap f (Variant v c) = Variant (f v) c
