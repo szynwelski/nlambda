@@ -284,6 +284,9 @@ instance FormulaEq Integer where
 instance FormulaEq Ordering where
     eq = formulaEqFromEq
 
+instance (Eq a) => FormulaEq [a] where
+    eq = formulaEqFromEq
+
 instance FormulaEq () where
     eq = formulaEqFromEq
 

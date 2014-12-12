@@ -21,6 +21,9 @@ ifFormula f x1 x2 x3 = case unsafeSolve f of
 instance Conditional Formula where
     iF f1 f2 f3 = (f1 /\ f2) \/ (not f1 /\ f3)
 
+instance (Conditional a) => Conditional [a] where
+    iF f l1 l2 = ifFormula f l1 l2 (zipWith (iF f) l1 l2)
+
 instance (Conditional a, Conditional b) => Conditional (a, b) where
     iF f (a1, b1) (a2, b2) = ifFormula f (a1, b1) (a2, b2) ((iF f a1 a2), (iF f b1 b2))
 
