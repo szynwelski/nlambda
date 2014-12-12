@@ -179,19 +179,6 @@ fromBool True = T
 fromBool False = F
 
 ----------------------------------------------------------------------------------------------------
--- FormulaEq
-----------------------------------------------------------------------------------------------------
-
-class FormulaEq a where
-    eq :: a -> a -> Formula
-
-instance FormulaEq Formula where
-    eq = iff
-
-instance FormulaEq Variable where
-    eq x1 x2 = if x1 == x2 then T else Equals x1 x2
-
-----------------------------------------------------------------------------------------------------
 -- Solving
 ----------------------------------------------------------------------------------------------------
 
@@ -259,6 +246,88 @@ unsafeSolve f
          | unsafeIsTrue f  = Just True
          | unsafeIsFalse f = Just False
          | otherwise = Nothing
+
+----------------------------------------------------------------------------------------------------
+-- FormulaEq
+----------------------------------------------------------------------------------------------------
+
+class FormulaEq a where
+    eq :: a -> a -> Formula
+
+instance FormulaEq Formula where
+    eq = iff
+
+instance FormulaEq Variable where
+    eq x1 x2 = if x1 == x2 then T else Equals x1 x2
+
+formulaEqFromEq :: (Eq a) => a -> a -> Formula
+formulaEqFromEq x y = fromBool (x == y)
+
+instance FormulaEq Bool where
+    eq = formulaEqFromEq
+
+instance FormulaEq Char where
+    eq = formulaEqFromEq
+
+instance FormulaEq Double where
+    eq = formulaEqFromEq
+
+instance FormulaEq Float where
+    eq = formulaEqFromEq
+
+instance FormulaEq Int where
+    eq = formulaEqFromEq
+
+instance FormulaEq Integer where
+    eq = formulaEqFromEq
+
+instance FormulaEq Ordering where
+    eq = formulaEqFromEq
+
+instance FormulaEq () where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b) => FormulaEq (a, b) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c) => FormulaEq (a, b, c) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d) => FormulaEq (a, b, c, d) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e) => FormulaEq (a, b, c, d, e) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f) => FormulaEq (a, b, c, d, e, f) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g) => FormulaEq (a, b, c, d, e, f, g) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h) => FormulaEq (a, b, c, d, e, f, g, h) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i) => FormulaEq (a, b, c, d, e, f, g, h, i) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j) => FormulaEq (a, b, c, d, e, f, g, h, i, j) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k, Eq l) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k, l) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k, Eq l, Eq m) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k, l, m) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k, Eq l, Eq m, Eq n) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k, l, m, n) where
+    eq = formulaEqFromEq
+
+instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k, Eq l, Eq m, Eq n, Eq o) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o) where
+    eq = formulaEqFromEq
 
 ----------------------------------------------------------------------------------------------------
 -- Examples
