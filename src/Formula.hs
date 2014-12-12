@@ -104,6 +104,8 @@ iff = (<==>)
 
 -- for all
 (∀) :: Variable -> Formula -> Formula
+(∀) _ T = T
+(∀) _ F = F
 (∀) x (Not f) = not $ (∃) x f
 (∀) x f = ForAll x f
 
@@ -112,6 +114,8 @@ forall = (∀)
 
 -- exists
 (∃) :: Variable -> Formula -> Formula
+(∃) _ T = T
+(∃) _ F = F
 (∃) x (Not f) = not $ (∀) x f
 (∃) x f = Exists x f
 
