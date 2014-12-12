@@ -103,18 +103,20 @@ iff :: Formula -> Formula -> Formula
 iff = (<==>)
 
 -- for all
-forall :: Variable -> Formula -> Formula
-forall = ForAll
-
 (∀) :: Variable -> Formula -> Formula
-(∀) = ForAll
+(∀) x (Not f) = not $ (∃) x f
+(∀) x f = ForAll x f
+
+forall :: Variable -> Formula -> Formula
+forall = (∀)
 
 -- exists
-exists :: Variable -> Formula -> Formula
-exists = Exists
-
 (∃) :: Variable -> Formula -> Formula
-(∃) = Exists
+(∃) x (Not f) = not $ (∀) x f
+(∃) x f = Exists x f
+
+exists :: Variable -> Formula -> Formula
+exists = (∃)
 
 ----------------------------------------------------------------------------------------------------
 -- Formula instances
