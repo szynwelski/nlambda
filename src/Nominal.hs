@@ -12,8 +12,17 @@ import Data.Maybe (fromMaybe)
 class Conditional a where
     iF :: Formula -> a -> a -> a
 
+ifFormula :: Formula -> a -> a -> a -> a
+ifFormula f x1 x2 x3 = case unsafeSolve f of
+                        Just True -> x1
+                        Just False -> x2
+                        Nothing -> x3
+
 instance Conditional Formula where
     iF f1 f2 f3 = (f1 /\ f2) \/ (not f1 /\ f3)
+
+instance (Conditional a, Conditional b) => Conditional (a, b) where
+    iF f (a1, b1) (a2, b2) = ifFormula f (a1, b1) (a2, b2) ((iF f a1 a2), (iF f b1 b2))
 
 ----------------------------------------------------------------------------------------------------
 -- Variant
@@ -33,6 +42,10 @@ instance Show a => Show (Variant a) where
 instance Functor Variant where
     fmap f (Variant v c) = Variant (f v) c
 
+instance Monad Variant where
+    return = variant
+    v >>= f = variantIf (condition v) (f $ value v)
+
 instance FormulaEq a => FormulaEq (Variant a) where
     eq (Variant v1 c1) (Variant v2 c2) = (eq v1 v2) /\ c1 /\ c2
 
@@ -45,12 +58,11 @@ data Variants a = Variants {variantsList :: [Variant a]}
 variants :: a -> Variants a
 variants x = Variants [Variant x T]
 
+variantsIf :: Formula -> Variants a -> Variants a
+variantsIf c = Variants . (fmap $ variantIf c) . variantsList
+
 iFVariants :: (a -> [Variant b]) -> ([Variant b] -> a) -> Formula -> a -> a -> a
-iFVariants toVariantList fromVariantList f x1 x2 =
-    case unsafeSolve f of
-         Just True -> x1
-         Just False -> x2
-         Nothing -> (ifVariants f x1 x2)
+iFVariants toVariantList fromVariantList f x1 x2 = ifFormula f x1 x2 (ifVariants f x1 x2)
     where toVariantsIf f x = fmap (variantIf f) (toVariantList x)
           ifVariants f x1 x2 = fromVariantList $ (toVariantsIf f x1) ++ (toVariantsIf (not f) x2)
 
@@ -59,6 +71,11 @@ instance Show a => Show (Variants a) where
 
 instance Functor Variants where
     fmap f (Variants vs) = Variants $ fmap (fmap f) vs
+
+instance Monad Variants where
+    return = variants
+    vs >>= f = Variants $ concat $ fmap variantsList $
+                fmap (\v -> variantsIf (condition v) (value v)) (variantsList $ fmap f vs)
 
 instance FormulaEq a => FormulaEq (Variants a) where
     eq (Variants vl1) (Variants vl2) = or [(eq v1 v2) | v1 <- vl1, v2 <- vl2]
