@@ -109,8 +109,8 @@ iff = (<==>)
 (∀) x (Not f) = not $ (∃) x f
 (∀) x f = ForAll x f
 
-forall :: Variable -> Formula -> Formula
-forall = (∀)
+forallVar :: Variable -> Formula -> Formula
+forallVar = (∀)
 
 -- exists
 (∃) :: Variable -> Formula -> Formula
@@ -119,8 +119,8 @@ forall = (∀)
 (∃) x (Not f) = not $ (∀) x f
 (∃) x f = Exists x f
 
-exists :: Variable -> Formula -> Formula
-exists = (∃)
+existsVar :: Variable -> Formula -> Formula
+existsVar = (∃)
 
 ----------------------------------------------------------------------------------------------------
 -- Formula instances
@@ -177,9 +177,6 @@ freeVariablesSet (Equals x1 x2) = Set.fromList [x1, x2]
 freeVariablesSet (ForAll x f) = Set.delete x (freeVariablesSet f)
 freeVariablesSet (Exists x f) = Set.delete x (freeVariablesSet f)
 
-freeVariables :: Formula -> [Variable]
-freeVariables = Set.toList . freeVariablesSet
-
 fromBool :: Bool -> Formula
 fromBool True = T
 fromBool False = F
@@ -194,7 +191,7 @@ interpret T env = return SBV.true
 interpret F env = return SBV.false
 interpret (Equals x1 x2) env = return $ env Map.! x1 SBV..== env Map.! x2
 interpret (And f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.&&& if2}
-interpret (Or f1 f2) env = do {if1 <- interpret f1 env; if2 <- (interpret f2 env); return $ if1 SBV.||| if2}
+interpret (Or f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.||| if2}
 interpret (Not f) env = do {ifo <- interpret f env; return $ SBV.bnot ifo}
 interpret (Imply f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.==> if2}
 interpret (Equivalent f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.<=> if2}
@@ -203,7 +200,7 @@ interpret (Exists x f) env = do {xx <- SBV.exists (variableName x); interpret f 
 
 quantifiedFormula :: (String -> SBV.Symbolic SBV.SInt8) -> Formula -> SBV.Symbolic SBV.SBool
 quantifiedFormula q f = do
-    let vs = freeVariables f
+    let vs = Set.toList $ freeVariables f
     syms <- mapM q $ fmap variableName vs
     interpret f $ Map.fromList (zip vs syms)
 
@@ -259,12 +256,16 @@ unsafeSolve f
 
 class FormulaEq a where
     eq :: a -> a -> Formula
+    freeVariables :: a -> Set.Set Variable
+    freeVariables = const Set.empty
 
 instance FormulaEq Formula where
     eq = iff
+    freeVariables = freeVariablesSet
 
 instance FormulaEq Variable where
     eq x1 x2 = if x1 == x2 then T else Equals x1 x2
+    freeVariables = Set.singleton
 
 formulaEqFromEq :: (Eq a) => a -> a -> Formula
 formulaEqFromEq x y = fromBool (x == y)
@@ -290,53 +291,20 @@ instance FormulaEq Integer where
 instance FormulaEq Ordering where
     eq = formulaEqFromEq
 
-instance (Eq a) => FormulaEq [a] where
-    eq = formulaEqFromEq
+instance (FormulaEq a) => FormulaEq [a] where
+    eq l1 l2 = and $ zipWith eq l1 l2
+    freeVariables l = Set.unions (fmap freeVariables l)
 
 instance FormulaEq () where
     eq = formulaEqFromEq
 
-instance (Eq a, Eq b) => FormulaEq (a, b) where
-    eq = formulaEqFromEq
+instance (FormulaEq a, FormulaEq b) => FormulaEq (a, b) where
+    eq (a1, b1) (a2, b2) = (eq a1 a2) /\ (eq b1 b2)
+    freeVariables (a, b) = Set.union (freeVariables a) (freeVariables b)
 
-instance (Eq a, Eq b, Eq c) => FormulaEq (a, b, c) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d) => FormulaEq (a, b, c, d) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e) => FormulaEq (a, b, c, d, e) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f) => FormulaEq (a, b, c, d, e, f) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g) => FormulaEq (a, b, c, d, e, f, g) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h) => FormulaEq (a, b, c, d, e, f, g, h) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i) => FormulaEq (a, b, c, d, e, f, g, h, i) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j) => FormulaEq (a, b, c, d, e, f, g, h, i, j) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k, Eq l) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k, l) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k, Eq l, Eq m) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k, l, m) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k, Eq l, Eq m, Eq n) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k, l, m, n) where
-    eq = formulaEqFromEq
-
-instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g, Eq h, Eq i, Eq j, Eq k, Eq l, Eq m, Eq n, Eq o) => FormulaEq (a, b, c, d, e, f, g, h, i, j, k, l, m, n, o) where
-    eq = formulaEqFromEq
+instance (FormulaEq a, FormulaEq b, FormulaEq c) => FormulaEq (a, b, c) where
+    eq (a1, b1, c1) (a2, b2, c2) = (eq a1 a2) /\ (eq b1 b2) /\ (eq c1 c2)
+    freeVariables (a, b, c) = Set.unions [(freeVariables a), (freeVariables b), (freeVariables c)]
 
 ----------------------------------------------------------------------------------------------------
 -- Examples
