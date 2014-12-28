@@ -171,7 +171,7 @@ isEmpty :: Set a -> Formula
 isEmpty s = and (fmap (not . setElementCondition) (elements s))
 
 add :: a -> Set a -> Set a
-add e = Set . ((simpleSetElement e) :) . elements
+add e = Set . (simpleSetElement e :) . elements
 
 map :: (FormulaEq b) => (a -> b) -> Set a -> Set b
 map f (Set es) = Set $ fmap (setElementMap f) es

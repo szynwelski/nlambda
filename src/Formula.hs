@@ -80,7 +80,7 @@ f ==> F = f
 (Not f1) ==> (Not f2) = f2 ==> f1
 f1 ==> f2
     | f1 == f2       = T
-    | (not f1) == f2 = Not f1
+    | (not f1) == f2 = f2
     | otherwise      = Imply f1 f2
 
 implies :: Formula -> Formula -> Formula
@@ -108,8 +108,8 @@ iff = (<==>)
 (∀) x (Not f) = not $ (∃) x f
 (∀) x f = ForAll x f
 
-forallVar :: Variable -> Formula -> Formula
-forallVar = (∀)
+forAllVar :: Variable -> Formula -> Formula
+forAllVar = (∀)
 
 -- exists
 (∃) :: Variable -> Formula -> Formula
@@ -124,6 +124,8 @@ existsVar = (∃)
 ----------------------------------------------------------------------------------------------------
 -- Formula instances
 ----------------------------------------------------------------------------------------------------
+
+-- Show
 
 showFormula :: Formula -> String
 showFormula f@(And f1 f2) = "(" ++ show f ++ ")"
@@ -147,18 +149,64 @@ instance Show Formula where
     show (ForAll x f) = "∀" ++ show x ++ " " ++ show f
     show (Exists x f) = "∃" ++ show x ++ " " ++ show f
 
+-- Ord
+
+compareEquivalentPairs :: (Ord a) => (a, a) -> (a, a) -> Ordering
+compareEquivalentPairs (x11, x12) (x21, x22) =
+    compareSortedPairs
+        (if x11 <= x12 then (x11, x12) else (x12, x11))
+        (if x21 <= x22 then (x21, x22) else (x22, x21))
+
+compareSortedPairs :: (Ord a, Ord b) => (a, b) -> (a, b) -> Ordering
+compareSortedPairs (x11, x12) (x21, x22) =
+    let compareFirst = compare x11 x21
+    in if compareFirst == EQ
+         then compare x12 x22
+         else compareFirst
+
+instance Ord Formula where
+    compare T T = EQ
+    compare T _ = GT
+    compare _ T = LT
+
+    compare F F = EQ
+    compare F _ = GT
+    compare _ F = LT
+
+    compare (Equals x1 y1) (Equals x2 y2) = compareEquivalentPairs (x1, y1) (x2, y2)
+    compare (Equals _ _) _ = GT
+    compare _ (Equals _ _) = LT
+
+    compare (And f11 f12) (And f21 f22) = compareEquivalentPairs (f11, f12) (f21, f22)
+    compare (And _ _) _ = GT
+    compare _ (And _ _) = LT
+
+    compare (Or f11 f12) (Or f21 f22) = compareEquivalentPairs (f11, f12) (f21, f22)
+    compare (Or _ _) _ = GT
+    compare _ (Or _ _) = LT
+
+    compare (Not f1) (Not f2) = compare f1 f2
+    compare (Not _) _ = GT
+    compare _ (Not _) = LT
+
+    compare (Imply f11 f12) (Imply f21 f22) = compareSortedPairs (f11, f12) (f21, f22)
+    compare (Imply _ _) _ = GT
+    compare _ (Imply _ _) = LT
+
+    compare (Equivalent f11 f12) (Equivalent f21 f22) = compareEquivalentPairs (f11, f12) (f21, f22)
+    compare (Equivalent _ _) _ = GT
+    compare _ (Equivalent _ _) = LT
+
+    compare (ForAll x1 f1) (ForAll x2 f2) =  compareSortedPairs (x1, f1) (x2, f2)
+    compare (ForAll _ _) _ = GT
+    compare _ (ForAll _ _) = LT
+
+    compare (Exists x1 f1) (Exists x2 f2) =  compareSortedPairs (x1, f1) (x2, f2)
+
+-- Eq
+
 instance Eq Formula where
-    T == T = True
-    F == F = True
-    (Equals f11 f12) == (Equals f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    (And f11 f12) == (And f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    (Or f11 f12) == (Or f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    (Not f1) == (Not f2) = f1 == f2
-    (Imply f11 f12) == (Imply f21 f22) = (f11 == f21) && (f12 == f22)
-    (Equivalent f11 f12) == (Equivalent f21 f22) = ((f11 == f21) && (f12 == f22)) || ((f12 == f21) && (f11 == f22))
-    (ForAll x1 f1) == (ForAll x2 f2) = x1 == x2 && f1 == f2
-    (Exists x1 f1) == (Exists x2 f2) = x1 == x2 && f1 == f2
-    _ == _ = False
+    f1 == f2 = (compare f1 f2) == EQ
 
 ----------------------------------------------------------------------------------------------------
 -- Auxiliary functions
@@ -243,6 +291,7 @@ x = Variable "x"
 y = Variable "y"
 z = Variable "z"
 cc = eq x y
+ncc = not cc
 ce = (eq x y) /\ (eq y z) /\ (eq z x)
 nce =  (eq x y) /\ (eq y z) /\ not (eq z x)
 ice = (eq x y) /\ (eq y z) ==> (eq z x)
