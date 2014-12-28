@@ -1,10 +1,11 @@
 module Nominal where
 
-import Prelude hiding (or, and, not, sum, map, filter)
-import Formula
-import qualified Data.Set as Set
 import Data.List.Utils (join)
 import Data.Maybe (fromMaybe)
+import qualified Data.Set as Set
+import Formula
+import Formula.Solver (unsafeSolve, solve)
+import Prelude hiding (or, and, not, sum, map, filter)
 
 ----------------------------------------------------------------------------------------------------
 -- Conditional

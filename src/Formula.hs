@@ -1,7 +1,6 @@
 module Formula where
 
 import Prelude hiding (or, and, not)
-import qualified Data.SBV as SBV
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Maybe (fromJust)
@@ -182,75 +181,6 @@ fromBool True = T
 fromBool False = F
 
 ----------------------------------------------------------------------------------------------------
--- Solving
-----------------------------------------------------------------------------------------------------
-
--- transform formula to SBV types
-interpret :: Formula -> Map.Map Variable SBV.SInt8 -> SBV.Symbolic SBV.SBool
-interpret T env = return SBV.true
-interpret F env = return SBV.false
-interpret (Equals x1 x2) env = return $ env Map.! x1 SBV..== env Map.! x2
-interpret (And f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.&&& if2}
-interpret (Or f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.||| if2}
-interpret (Not f) env = do {ifo <- interpret f env; return $ SBV.bnot ifo}
-interpret (Imply f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.==> if2}
-interpret (Equivalent f1 f2) env = do {if1 <- interpret f1 env; if2 <- interpret f2 env; return $ if1 SBV.<=> if2}
-interpret (ForAll x f) env = do {xx <- SBV.forall (variableName x); interpret f (Map.insert x xx env)}
-interpret (Exists x f) env = do {xx <- SBV.exists (variableName x); interpret f (Map.insert x xx env)}
-
-quantifiedFormula :: (String -> SBV.Symbolic SBV.SInt8) -> Formula -> SBV.Symbolic SBV.SBool
-quantifiedFormula q f = do
-    let vs = Set.toList $ freeVariables f
-    syms <- mapM q $ fmap variableName vs
-    interpret f $ Map.fromList (zip vs syms)
-
-instance SBV.Provable Formula where
-  forAll_ = quantifiedFormula SBV.forall
-  forAll _ = quantifiedFormula SBV.forall
-  forSome_ = quantifiedFormula SBV.exists
-  forSome _ = quantifiedFormula SBV.exists
-
--- check is tautology
-isTrue :: Formula -> IO Bool
-isTrue T = return True
-isTrue F = return False
-isTrue f = do
-    result <- (SBV.isSatisfiable Nothing) $ SBV.forAll_ f
-    return $ fromJust result
-
-unsafeIsTrue :: Formula -> Bool
-unsafeIsTrue = unsafePerformIO . isTrue
-
--- check is contradiction
-isFalse :: Formula -> IO Bool
-isFalse F = return True
-isFalse T = return False
-isFalse f = do
-    result <- (SBV.isSatisfiable Nothing) $ SBV.forSome_ f
-    return $ if fromJust result then False else True
-
-unsafeIsFalse :: Formula -> Bool
-unsafeIsFalse = unsafePerformIO . isFalse
-
--- solve
-solve :: Formula -> IO (Maybe Bool)
-solve f = do
-        trueCond <- isTrue f
-        if trueCond
-            then return (Just True)
-            else do
-                 falseCond <- isFalse f
-                 if falseCond
-                    then return (Just False)
-                    else return Nothing
-
-unsafeSolve :: Formula -> Maybe Bool
-unsafeSolve f
-         | unsafeIsTrue f  = Just True
-         | unsafeIsFalse f = Just False
-         | otherwise = Nothing
-
-----------------------------------------------------------------------------------------------------
 -- FormulaEq
 ----------------------------------------------------------------------------------------------------
 
@@ -319,6 +249,7 @@ ice = (eq x y) /\ (eq y z) ==> (eq z x)
 af = (∀) x cc
 ef = (∃) x cc
 aef = (∀) x $ (∃) y cc
+naef = not aef
 eaf = (∃) x $ (∀) y cc
 aaf = (∀) x $ (∀) y cc
 eef = (∃) x $ (∃) y cc
