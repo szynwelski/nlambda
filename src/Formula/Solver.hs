@@ -81,6 +81,8 @@ getSmtScript f = "(set-logic LIA)(assert " ++ (getSmtAssertForAllFree f) ++ ")(c
 ----------------------------------------------------------------------------------------------------
 
 isTrue :: Formula -> IO Bool
+isTrue T = return True
+isTrue F = return False
 isTrue f = do
         result <- runSolver z3Solver (getSmtScript f)
         return $ isSatisfiable result
