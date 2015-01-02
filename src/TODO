@@ -1,4 +1,17 @@
-- if f v1 v2 - co jak f ==> (eq v1 v2) lub (not f) ==> (eq v1 v2)?
-- powtorzenia w Set, Variants
-- formuly pierwszego rzedu
-- zbiory atomów
+- dokumentacja za pomoca haddock,
+- 
+
+- Formula: 
+-- type Variable = String,
+-- przenieść ifFormula i dodać simplify,
+-- usunąć FormulaEq (?),
+
+- Nominal:
+-- podzielic na podmoduły,
+-- zastanowić się jaki ma być "strict",
+-- dodać klasę NominalType z eq, support, (ew. variants) (?),
+-- pomyśleć nad odpowiednikami operacji z ', ktore czesciej rozwiazuja formuly (ewentualnie za pomoca makra #define),
+-- implementacje Variants i Set jako Map a "condition",
+-- filterVariants, filterSet jako wewnętrzne funkcje,
+-- dla zbioru wewnętrzne tez pewnie beda: isSubsetOf, intersection, difference.
+
