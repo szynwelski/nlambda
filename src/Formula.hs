@@ -269,7 +269,7 @@ instance FormulaEq Integer where
 instance FormulaEq Ordering where
     eq = formulaEqFromEq
 
-instance (FormulaEq a) => FormulaEq [a] where
+instance FormulaEq a => FormulaEq [a] where
     eq l1 l2 = and $ zipWith eq l1 l2
     freeVariables l = Set.unions (fmap freeVariables l)
 

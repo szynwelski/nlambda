@@ -1,17 +1,19 @@
 - dokumentacja za pomoca haddock,
-- 
+- pragma MINIMAL 
 
 - Formula: 
 -- type Variable = String,
 -- przenieść ifFormula i dodać simplify,
+-- ew. przeniesc upraszczanie formul do oddzielnego modułu
 -- usunąć FormulaEq (?),
+-- upraszczanie: 
+--- (a /\ b) \/ (a /\ not b) -> a, 
+--- (a \/ b) /\ (a \/ not b) -> a /\ not b
+--- a /\ b /\ a -> a /\ b (pewnie ory i and będą na zbiorach), itp.
 
 - Nominal:
 -- podzielic na podmoduły,
 -- zastanowić się jaki ma być "strict",
--- dodać klasę NominalType z eq, support, (ew. variants) (?),
--- pomyśleć nad odpowiednikami operacji z ', ktore czesciej rozwiazuja formuly (ewentualnie za pomoca makra #define),
--- implementacje Variants i Set jako Map a "condition",
--- filterVariants, filterSet jako wewnętrzne funkcje,
--- dla zbioru wewnętrzne tez pewnie beda: isSubsetOf, intersection, difference.
-
+-- dodać klasę NominalType z eq, support, (ew. variants, simplify) (?),
+-- pomyśleć nad odpowiednikami operacji z ' na koncu, ktore czesciej rozwiazuja formuly (ewentualnie za pomoca makra #define),
+-- sprawdzic czy potrzebne sa wewnetrzne optymalne funkcje: isSubsetOf, intersection, difference.
