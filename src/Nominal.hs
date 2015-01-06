@@ -20,19 +20,19 @@ instance Conditional Formula where
     iF f1 f2 f3 = (f1 /\ f2) \/ (not f1 /\ f3)
 
 instance Conditional b => Conditional (a -> b) where
-    iF f f1 f2 = \x -> iF f (f1 x) (f2 x)
+    iF c f1 f2 = \x -> iF c (f1 x) (f2 x)
 
 instance (Conditional a) => Conditional [a] where
-    iF f l1 l2 = zipWith (iF f) l1 l2
+    iF c l1 l2 = zipWith (iF c) l1 l2
 
 instance Conditional () where
-    iF f _ _ = ()
+    iF c _ _ = ()
 
 instance (Conditional a, Conditional b) => Conditional (a, b) where
-    iF f (a1, b1) (a2, b2) = ((iF f a1 a2), (iF f b1 b2))
+    iF c (a1, b1) (a2, b2) = ((iF c a1 a2), (iF c b1 b2))
 
 instance (Conditional a, Conditional b, Conditional c) => Conditional (a, b, c) where
-    iF f (a1, b1, c1) (a2, b2, c2) = ((iF f a1 a2), (iF f b1 b2), (iF f c1 c2))
+    iF c (a1, b1, c1) (a2, b2, c2) = ((iF c a1 a2), (iF c b1 b2), (iF c c1 c2))
 
 ----------------------------------------------------------------------------------------------------
 -- Variants
@@ -120,7 +120,7 @@ instance Show a => Show (Set a) where
               in show v ++ (if null condition then "" else " :" ++ condition)
 
 instance (FormulaEq a, Ord a) => FormulaEq (Set a) where
-    eq s1 s2 = (isSubset s1 s2) /\ (isSubset s2 s1)
+    eq s1 s2 = (isSubsetOf s1 s2) /\ (isSubsetOf s2 s1)
     freeVariables (Set es) = Set.unions $ fmap (\(v, (vs, _)) -> (freeVariables v) Set.\\ vs)
                                                (Map.assocs es)
 
@@ -164,11 +164,20 @@ isNotEmpty = not . isEmpty
 singleton :: (FormulaEq a, Ord a) => a -> Set a
 singleton e = insert e empty
 
+insertAll :: (FormulaEq a, Ord a) => [a] -> Set a -> Set a
+insertAll es s = foldl (flip insert) s es
+
+fromList :: (FormulaEq a, Ord a) => [a] -> Set a
+fromList es = insertAll es empty
+
+deleteAll :: (FormulaEq a, Ord a) => [a] -> Set a -> Set a
+deleteAll es s = foldl (flip delete) s es
+
 filter :: (FormulaEq a, Ord a) => (a -> Formula) -> Set a -> Set a
 filter f s = sum $ map (\x -> (iF (f x) (singleton x) empty)) s
 
 exists :: (FormulaEq a, Ord a) => (a -> Formula) -> Set a -> Formula
-exists f = not . isEmpty . (filter f)
+exists f = isNotEmpty . (filter f)
 
 forall :: (FormulaEq a, Ord a) => (a -> Formula) -> Set a -> Formula
 forall f = isEmpty . (filter $ \x -> not (f x))
@@ -176,17 +185,43 @@ forall f = isEmpty . (filter $ \x -> not (f x))
 union :: (FormulaEq a, Ord a) => Set a -> Set a -> Set a
 union s1 s2 = sum (insert s1 (singleton s2 ))
 
+unions :: (FormulaEq a, Ord a) => [Set a] -> Set a
+unions = foldl union empty
+
 contains :: (FormulaEq a, Ord a) => Set a -> a -> Formula
 contains s e = exists (eq e) s
 
-isSubset :: (FormulaEq a, Ord a) => Set a -> Set a -> Formula
-isSubset s1 s2 = forall (contains s2) s1
+notContains :: (FormulaEq a, Ord a) => Set a -> a -> Formula
+notContains s = not . contains s
+
+isSubsetOf :: (FormulaEq a, Ord a) => Set a -> Set a -> Formula
+isSubsetOf s1 s2 = forall (contains s2) s1
+
+isNotSubsetOf :: (FormulaEq a, Ord a) => Set a -> Set a -> Formula
+isNotSubsetOf s = not . isSubsetOf s
+
+isProperSubsetOf :: (FormulaEq a, Ord a) => Set a -> Set a -> Formula
+isProperSubsetOf s1 s2 = (isSubsetOf s1 s2) /\ (isNotSubsetOf s2 s1)
+
+isNotProperSubsetOf :: (FormulaEq a, Ord a) => Set a -> Set a -> Formula
+isNotProperSubsetOf s = not . isProperSubsetOf s
 
 intersection :: (FormulaEq a, Ord a) => Set a -> Set a -> Set a
 intersection s1 s2 = filter (contains s1) s2
 
 difference :: (FormulaEq a, Ord a) => Set a -> Set a -> Set a
-difference s1 s2 = filter (not . contains s1) s2
+difference s1 s2 = filter (notContains s1) s2
+
+infixl 9 \\
+(\\) :: (FormulaEq a, Ord a) => Set a -> Set a -> Set a
+s1 \\ s2 = difference s1 s2
+
+pairs :: (FormulaEq a, Ord a, FormulaEq b, Ord b) => Set a -> Set b -> Set (a, b)
+pairs s1 s2 = sum $ map (\e1 -> map (\e2 -> (e1, e2)) s2) s1
+
+triples :: (FormulaEq a, Ord a, FormulaEq b, Ord b, FormulaEq c, Ord c)
+           => Set a -> Set b -> Set c -> Set (a, b, c)
+triples s1 s2 s3 = sum $ map (\(e1, e2) -> map (\e3 -> (e1, e2, e3)) s3) (pairs s1 s2)
 
 ----------------------------------------------------------------------------------------------------
 -- Examples
@@ -197,7 +232,7 @@ b = atom "b"
 c = atom "c"
 cond = eq a b
 at = iF cond a b
-set1 = insert a $ singleton b
+set1 = fromList [a, b]
 set2 = singleton at
 sa = atomsSet "a"
 sb = atomsSet "b"

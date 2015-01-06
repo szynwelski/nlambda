@@ -2,8 +2,7 @@
 - pragma MINIMAL 
 
 - Formula: 
--- type Variable = String,
--- przenieść ifFormula i dodać simplify,
+-- przenieść ifFormula i dodać simplify i solve,
 -- ew. przeniesc upraszczanie formul do oddzielnego modułu
 -- usunąć FormulaEq (?),
 -- upraszczanie: 
@@ -17,3 +16,7 @@
 -- dodać klasę NominalType z eq, support, (ew. variants, simplify) (?),
 -- pomyśleć nad odpowiednikami operacji z ' na koncu, ktore czesciej rozwiazuja formuly (ewentualnie za pomoca makra #define),
 -- sprawdzic czy potrzebne sa wewnetrzne optymalne funkcje: isSubsetOf, intersection, difference.
+-- sprawdzać zmienne zastrzeżone (for)
+-- dodać funkcje automatycznie dodające nazwy zmiennych,
+-- zaimplementować pairs i podobne,
+-- dodać typ liniowy i klasę z funkcjami: le, lt, ge, gt.
