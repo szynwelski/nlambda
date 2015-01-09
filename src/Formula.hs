@@ -1,11 +1,7 @@
 module Formula where
 
 import Prelude hiding (or, and, not)
-import qualified Data.Map as Map
-import qualified Data.Set as Set
-import Data.Maybe (fromJust)
-import System.IO.Unsafe (unsafePerformIO)
-
+import Data.Set (Set, delete, empty, fromList, union)
 
 ----------------------------------------------------------------------------------------------------
 -- Variable
@@ -212,94 +208,18 @@ instance Eq Formula where
 -- Auxiliary functions
 ----------------------------------------------------------------------------------------------------
 
-freeVariablesSet :: Formula -> Set.Set Variable
-freeVariablesSet T = Set.empty
-freeVariablesSet F = Set.empty
-freeVariablesSet (And f1 f2) = Set.union (freeVariablesSet f1) (freeVariablesSet f2)
-freeVariablesSet (Or f1 f2) = Set.union (freeVariablesSet f1) (freeVariablesSet f2)
+freeVariablesSet :: Formula -> Set Variable
+freeVariablesSet T = empty
+freeVariablesSet F = empty
+freeVariablesSet (And f1 f2) = union (freeVariablesSet f1) (freeVariablesSet f2)
+freeVariablesSet (Or f1 f2) = union (freeVariablesSet f1) (freeVariablesSet f2)
 freeVariablesSet (Not f) = freeVariablesSet f
-freeVariablesSet (Imply f1 f2) = Set.union (freeVariablesSet f1) (freeVariablesSet f2)
-freeVariablesSet (Equivalent f1 f2) = Set.union (freeVariablesSet f1) (freeVariablesSet f2)
-freeVariablesSet (Equals x1 x2) = Set.fromList [x1, x2]
-freeVariablesSet (ForAll x f) = Set.delete x (freeVariablesSet f)
-freeVariablesSet (Exists x f) = Set.delete x (freeVariablesSet f)
+freeVariablesSet (Imply f1 f2) = union (freeVariablesSet f1) (freeVariablesSet f2)
+freeVariablesSet (Equivalent f1 f2) = union (freeVariablesSet f1) (freeVariablesSet f2)
+freeVariablesSet (Equals x1 x2) = fromList [x1, x2]
+freeVariablesSet (ForAll x f) = delete x (freeVariablesSet f)
+freeVariablesSet (Exists x f) = delete x (freeVariablesSet f)
 
 fromBool :: Bool -> Formula
 fromBool True = T
 fromBool False = F
-
-----------------------------------------------------------------------------------------------------
--- FormulaEq
-----------------------------------------------------------------------------------------------------
-
-class FormulaEq a where
-    eq :: a -> a -> Formula
-    freeVariables :: a -> Set.Set Variable
-    freeVariables = const Set.empty
-
-instance FormulaEq Formula where
-    eq = iff
-    freeVariables = freeVariablesSet
-
-instance FormulaEq Variable where
-    eq x1 x2 = if x1 == x2 then T else Equals x1 x2
-    freeVariables = Set.singleton
-
-formulaEqFromEq :: (Eq a) => a -> a -> Formula
-formulaEqFromEq x y = fromBool (x == y)
-
-instance FormulaEq Bool where
-    eq = formulaEqFromEq
-
-instance FormulaEq Char where
-    eq = formulaEqFromEq
-
-instance FormulaEq Double where
-    eq = formulaEqFromEq
-
-instance FormulaEq Float where
-    eq = formulaEqFromEq
-
-instance FormulaEq Int where
-    eq = formulaEqFromEq
-
-instance FormulaEq Integer where
-    eq = formulaEqFromEq
-
-instance FormulaEq Ordering where
-    eq = formulaEqFromEq
-
-instance FormulaEq a => FormulaEq [a] where
-    eq l1 l2 = and $ zipWith eq l1 l2
-    freeVariables l = Set.unions (fmap freeVariables l)
-
-instance FormulaEq () where
-    eq = formulaEqFromEq
-
-instance (FormulaEq a, FormulaEq b) => FormulaEq (a, b) where
-    eq (a1, b1) (a2, b2) = (eq a1 a2) /\ (eq b1 b2)
-    freeVariables (a, b) = Set.union (freeVariables a) (freeVariables b)
-
-instance (FormulaEq a, FormulaEq b, FormulaEq c) => FormulaEq (a, b, c) where
-    eq (a1, b1, c1) (a2, b2, c2) = (eq a1 a2) /\ (eq b1 b2) /\ (eq c1 c2)
-    freeVariables (a, b, c) = Set.unions [(freeVariables a), (freeVariables b), (freeVariables c)]
-
-----------------------------------------------------------------------------------------------------
--- Examples
-----------------------------------------------------------------------------------------------------
-x = Variable "x"
-y = Variable "y"
-z = Variable "z"
-cc = eq x y
-ncc = not cc
-ce = (eq x y) /\ (eq y z) /\ (eq z x)
-nce =  (eq x y) /\ (eq y z) /\ not (eq z x)
-ice = (eq x y) /\ (eq y z) ==> (eq z x)
-af = (∀) x cc
-ef = (∃) x cc
-aef = (∀) x $ (∃) y cc
-naef = not aef
-eaf = (∃) x $ (∀) y cc
-aaf = (∀) x $ (∀) y cc
-eef = (∃) x $ (∃) y cc
-

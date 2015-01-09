@@ -1,5 +1,6 @@
 - dokumentacja za pomoca haddock,
 - pragma MINIMAL 
+- stworzyc listy eksportowe dla modułów,
 
 - Formula: 
 -- przenieść ifFormula i dodać simplify i solve,
@@ -14,9 +15,11 @@
 -- podzielic na podmoduły,
 -- zastanowić się jaki ma być "strict",
 -- dodać klasę NominalType z eq, support, (ew. variants, simplify) (?),
+-- dodac instancje dla NominalType, Conditional
 -- pomyśleć nad odpowiednikami operacji z ' na koncu, ktore czesciej rozwiazuja formuly (ewentualnie za pomoca makra #define),
 -- sprawdzic czy potrzebne sa wewnetrzne optymalne funkcje: isSubsetOf, intersection, difference.
 -- sprawdzać zmienne zastrzeżone (for)
 -- dodać funkcje automatycznie dodające nazwy zmiennych,
 -- zaimplementować pairs i podobne,
+-- zaimplementować monady dla wariantów i zbiorów
 -- dodać typ liniowy i klasę z funkcjami: le, lt, ge, gt.

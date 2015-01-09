@@ -2,6 +2,7 @@ module Formula.Solver (isTrue, isFalse, solve, unsafeIsTrue, unsafeIsFalse, unsa
 
 import Data.Set (toList)
 import Formula
+import Nominal.Type
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import System.IO.Unsafe (unsafePerformIO)
@@ -71,7 +72,7 @@ getSmtAssertForAllFree f =
              ++ ")"
              ++ (getSmtAssert f)
              ++ ")"
-    where fvs = (toList (freeVariables f))
+    where fvs = (toList (support f))
 
 getSmtScript :: Formula -> SmtScript
 getSmtScript f = "(set-logic LIA)(assert " ++ (getSmtAssertForAllFree f) ++ ")(check-sat)"
