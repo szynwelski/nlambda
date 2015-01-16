@@ -89,7 +89,7 @@ map :: NominalType b => (a -> b) -> Set a -> Set b
 map f = Set . Map.fromListWithKey mergeSetElements
             . Map.foldrWithKey (\v (vs, c) es -> (mapResults f v vs c) ++ es) []
             . setElements
-    where mapResults f v vs c = fmap (\(v', c') -> (v', (Set.empty, c' /\ c))) (toList $ variants (f v))
+    where mapResults f v vs c = fmap (\(v', c') -> (v', (vs, c' /\ c))) (toList $ variants (f v))
 
 sum :: NominalType a => Set (Set a) -> Set a
 sum = Set . filterNotFalse . (foldr unionSetElements Map.empty) . (fmap filterSet) . Map.assocs . setElements
