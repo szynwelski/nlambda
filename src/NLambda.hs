@@ -5,6 +5,7 @@ import Formula.Solver
 import Nominal.Conditional
 import Nominal.Set
 import Nominal.Type
+import Nominal.VariablesSpace
 import Nominal.Variants hiding (map)
 import Prelude hiding (or, and, not, sum, map, filter)
 
@@ -34,7 +35,14 @@ cond = eq a b
 at = iF cond a b
 set1 = fromList [a, b]
 set2 = just at
-sa = atomsSet "a"
-sb = atomsSet "b"
-sc = atomsSet "c"
-set3 = union sa sb
+sa = atomSet
+
+-- example program
+
+nlProgram = do
+    a <- newAtom
+    b <- newAtom
+    return $ let set = insert a atomSet
+             in insert b set
+
+

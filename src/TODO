@@ -5,21 +5,22 @@
 - Formula: 
 -- przenieść ifFormula i dodać simplify i solve,
 -- ew. przeniesc upraszczanie formul do oddzielnego modułu
--- usunąć FormulaEq (?),
+-- poprawić nawiasowanie przy kwantyfikatorach
 -- upraszczanie: 
+-- ustawić infixl dla operatorów,
 --- (a /\ b) \/ (a /\ not b) -> a, 
 --- (a \/ b) /\ (a \/ not b) -> a /\ not b
 --- a /\ b /\ a -> a /\ b (pewnie ory i and będą na zbiorach), itp.
 
 - Nominal:
--- podzielic na podmoduły,
 -- zastanowić się jaki ma być "strict",
--- dodać klasę NominalType z eq, support, (ew. variants, simplify) (?),
--- dodac instancje dla NominalType, Conditional
+-- dodac instancje dla NominalType, Conditional: Either, Maybe, Map, Set
 -- pomyśleć nad odpowiednikami operacji z ' na koncu, ktore czesciej rozwiazuja formuly (ewentualnie za pomoca makra #define),
 -- sprawdzic czy potrzebne sa wewnetrzne optymalne funkcje: isSubsetOf, intersection, difference.
--- sprawdzać zmienne zastrzeżone (for)
--- dodać funkcje automatycznie dodające nazwy zmiennych,
 -- zaimplementować pairs i podobne,
--- zaimplementować monady dla wariantów i zbiorów
 -- dodać typ liniowy i klasę z funkcjami: le, lt, ge, gt.
+-- pomyśleć nad problemem rozwiązywania konfliktu nazw zmiennych iteracyjnych - czy istnieje rozwiązanie "strict"?
+-- pomyśleć nad problemem obliczania wsparcia dla zbioru: insert a atomSet - może przy "insert" trzeba sprawdzić "contains", czyli rozwiązać formułę
+
+SPRAWDZIĆ:
+- eq atomSet atomSet

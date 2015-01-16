@@ -1,7 +1,7 @@
 module Formula where
 
-import Prelude hiding (or, and, not)
 import Data.Set (Set, delete, empty, fromList, union)
+import Prelude hiding (or, and, not)
 
 ----------------------------------------------------------------------------------------------------
 -- Variable
@@ -104,8 +104,8 @@ iff = (<==>)
 (∀) x (Not f) = not $ (∃) x f
 (∀) x f = ForAll x f
 
-forAllVar :: Variable -> Formula -> Formula
-forAllVar = (∀)
+forAllVars :: Variable -> Formula -> Formula
+forAllVars = (∀)
 
 -- exists
 (∃) :: Variable -> Formula -> Formula

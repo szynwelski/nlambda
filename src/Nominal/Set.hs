@@ -1,109 +1,112 @@
 module Nominal.Set where
 
+import Control.Arrow ((***))
+import Data.Char (isDigit)
 import Data.List.Utils (join)
 import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
+import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Formula
 import Nominal.Conditional
 import Nominal.Type
-import Nominal.Variants (Atom, Variants, atom, toList)
+import Nominal.Variants (Atom, Variants)
+import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
+import qualified Prelude as Prelude (filter, not)
 
 ----------------------------------------------------------------------------------------------------
--- Set elements
+-- Nominal Set
 ----------------------------------------------------------------------------------------------------
 
-type SetElementCondition = (Set.Set Variable, Formula)
+data Set a = Set {variablesNumber :: Int, mapFunction :: ([Variable] -> Map a Formula), setLevel :: Int}
 
-getSetElementCondition :: SetElementCondition -> Formula
-getSetElementCondition (vs, c) = Set.foldr (∃) c vs
+incSetLevel :: NominalType a => Int -> a -> a
+incSetLevel l = countSetLevel (succ l)
 
-checkVariables :: NominalType a => a -> SetElementCondition -> SetElementCondition
-checkVariables v (vs, c) = (Set.intersection valueFreeVars vs,
-                            getSetElementCondition (existentialCondVars, c))
-    where valueFreeVars = support v
-          existentialCondVars = Set.intersection (support c) (vs Set.\\ valueFreeVars)
+getIterVarsPrefix :: Int -> Char
+getIterVarsPrefix = toEnum . (+ 97)
 
-mergeSetElements :: NominalType a => a -> SetElementCondition -> SetElementCondition -> SetElementCondition
-mergeSetElements v (vs1, c1) (vs2, c2) = checkVariables v (Set.union vs1 vs2, c1 \/ c2)
+createIterVars :: Int -> Int -> [Variable]
+createIterVars setLevel varsNumber = fmap (Variable . (getIterVarsPrefix setLevel :) . show) [1..varsNumber]
 
+getIterVars :: NominalType a => Int -> a -> Set.Set Variable
+getIterVars setLevel x = let varPrefix = (getIterVarsPrefix setLevel)
+                         in Set.filter
+                              ((\v -> (head v) == varPrefix && (any isDigit $ tail v)) . variableName)
+                              (support x)
 
-filterNotFalse :: Map a SetElementCondition -> Map a SetElementCondition
-filterNotFalse = Map.filter ((/= F) . snd)
-
-filterCondition :: NominalType a => SetElementCondition
-                                    -> Map a SetElementCondition -> Map a SetElementCondition
-filterCondition (vs1, c1) = Map.mapWithKey mapFun
-    where mapFun v (vs2, c2) = checkVariables v (Set.union vs1 vs2, c1 /\ c2)
-
-unionSetElements :: NominalType a => Map a SetElementCondition
-                             -> Map a SetElementCondition -> Map a SetElementCondition
-unionSetElements = Map.unionWithKey mergeSetElements
+getElementsMap :: NominalType a => Set a -> Map a Formula
+getElementsMap (Set vn mf l) = --Map.mapKeys (countSetLevel $ succ l)
+                                (mf $ createIterVars l vn)
 
 ----------------------------------------------------------------------------------------------------
--- Set
+-- Instances
 ----------------------------------------------------------------------------------------------------
 
-data Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
+instance NominalType a => Eq (Set a) where
+    s1 == s2 = getElementsMap s1 == getElementsMap s2
 
-instance Show a => Show (Set a) where
-    show s = "{" ++ (join ", " (fmap showSetElement (Map.assocs $ setElements s))) ++ "}"
-      where showSetElement (v, (vs, c)) =
-              let formula = if c == T then "" else " " ++ show c
-                  variables = if Set.null vs
-                                then ""
-                                else " for " ++ (join "," (fmap show $ Set.elems vs)) ++ " ∊ 𝔸"
-                  condition = formula ++ variables
-              in show v ++ (if null condition then "" else " :" ++ condition)
+instance NominalType a => Ord (Set a) where
+    compare s1 s2 = compare (getElementsMap s1) (getElementsMap s2)
+
+instance (NominalType a, Show a) => Show (Set a) where
+    show s = "{" ++ join ", " (fmap showElement (Map.assocs $ getElementsMap s)) ++ "}"
+      where showElement (v,c) = let iterVars = getIterVars (setLevel s) v
+                                    formula = Set.foldr (∃) c (getIterVars (setLevel s) c Set.\\ iterVars)
+                                    variables = if Set.null iterVars
+                                                  then ""
+                                                  else " for " ++ (join "," (fmap show $ Set.elems iterVars)) ++ " ∊ 𝔸"
+                                    condition = (if formula == T then "" else " " ++ show formula) ++ variables
+                                in show v ++ (if null condition then "" else " :" ++ condition)
 
 instance NominalType a => NominalType (Set a) where
     eq s1 s2 = (isSubsetOf s1 s2) /\ (isSubsetOf s2 s1)
-    support (Set es) = Set.unions $ fmap (\(v, (vs, _)) -> (support v) Set.\\ vs)
-                                               (Map.assocs es)
-
-instance NominalType a => Conditional (Set a) where
-    iF f (Set es1) (Set es2) = Set $ filterNotFalse $ unionSetElements
-                                       (filterCondition (Set.empty, f) es1)
-                                       (filterCondition (Set.empty, not f) es2)
+    support s@(Set vn mf l) = let iterVars = Set.fromList (createIterVars l vn)
+                              in Set.unions $ fmap
+                                                (\(v, c) -> (support c) `Set.union` (support v) Set.\\ iterVars)
+                                                (Map.assocs $ getElementsMap s)
+    countSetLevel level (Set vn mf _) = Set vn mf level
 
 ----------------------------------------------------------------------------------------------------
 -- Operations on set
 ----------------------------------------------------------------------------------------------------
 
 empty :: Set a
-empty = Set Map.empty
+empty = Set 0 (const Map.empty) 0
 
-isEmpty :: Set a -> Formula
-isEmpty s = and (fmap (not . getSetElementCondition) (Map.elems $ setElements s))
+isNotEmpty :: NominalType a => Set a -> Formula
+isNotEmpty s = or $ fmap (\c -> Set.foldr (∃) c $ getIterVars (setLevel s) c) (Map.elems $ getElementsMap s)
 
+-- TODO variants
 insert :: NominalType a => a -> Set a -> Set a
-insert e (Set es) = Set $ foldl insertVariant es vs
-    where vs = toList $ variants e
-          insertVariant s (v, c) = Map.insertWithKey mergeSetElements v (Set.empty, c) s
+insert e (Set vn mf l) = Set vn ((Map.insertWith (/\) (incSetLevel l e) T) . mf) l
 
 delete :: NominalType a => a -> Set a -> Set a
-delete e = (filter (not . (eq e))) . Set . (Map.delete e) . setElements
+delete e (Set vn mf l) = filter (not . (eq e)) (Set vn ((Map.delete e) . mf) l)
 
+-- TODO variants
 map :: NominalType b => (a -> b) -> Set a -> Set b
-map f = Set . Map.fromListWithKey mergeSetElements
-            . Map.foldrWithKey (\v (vs, c) es -> (mapResults f v vs c) ++ es) []
-            . setElements
-    where mapResults f v vs c = fmap (\(v', c') -> (v', (vs, c' /\ c))) (toList $ variants (f v))
+map f (Set vn mf l) = Set vn ((Map.mapKeysWith (/\) (incSetLevel l . f)) . mf) l
+
+filter :: (a -> Formula) -> Set a -> Set a
+filter f (Set vn mf l) = Set vn ((Map.mapWithKey (\v c -> c /\ f v)) . mf) l
 
 sum :: NominalType a => Set (Set a) -> Set a
-sum = Set . filterNotFalse . (foldr unionSetElements Map.empty) . (fmap filterSet) . Map.assocs . setElements
-      where filterSet (elemSet, elemSetCond) = filterCondition elemSetCond (setElements elemSet)
+sum s@(Set vn mf l) = let maxVn = (maximum . (fmap variablesNumber) . Map.keys . getElementsMap) s
+                          mapFun vs = Map.unionsWith (\/) (fmap
+                                                            (\(Set _ mf' _, c) -> Map.map (/\ c) (mf' $ drop vn vs))
+                                                            (Map.assocs $ mf (take vn vs)))
+                      in Set (vn + maxVn) mapFun l
 
-atomsSet :: String -> Set Atom
-atomsSet name = Set $ Map.singleton (atom name) (Set.singleton $ Variable name, T)
+atomSet :: Set Atom
+atomSet = Set 1 (\[v] -> Map.singleton (V.variant v) T) 0
 
 ----------------------------------------------------------------------------------------------------
 -- Additional functions
 ----------------------------------------------------------------------------------------------------
 
-isNotEmpty :: Set a -> Formula
-isNotEmpty = not . isEmpty
+isEmpty :: NominalType a => Set a -> Formula
+isEmpty = not . isNotEmpty
 
 just :: NominalType a => a -> Set a
 just e = insert e empty
@@ -116,9 +119,6 @@ fromList es = insertAll es empty
 
 deleteAll :: NominalType a => [a] -> Set a -> Set a
 deleteAll es s = foldl (flip delete) s es
-
-filter :: NominalType a => (a -> Formula) -> Set a -> Set a
-filter f s = sum $ map (\x -> (iF (f x) (just x) empty)) s
 
 exists :: NominalType a => (a -> Formula) -> Set a -> Formula
 exists f = isNotEmpty . (filter f)

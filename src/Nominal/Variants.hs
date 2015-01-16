@@ -6,6 +6,7 @@ import qualified Data.Map.Strict as Map
 import Formula
 import Nominal.Conditional
 import Prelude hiding (or, not)
+import Text.Regex.Posix ((=~))
 
 ----------------------------------------------------------------------------------------------------
 -- Variants
@@ -31,8 +32,8 @@ iFv c x1 x2 = iF c (variant x1) (variant x2)
 toList :: Variants a -> [(a, Formula)]
 toList (Variants vs) = Map.assocs vs
 
-values :: Variants a -> [a]
-values (Variants vs) = Map.keys vs
+map :: Ord b => (a -> b) -> Variants a -> Variants b
+map f (Variants vs) = Variants $ Map.mapKeysWith (\/) f vs
 
 ----------------------------------------------------------------------------------------------------
 -- Atom
@@ -41,4 +42,6 @@ values (Variants vs) = Map.keys vs
 type Atom = Variants Variable
 
 atom :: String -> Atom
-atom = variant . Variable
+atom name = if name =~ "(^[a-z]$)"
+              then variant $ Variable name
+              else error $ "Invalid atom name: " ++ name ++ ".\nAtom name can only contain small letters."
