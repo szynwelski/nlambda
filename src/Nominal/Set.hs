@@ -154,7 +154,7 @@ intersection :: NominalType a => Set a -> Set a -> Set a
 intersection s1 s2 = filter (contains s1) s2
 
 difference :: NominalType a => Set a -> Set a -> Set a
-difference s1 s2 = filter (notContains s1) s2
+difference s1 s2 = filter (notContains s2) s1
 
 infixl 9 \\
 (\\) :: NominalType a => Set a -> Set a -> Set a
