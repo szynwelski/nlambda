@@ -6,6 +6,7 @@
 -- przenieść ifFormula i dodać simplify i solve,
 -- ew. przeniesc upraszczanie formul do oddzielnego modułu
 -- poprawić nawiasowanie przy kwantyfikatorach
+-- w formule trzymać zbiór zmiennych wolnych
 -- upraszczanie: 
 -- ustawić infixl dla operatorów,
 --- (a /\ b) \/ (a /\ not b) -> a, 
@@ -24,3 +25,5 @@
 
 SPRAWDZIĆ:
 - eq atomSet atomSet
+- filter (contains $ delete a sa) sa
+- iF cond [] [a]
