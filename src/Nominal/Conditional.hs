@@ -16,8 +16,11 @@ instance Conditional Formula where
 instance Conditional b => Conditional (a -> b) where
     iF c f1 f2 = \x -> iF c (f1 x) (f2 x)
 
+-- TODO first simplify condition
 instance (Conditional a) => Conditional [a] where
-    iF c l1 l2 = zipWith (iF c) l1 l2
+    iF c l1 l2 = if length l1 == length l2
+                 then zipWith (iF c) l1 l2
+                 else error "iF cannot be applied to lists of different size with unsolvable condition"
 
 instance Conditional () where
     iF c _ _ = ()

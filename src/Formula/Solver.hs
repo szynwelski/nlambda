@@ -3,6 +3,7 @@ module Formula.Solver (isTrue, isFalse, solve, unsafeIsTrue, unsafeIsFalse, unsa
 import Data.Set (toList)
 import Formula
 import Nominal.Type
+import Nominal.Variable (variableNameAscii)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import System.IO.Unsafe (unsafePerformIO)
@@ -54,25 +55,25 @@ getSmtAssertOp op fs = "(" ++ op ++ " " ++ (concat $ fmap getSmtAssert fs) ++ ")
 getSmtAssert :: Formula -> String
 getSmtAssert T = "true"
 getSmtAssert F = "false"
-getSmtAssert (Equals x1 x2) = "(= " ++ (variableName x1) ++ " " ++ (variableName x2) ++ ")"
+getSmtAssert (Equals x1 x2) = "(= " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
 getSmtAssert (And f1 f2) = getSmtAssertOp "and" [f1, f2]
 getSmtAssert (Or f1 f2) = getSmtAssertOp "or" [f1, f2]
 getSmtAssert (Not f) = getSmtAssertOp "not" [f]
 getSmtAssert (Imply f1 f2) = getSmtAssertOp "=>" [f1, f2]
 getSmtAssert (Equivalent f1 f2) = getSmtAssertOp "=" [f1, f2]
-getSmtAssert (ForAll x f) = "(forall ((" ++ (variableName x) ++ " Int)) " ++ (getSmtAssert f) ++ ")"
-getSmtAssert (Exists x f) = "(exists ((" ++ (variableName x) ++ " Int)) " ++ (getSmtAssert f) ++ ")"
+getSmtAssert (ForAll x f) = "(forall ((" ++ (variableNameAscii x) ++ " Int)) " ++ (getSmtAssert f) ++ ")"
+getSmtAssert (Exists x f) = "(exists ((" ++ (variableNameAscii x) ++ " Int)) " ++ (getSmtAssert f) ++ ")"
 
 getSmtAssertForAllFree :: Formula -> String
 getSmtAssertForAllFree f =
     if null fvs
         then (getSmtAssert f)
         else "(forall ("
-             ++ (concat $ fmap (\x -> "(" ++ (variableName x) ++ " Int)") fvs)
+             ++ (concat $ fmap (\x -> "(" ++ (variableNameAscii x) ++ " Int)") fvs)
              ++ ")"
              ++ (getSmtAssert f)
              ++ ")"
-    where fvs = (toList (support f))
+    where fvs = toList $ freeVariables f
 
 getSmtScript :: Formula -> SmtScript
 getSmtScript f = "(set-logic LIA)(assert " ++ (getSmtAssertForAllFree f) ++ ")(check-sat)"

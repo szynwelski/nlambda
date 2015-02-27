@@ -1,71 +1,84 @@
 module Nominal.Type where
 
-import Data.Map.Strict (assocs, keys, mapKeys)
-import Data.Set (Set, elems, empty, singleton, union, unions)
-import Formula
-import Nominal.Variants
-import Prelude hiding (and, or, not)
+import Data.Map (Map, findWithDefault)
+import Data.Set (Set, empty, insert)
+import Formula (Formula, (/\), and, equals, freeVariables, foldFormulaVariables, fromBool, iff, mapFormulaVariables, or)
+import Nominal.Variable (Variable)
+import Nominal.Variants (Variants, fromList, map, toList, variant)
+import Prelude hiding (and, or, map)
 
 ----------------------------------------------------------------------------------------------------
 -- NominalType
 ----------------------------------------------------------------------------------------------------
 
-class Ord a => NominalType a where
+-- remove Show
+class (Show a, Ord a) => NominalType a where
     eq :: a -> a -> Formula
-    support :: a -> Set Variable
-    support = const empty
+    eq x y = fromBool (x == y)
     variants :: a -> Variants a
     variants = variant
+    mapVariables :: (Variable -> Variable) -> a -> a
+    mapVariables = const id
+    foldVariables :: (Variable -> b -> b) -> b -> a -> b
+    foldVariables _ acc _ = acc
+
+
+collectWith :: (NominalType a, Ord b) => (Variable -> Maybe b) -> a -> Set b
+collectWith cf = foldVariables (maybe id insert . cf) empty
+
+mapVariablesIf :: NominalType a => (Variable -> Bool) -> (Variable -> Variable) -> a -> a
+mapVariablesIf cf mf = mapVariables (\v -> if cf v then mf v else v)
+
+replaceVariables :: NominalType a => Map Variable Variable -> a -> a
+replaceVariables varsMap = mapVariables (\var -> findWithDefault var var varsMap)
+
+----------------------------------------------------------------------------------------------------
+-- Instances
+----------------------------------------------------------------------------------------------------
 
 instance NominalType Variable where
-    eq x1 x2 = if x1 == x2 then T else Equals x1 x2
-    support = singleton
+    eq = equals
+    mapVariables = ($)
+    foldVariables f acc v = f v acc
 
 instance NominalType Formula where
     eq = iff
-    support = freeVariablesSet
+    mapVariables = mapFormulaVariables
+    foldVariables = foldFormulaVariables
 
-nominalTypeFromEq :: (Eq a) => a -> a -> Formula
-nominalTypeFromEq x y = fromBool (x == y)
+instance NominalType Bool
 
-instance NominalType Bool where
-    eq = nominalTypeFromEq
+instance NominalType Char
 
-instance NominalType Char where
-    eq = nominalTypeFromEq
+instance NominalType Double
 
-instance NominalType Double where
-    eq = nominalTypeFromEq
+instance NominalType Float
 
-instance NominalType Float where
-    eq = nominalTypeFromEq
+instance NominalType Int
 
-instance NominalType Int where
-    eq = nominalTypeFromEq
+instance NominalType Integer
 
-instance NominalType Integer where
-    eq = nominalTypeFromEq
-
-instance NominalType Ordering where
-    eq = nominalTypeFromEq
+instance NominalType Ordering
 
 instance NominalType a => NominalType [a] where
     eq l1 l2 = and $ zipWith eq l1 l2
-    support l = unions (fmap support l)
+    mapVariables f = fmap $ mapVariables f
+    foldVariables f acc = foldl (foldVariables f) acc
 
-instance NominalType () where
-    eq = nominalTypeFromEq
+instance NominalType ()
 
 instance (NominalType a, NominalType b) => NominalType (a, b) where
     eq (a1, b1) (a2, b2) = (eq a1 a2) /\ (eq b1 b2)
-    support (a, b) = union (support a) (support b)
+    mapVariables f (a, b) = (mapVariables f a, mapVariables f b)
+    foldVariables f acc (a, b) = foldVariables f (foldVariables f acc a) b
 
 instance (NominalType a, NominalType b, NominalType c) => NominalType (a, b, c) where
     eq (a1, b1, c1) (a2, b2, c2) = (eq a1 a2) /\ (eq b1 b2) /\ (eq c1 c2)
-    support (a, b, c) = (support a) `union` (support b) `union` (support c)
+    mapVariables f (a, b, c) = (mapVariables f a, mapVariables f b, mapVariables f c)
+    foldVariables f acc (a, b, c) = foldVariables f (foldVariables f (foldVariables f acc a) b) c
 
 instance NominalType a => NominalType (Variants a) where
-    eq (Variants vs1) (Variants vs2) = or [(eq v1 v2) /\ c1 /\ c2 | (v1, c1) <- assocs vs1,
-                                                                    (v2, c2) <- assocs vs2]
-    support (Variants vs) = support $ keys vs
-    variants (Variants vs) = Variants $ mapKeys variant vs
+    eq vs1 vs2 = or [(eq v1 v2) /\ c1 /\ c2 | (v1, c1) <- toList vs1, (v2, c2) <- toList vs2]
+    variants = map variant
+    mapVariables f = fromList . mapVariables f . toList
+    foldVariables f acc = foldl (foldVariables f) acc . toList

@@ -1,10 +1,11 @@
 module Nominal.Variants where
 
 import Data.List.Utils (join)
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Formula
 import Nominal.Conditional
+import Nominal.Variable (Variable, variable)
 import Prelude hiding (or, not)
 
 ----------------------------------------------------------------------------------------------------
@@ -31,8 +32,14 @@ iFv c x1 x2 = iF c (variant x1) (variant x2)
 toList :: Variants a -> [(a, Formula)]
 toList (Variants vs) = Map.assocs vs
 
+fromList :: Ord a => [(a, Formula)] -> Variants a
+fromList = Variants . Map.fromList
+
 values :: Variants a -> [a]
 values (Variants vs) = Map.keys vs
+
+map :: Ord b => (a -> b) -> Variants a -> Variants b
+map f (Variants vs) = Variants (Map.mapKeys f vs)
 
 ----------------------------------------------------------------------------------------------------
 -- Atom
@@ -41,4 +48,4 @@ values (Variants vs) = Map.keys vs
 type Atom = Variants Variable
 
 atom :: String -> Atom
-atom = variant . Variable
+atom = variant . variable

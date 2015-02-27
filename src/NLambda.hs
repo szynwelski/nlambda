@@ -5,22 +5,24 @@ import Formula.Solver
 import Nominal.Conditional
 import Nominal.Set
 import Nominal.Type
-import Nominal.Variants hiding (map)
+import Nominal.Variable
+import Nominal.VariablesSpace
+import Nominal.Variants hiding (map, fromList)
 import Prelude hiding (or, and, not, sum, map, filter)
 
 ----------------------------------------------------------------------------------------------------
 -- Examples
 ----------------------------------------------------------------------------------------------------
-x = Variable "x"
-y = Variable "y"
-z = Variable "z"
+x = variable "x"
+y = variable "y"
+z = variable "z"
 cc = eq x y
 ncc = not cc
 ce = (eq x y) /\ (eq y z) /\ (eq z x)
 nce =  (eq x y) /\ (eq y z) /\ not (eq z x)
 ice = (eq x y) /\ (eq y z) ==> (eq z x)
-af = (∀) x cc
-ef = (∃) x cc
+af = (∀) y cc
+ef = (∃) y cc
 aef = (∀) x $ (∃) y cc
 naef = not aef
 eaf = (∃) x $ (∀) y cc
@@ -33,8 +35,19 @@ c = atom "c"
 cond = eq a b
 at = iF cond a b
 set1 = fromList [a, b]
-set2 = just at
-sa = atomsSet "a"
-sb = atomsSet "b"
-sc = atomsSet "c"
-set3 = union sa sb
+set2 = singleton at
+sa = atoms
+da = delete a sa
+ps = pairs sa sa
+ts = triples sa sa sa
+
+a1 = variant $ iterationVariable 0 1
+b1 = variant $ iterationVariable 1 1
+
+-- example program
+
+nlProgram = do
+    a <- newAtom
+    b <- newAtom
+    return $ let set = insert a atoms
+             in insert b set

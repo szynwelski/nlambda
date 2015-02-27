@@ -1,16 +1,8 @@
 module Formula where
 
 import Prelude hiding (or, and, not)
-import Data.Set (Set, delete, empty, fromList, union)
-
-----------------------------------------------------------------------------------------------------
--- Variable
-----------------------------------------------------------------------------------------------------
-
-newtype Variable = Variable {variableName :: String} deriving (Eq, Ord)
-
-instance Show Variable where
-    show = variableName
+import Data.Set (Set, delete, empty, fromList, member, union)
+import Nominal.Variable (Variable, quantificationVariable)
 
 ----------------------------------------------------------------------------------------------------
 -- Formula
@@ -27,6 +19,18 @@ data Formula
     | Equivalent Formula Formula
     | ForAll Variable Formula
     | Exists Variable Formula
+
+-- true
+true :: Formula
+true = T
+
+-- false
+false :: Formula
+false = F
+
+-- equals
+equals :: Variable -> Variable -> Formula
+equals x1 x2 = if x1 == x2 then T else Equals x1 x2
 
 -- and
 (/\) :: Formula -> Formula -> Formula
@@ -84,10 +88,10 @@ implies = (==>)
 
 -- equivalent
 (<==>) :: Formula -> Formula -> Formula
-T <==> T = T
-F <==> F = T
-F <==> T = F
-T <==> F = F
+T <==> f = f
+F <==> f = not f
+f <==> T = f
+f <==> F = not f
 (Not f1) <==> (Not f2) = f1 <==> f2
 f1 <==> f2
     | f1 == f2       = T
@@ -102,17 +106,17 @@ iff = (<==>)
 (∀) _ T = T
 (∀) _ F = F
 (∀) x (Not f) = not $ (∃) x f
-(∀) x f = ForAll x f
+(∀) x f = quantificationFormula ForAll x f
 
-forAllVar :: Variable -> Formula -> Formula
-forAllVar = (∀)
+forAllVars :: Variable -> Formula -> Formula
+forAllVars = (∀)
 
 -- exists
 (∃) :: Variable -> Formula -> Formula
 (∃) _ T = T
 (∃) _ F = F
 (∃) x (Not f) = not $ (∀) x f
-(∃) x f = Exists x f
+(∃) x f = quantificationFormula Exists x f
 
 existsVar :: Variable -> Formula -> Formula
 existsVar = (∃)
@@ -133,8 +137,8 @@ showFormula (Exists x f) = "∃" ++ show x ++ "(" ++ show f ++ ")"
 showFormula f = show f
 
 instance Show Formula where
-    show T = "True"
-    show F = "False"
+    show T = "true"
+    show F = "false"
     show (Equals x1 x2) = show x1 ++ " = " ++ show x2
     show (And f1 f2) = showFormula f1 ++ " ∧ " ++ showFormula f2
     show (Or f1 f2) = showFormula f1 ++ " ∨ " ++ showFormula f2
@@ -208,17 +212,62 @@ instance Eq Formula where
 -- Auxiliary functions
 ----------------------------------------------------------------------------------------------------
 
-freeVariablesSet :: Formula -> Set Variable
-freeVariablesSet T = empty
-freeVariablesSet F = empty
-freeVariablesSet (And f1 f2) = union (freeVariablesSet f1) (freeVariablesSet f2)
-freeVariablesSet (Or f1 f2) = union (freeVariablesSet f1) (freeVariablesSet f2)
-freeVariablesSet (Not f) = freeVariablesSet f
-freeVariablesSet (Imply f1 f2) = union (freeVariablesSet f1) (freeVariablesSet f2)
-freeVariablesSet (Equivalent f1 f2) = union (freeVariablesSet f1) (freeVariablesSet f2)
-freeVariablesSet (Equals x1 x2) = fromList [x1, x2]
-freeVariablesSet (ForAll x f) = delete x (freeVariablesSet f)
-freeVariablesSet (Exists x f) = delete x (freeVariablesSet f)
+freeVariables :: Formula -> Set Variable
+freeVariables T = empty
+freeVariables F = empty
+freeVariables (And f1 f2) = union (freeVariables f1) (freeVariables f2)
+freeVariables (Or f1 f2) = union (freeVariables f1) (freeVariables f2)
+freeVariables (Not f) = freeVariables f
+freeVariables (Imply f1 f2) = union (freeVariables f1) (freeVariables f2)
+freeVariables (Equivalent f1 f2) = union (freeVariables f1) (freeVariables f2)
+freeVariables (Equals x1 x2) = fromList [x1, x2]
+freeVariables (ForAll x f) = delete x (freeVariables f)
+freeVariables (Exists x f) = delete x (freeVariables f)
+
+mapFormulaVariables :: (Variable -> Variable) -> Formula -> Formula
+mapFormulaVariables _ T = T
+mapFormulaVariables _ F = F
+mapFormulaVariables fun (Equals x1 x2) = fun x1 `equals` fun x2
+mapFormulaVariables fun (And f1 f2) = mapFormulaVariables fun f1 /\ mapFormulaVariables fun f2
+mapFormulaVariables fun (Or f1 f2) = mapFormulaVariables fun f1 \/ mapFormulaVariables fun f2
+mapFormulaVariables fun (Not f) = not $ mapFormulaVariables fun f
+mapFormulaVariables fun (Imply f1 f2) = mapFormulaVariables fun f1 ==> mapFormulaVariables fun f2
+mapFormulaVariables fun (Equivalent f1 f2) = mapFormulaVariables fun f1 <==> mapFormulaVariables fun f2
+mapFormulaVariables fun (ForAll x f) = (∀) (fun x) (mapFormulaVariables fun f)
+mapFormulaVariables fun (Exists x f) = (∃) (fun x) (mapFormulaVariables fun f)
+
+replaceFormulaVariable :: Variable -> Variable -> Formula -> Formula
+replaceFormulaVariable oldVar newVar = mapFormulaVariables (\var -> if oldVar == var then newVar else var)
+
+foldFormulaVariables :: (Variable -> a -> a) -> a -> Formula -> a
+foldFormulaVariables _ acc T = acc
+foldFormulaVariables _ acc F = acc
+foldFormulaVariables fun acc (Equals x1 x2) = fun x2 $ fun x1 acc
+foldFormulaVariables fun acc (And f1 f2) = foldFormulaVariables fun (foldFormulaVariables fun acc f1) f2
+foldFormulaVariables fun acc (Or f1 f2) = foldFormulaVariables fun (foldFormulaVariables fun acc f1) f2
+foldFormulaVariables fun acc (Not f) = foldFormulaVariables fun acc f
+foldFormulaVariables fun acc (Imply f1 f2) = foldFormulaVariables fun (foldFormulaVariables fun acc f1) f2
+foldFormulaVariables fun acc (Equivalent f1 f2) = foldFormulaVariables fun (foldFormulaVariables fun acc f1) f2
+foldFormulaVariables fun acc (ForAll x f) = foldFormulaVariables fun (fun x acc) f
+foldFormulaVariables fun acc (Exists x f) = foldFormulaVariables fun (fun x acc) f
+
+getQuantificationLevel :: Formula -> Int
+getQuantificationLevel T = 0
+getQuantificationLevel F = 0
+getQuantificationLevel (And f1 f2) = max (getQuantificationLevel f1) (getQuantificationLevel f2)
+getQuantificationLevel (Or f1 f2) = max (getQuantificationLevel f1) (getQuantificationLevel f2)
+getQuantificationLevel (Not f) = getQuantificationLevel f
+getQuantificationLevel (Imply f1 f2) = max (getQuantificationLevel f1) (getQuantificationLevel f2)
+getQuantificationLevel (Equivalent f1 f2) = max (getQuantificationLevel f1) (getQuantificationLevel f2)
+getQuantificationLevel (Equals _ _) = 0
+getQuantificationLevel (ForAll x f) = succ $ getQuantificationLevel f
+getQuantificationLevel (Exists x f) = succ $ getQuantificationLevel f
+
+quantificationFormula :: (Variable -> Formula -> Formula) -> Variable -> Formula -> Formula
+quantificationFormula makeFormula x f = if member x $ freeVariables f
+                                        then let qv = quantificationVariable $ succ $ getQuantificationLevel f
+                                             in makeFormula qv (replaceFormulaVariable x qv f)
+                                        else f
 
 fromBool :: Bool -> Formula
 fromBool True = T
