@@ -44,6 +44,9 @@ ts = triples sa sa sa
 a1 = variant $ iterationVariable 0 1
 b1 = variant $ iterationVariable 1 1
 
+isSingleton :: NominalType a => Set a -> Formula
+isSingleton s = notContains (sum $ map (\x -> map (\y -> eq x y) s) s) false
+
 -- example program
 
 nlProgram = do

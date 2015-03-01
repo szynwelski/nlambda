@@ -23,6 +23,11 @@
 -- pomyśleć nad problemem rozwiązywania konfliktu nazw zmiennych iteracyjnych - czy istnieje rozwiązanie "strict"?
 -- pomyśleć nad problemem obliczania wsparcia dla zbioru: insert a atomSet - może przy "insert" trzeba sprawdzić "contains", czyli rozwiązać formułę
 
+-- rozmiar zbioru, fold - krata, obliczanie maxa dla funkcji Atom -> Int
+-- automatyczne wyliczanie formuł
+-- upraszczanie formuł (moze za pomocą Z3)
+-- programy: spojność w grafie, minimalizacji automatu
+
 SPRAWDZIĆ:
 - eq atomSet atomSet
 - filter (contains $ delete a sa) sa

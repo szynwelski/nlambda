@@ -1,5 +1,6 @@
 module Nominal.Variable where
 
+import Data.Maybe (isNothing)
 import Data.Time.Clock.POSIX (POSIXTime)
 
 ----------------------------------------------------------------------------------------------------
@@ -65,6 +66,9 @@ onlyForIteration _ f (IterationVariable level index timestamp) = f level index t
 setTimestamp :: Timestamp -> Variable -> Variable
 setTimestamp t v = onlyForIteration v (\l i _ -> IterationVariable l i (Just t)) v
 
+hasNoTimestamp :: Variable -> Bool
+hasNoTimestamp = onlyForIteration True (\_ _ t -> isNothing t)
+
 hasTimestampEquals :: Timestamp -> Variable -> Bool
 hasTimestampEquals t = onlyForIteration False (\_ _ vt -> maybe False (== t) vt)
 
@@ -77,5 +81,8 @@ clearTimestamp v = onlyForIteration v (\l i _ -> iterationVariable l i) v
 getIterationLevel :: Variable -> Maybe Int
 getIterationLevel = onlyForIteration Nothing (\l _ _ -> Just l)
 
-changeIterationLevel :: Int -> Variable -> Variable
-changeIterationLevel level v = onlyForIteration v (\l i t -> IterationVariable level i t) v
+setIterationLevel :: Int -> Variable -> Variable
+setIterationLevel level v = onlyForIteration v (\l i t -> IterationVariable level i t) v
+
+changeIterationLevel :: (Int -> Int) -> Variable -> Variable
+changeIterationLevel f v = onlyForIteration v (\l i t -> IterationVariable (f l) i t) v

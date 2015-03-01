@@ -11,7 +11,8 @@ import Nominal.Conditional
 import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Variable (Timestamp, Variable, changeIterationLevel, clearTimestamp, getIterationLevel,
-                         getTimestampNotEqual, hasTimestampEquals, iterationVariablesList, iterationVariable, setTimestamp)
+                         getTimestampNotEqual, hasNoTimestamp, hasTimestampEquals, iterationVariablesList,
+                         iterationVariable, setIterationLevel, setTimestamp, variableName)
 import Nominal.Variants (Atom, Variants, atom, toList, variant)
 import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
@@ -59,11 +60,14 @@ filterNotFalse = Map.filter ((/= F) . snd)
 
 checkTimestamps :: NominalType a => Timestamp -> a -> SetElementCondition-> (a, SetElementCondition)
 checkTimestamps t v cond = let newLevel = Set.size $ collectWith (getTimestampNotEqual t) v
-                           in mapVariablesIf (hasTimestampEquals t) (clearTimestamp . changeIterationLevel newLevel) (v, cond)
+                               iterVarsNames = Set.map variableName $ fst cond
+                               v' = mapVariablesIf (\var -> hasNoTimestamp var && Set.member (variableName var) iterVarsNames)
+                                                   (changeIterationLevel succ) v
+                           in mapVariablesIf (hasTimestampEquals t) (clearTimestamp . setIterationLevel newLevel) (v', cond)
 
 applyWithTimestamps :: (NominalType a, NominalType b) => (a -> b) -> a -> SetElementCondition -> [(b, SetElementCondition)]
 applyWithTimestamps f v cond = let t = unsafePerformIO getPOSIXTime
-                                   (v', cond') = mapVariables (setTimestamp t) (v, cond)
+                                   (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setTimestamp t) (v, cond)
                                in fmap (\(v'', c) -> checkTimestamps t v'' (fmap (/\ c) cond')) (toList $ variants $ f v')
 
 ----------------------------------------------------------------------------------------------------
