@@ -5,13 +5,32 @@ import Data.Set (Set, delete, empty, fromList, member, union)
 import Nominal.Variable (Variable, quantificationVariable)
 
 ----------------------------------------------------------------------------------------------------
+-- Relation
+----------------------------------------------------------------------------------------------------
+data Relation = Equals | LessThan | LessEquals | GreaterThan | GreaterEquals deriving (Eq, Ord)
+
+instance Show Relation where
+    show Equals = "="
+    show LessThan = "<"
+    show LessEquals = "≤"
+    show GreaterThan = ">"
+    show GreaterEquals = "≥"
+
+relationAscii :: Relation -> String
+relationAscii Equals = "="
+relationAscii LessThan = "<"
+relationAscii LessEquals = "<="
+relationAscii GreaterThan = ">"
+relationAscii GreaterEquals = ">="
+
+----------------------------------------------------------------------------------------------------
 -- Formula
 ----------------------------------------------------------------------------------------------------
 
 data Formula
     = T
     | F
-    | Equals Variable Variable
+    | Constraint Relation Variable Variable
     | And Formula Formula
     | Or Formula Formula
     | Not Formula
@@ -28,9 +47,21 @@ true = T
 false :: Formula
 false = F
 
--- equals
+-- constraints
 equals :: Variable -> Variable -> Formula
-equals x1 x2 = if x1 == x2 then T else Equals x1 x2
+equals x1 x2 = if x1 == x2 then T else Constraint Equals x1 x2
+
+lt :: Variable -> Variable -> Formula
+lt x1 x2 = if x1 == x2 then F else Constraint LessThan x1 x2
+
+le :: Variable -> Variable -> Formula
+le x1 x2 = if x1 == x2 then T else Constraint LessEquals x1 x2
+
+gt :: Variable -> Variable -> Formula
+gt x1 x2 = if x1 == x2 then F else Constraint GreaterThan x1 x2
+
+ge :: Variable -> Variable -> Formula
+ge x1 x2 = if x1 == x2 then T else Constraint GreaterEquals x1 x2
 
 -- and
 (/\) :: Formula -> Formula -> Formula
@@ -68,6 +99,10 @@ or fs = foldr1 (\/) fs
 not :: Formula -> Formula
 not F = T
 not T = F
+not (Constraint LessThan x1 x2) = gt x1 x2
+not (Constraint LessEquals x1 x2) = ge x1 x2
+not (Constraint GreaterThan x1 x2) = lt x1 x2
+not (Constraint GreaterEquals x1 x2) = le x1 x2
 not (Not f) = f
 not f = Not f
 
@@ -139,10 +174,10 @@ showFormula f = show f
 instance Show Formula where
     show T = "true"
     show F = "false"
-    show (Equals x1 x2) = show x1 ++ " = " ++ show x2
+    show (Constraint r x1 x2) = show x1 ++ " " ++ show r ++ " " ++ show x2
+    show (Not (Constraint Equals x1 x2)) = show x1 ++ " ≠ " ++ show x2
     show (And f1 f2) = showFormula f1 ++ " ∧ " ++ showFormula f2
     show (Or f1 f2) = showFormula f1 ++ " ∨ " ++ showFormula f2
-    show (Not (Equals x1 x2)) = show x1 ++ " ≠ " ++ show x2
     show (Not f) = "¬(" ++ show f ++ ")"
     show (Imply f1 f2) = showFormula f1 ++ " → " ++ showFormula f2
     show (Equivalent f1 f2) = showFormula f1 ++ " ↔ " ++ showFormula f2
@@ -173,9 +208,11 @@ instance Ord Formula where
     compare F _ = GT
     compare _ F = LT
 
-    compare (Equals x1 y1) (Equals x2 y2) = compareEquivalentPairs (x1, y1) (x2, y2)
-    compare (Equals _ _) _ = GT
-    compare _ (Equals _ _) = LT
+    compare (Constraint r1 x1 y1) (Constraint r2 x2 y2) = if r1 == r2
+                                                           then compareEquivalentPairs (x1, y1) (x2, y2)
+                                                           else compare r1 r2
+    compare (Constraint _ _ _) _ = GT
+    compare _ (Constraint _ _ _) = LT
 
     compare (And f11 f12) (And f21 f22) = compareEquivalentPairs (f11, f12) (f21, f22)
     compare (And _ _) _ = GT
@@ -212,22 +249,29 @@ instance Eq Formula where
 -- Auxiliary functions
 ----------------------------------------------------------------------------------------------------
 
+relationOperation :: Relation -> Variable -> Variable -> Formula
+relationOperation Equals = equals
+relationOperation LessThan = lt
+relationOperation LessEquals = le
+relationOperation GreaterThan = gt
+relationOperation GreaterEquals = ge
+
 freeVariables :: Formula -> Set Variable
 freeVariables T = empty
 freeVariables F = empty
+freeVariables (Constraint _ x1 x2) = fromList [x1, x2]
 freeVariables (And f1 f2) = union (freeVariables f1) (freeVariables f2)
 freeVariables (Or f1 f2) = union (freeVariables f1) (freeVariables f2)
 freeVariables (Not f) = freeVariables f
 freeVariables (Imply f1 f2) = union (freeVariables f1) (freeVariables f2)
 freeVariables (Equivalent f1 f2) = union (freeVariables f1) (freeVariables f2)
-freeVariables (Equals x1 x2) = fromList [x1, x2]
 freeVariables (ForAll x f) = delete x (freeVariables f)
 freeVariables (Exists x f) = delete x (freeVariables f)
 
 mapFormulaVariables :: (Variable -> Variable) -> Formula -> Formula
 mapFormulaVariables _ T = T
 mapFormulaVariables _ F = F
-mapFormulaVariables fun (Equals x1 x2) = fun x1 `equals` fun x2
+mapFormulaVariables fun (Constraint r x1 x2) = (relationOperation r) (fun x1) (fun x2)
 mapFormulaVariables fun (And f1 f2) = mapFormulaVariables fun f1 /\ mapFormulaVariables fun f2
 mapFormulaVariables fun (Or f1 f2) = mapFormulaVariables fun f1 \/ mapFormulaVariables fun f2
 mapFormulaVariables fun (Not f) = not $ mapFormulaVariables fun f
@@ -242,7 +286,7 @@ replaceFormulaVariable oldVar newVar = mapFormulaVariables (\var -> if oldVar ==
 foldFormulaVariables :: (Variable -> a -> a) -> a -> Formula -> a
 foldFormulaVariables _ acc T = acc
 foldFormulaVariables _ acc F = acc
-foldFormulaVariables fun acc (Equals x1 x2) = fun x2 $ fun x1 acc
+foldFormulaVariables fun acc (Constraint _ x1 x2) = fun x2 $ fun x1 acc
 foldFormulaVariables fun acc (And f1 f2) = foldFormulaVariables fun (foldFormulaVariables fun acc f1) f2
 foldFormulaVariables fun acc (Or f1 f2) = foldFormulaVariables fun (foldFormulaVariables fun acc f1) f2
 foldFormulaVariables fun acc (Not f) = foldFormulaVariables fun acc f
@@ -254,12 +298,12 @@ foldFormulaVariables fun acc (Exists x f) = foldFormulaVariables fun (fun x acc)
 getQuantificationLevel :: Formula -> Int
 getQuantificationLevel T = 0
 getQuantificationLevel F = 0
+getQuantificationLevel (Constraint _ _ _) = 0
 getQuantificationLevel (And f1 f2) = max (getQuantificationLevel f1) (getQuantificationLevel f2)
 getQuantificationLevel (Or f1 f2) = max (getQuantificationLevel f1) (getQuantificationLevel f2)
 getQuantificationLevel (Not f) = getQuantificationLevel f
 getQuantificationLevel (Imply f1 f2) = max (getQuantificationLevel f1) (getQuantificationLevel f2)
 getQuantificationLevel (Equivalent f1 f2) = max (getQuantificationLevel f1) (getQuantificationLevel f2)
-getQuantificationLevel (Equals _ _) = 0
 getQuantificationLevel (ForAll x f) = succ $ getQuantificationLevel f
 getQuantificationLevel (Exists x f) = succ $ getQuantificationLevel f
 

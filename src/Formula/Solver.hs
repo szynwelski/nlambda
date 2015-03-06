@@ -55,7 +55,7 @@ getSmtAssertOp op fs = "(" ++ op ++ " " ++ (concat $ fmap getSmtAssert fs) ++ ")
 getSmtAssert :: Formula -> String
 getSmtAssert T = "true"
 getSmtAssert F = "false"
-getSmtAssert (Equals x1 x2) = "(= " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
+getSmtAssert (Constraint r x1 x2) = "(" ++ relationAscii r ++ " " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
 getSmtAssert (And f1 f2) = getSmtAssertOp "and" [f1, f2]
 getSmtAssert (Or f1 f2) = getSmtAssertOp "or" [f1, f2]
 getSmtAssert (Not f) = getSmtAssertOp "not" [f]
