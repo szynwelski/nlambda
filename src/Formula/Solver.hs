@@ -1,13 +1,34 @@
 module Formula.Solver (isTrue, isFalse, solve, unsafeIsTrue, unsafeIsFalse, unsafeSolve) where
 
-import Data.Set (toList)
+import Data.Set (map, member, toList)
 import Formula
-import Nominal.Type
 import Nominal.Variable (variableNameAscii)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import System.IO.Unsafe (unsafePerformIO)
 import System.Process (readProcessWithExitCode)
+
+----------------------------------------------------------------------------------------------------
+-- SmtLogic
+----------------------------------------------------------------------------------------------------
+
+data SmtLogic = SmtLogic {sort :: String, logic :: String} deriving (Eq, Ord)
+
+lia :: SmtLogic
+lia = SmtLogic "Int" "LIA"
+
+lra :: SmtLogic
+lra = SmtLogic "Real" "LRA"
+
+getSmtLogicForRelation :: Relation -> SmtLogic
+getSmtLogicForRelation Equals = lia
+getSmtLogicForRelation LessThan = lra
+getSmtLogicForRelation LessEquals = lra
+getSmtLogicForRelation GreaterThan = lra
+getSmtLogicForRelation GreaterEquals = lra
+
+getSmtLogic :: Formula -> SmtLogic
+getSmtLogic f = if member lra $ Data.Set.map getSmtLogicForRelation $ getFormulaRelations f then lra else lia
 
 ----------------------------------------------------------------------------------------------------
 -- SMT Solver
@@ -49,34 +70,35 @@ runSolver solver script = do
 -- SMT-LIB script
 ----------------------------------------------------------------------------------------------------
 
-getSmtAssertOp :: String -> [Formula] -> String
-getSmtAssertOp op fs = "(" ++ op ++ " " ++ (concat $ fmap getSmtAssert fs) ++ ")"
+getSmtAssertOp :: SmtLogic -> String -> [Formula] -> String
+getSmtAssertOp l op fs = "(" ++ op ++ " " ++ (concat $ fmap (getSmtAssert l) fs) ++ ")"
 
-getSmtAssert :: Formula -> String
-getSmtAssert T = "true"
-getSmtAssert F = "false"
-getSmtAssert (Constraint r x1 x2) = "(" ++ relationAscii r ++ " " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
-getSmtAssert (And f1 f2) = getSmtAssertOp "and" [f1, f2]
-getSmtAssert (Or f1 f2) = getSmtAssertOp "or" [f1, f2]
-getSmtAssert (Not f) = getSmtAssertOp "not" [f]
-getSmtAssert (Imply f1 f2) = getSmtAssertOp "=>" [f1, f2]
-getSmtAssert (Equivalent f1 f2) = getSmtAssertOp "=" [f1, f2]
-getSmtAssert (ForAll x f) = "(forall ((" ++ (variableNameAscii x) ++ " Int)) " ++ (getSmtAssert f) ++ ")"
-getSmtAssert (Exists x f) = "(exists ((" ++ (variableNameAscii x) ++ " Int)) " ++ (getSmtAssert f) ++ ")"
+getSmtAssert :: SmtLogic -> Formula -> String
+getSmtAssert _ T = "true"
+getSmtAssert _ F = "false"
+getSmtAssert _ (Constraint r x1 x2) = "(" ++ relationAscii r ++ " " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
+getSmtAssert l (And f1 f2) = getSmtAssertOp l "and" [f1, f2]
+getSmtAssert l (Or f1 f2) = getSmtAssertOp l "or" [f1, f2]
+getSmtAssert l (Not f) = getSmtAssertOp l "not" [f]
+getSmtAssert l (Imply f1 f2) = getSmtAssertOp l "=>" [f1, f2]
+getSmtAssert l (Equivalent f1 f2) = getSmtAssertOp l "=" [f1, f2]
+getSmtAssert l (ForAll x f) = "(forall ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
+getSmtAssert l (Exists x f) = "(exists ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
 
-getSmtAssertForAllFree :: Formula -> String
-getSmtAssertForAllFree f =
+getSmtAssertForAllFree :: SmtLogic -> Formula -> String
+getSmtAssertForAllFree l f =
     if null fvs
-        then (getSmtAssert f)
+        then (getSmtAssert l f)
         else "(forall ("
-             ++ (concat $ fmap (\x -> "(" ++ (variableNameAscii x) ++ " Int)") fvs)
+             ++ (concat $ fmap (\x -> "(" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")") fvs)
              ++ ")"
-             ++ (getSmtAssert f)
+             ++ (getSmtAssert l f)
              ++ ")"
     where fvs = toList $ freeVariables f
 
 getSmtScript :: Formula -> SmtScript
-getSmtScript f = "(set-logic LIA)(assert " ++ (getSmtAssertForAllFree f) ++ ")(check-sat)"
+getSmtScript f = let l = getSmtLogic f
+                 in "(set-logic " ++ logic l ++ ")(assert " ++ (getSmtAssertForAllFree l f) ++ ")(check-sat)"
 
 ----------------------------------------------------------------------------------------------------
 -- Formula solving

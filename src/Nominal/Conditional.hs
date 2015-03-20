@@ -1,6 +1,7 @@
 module Nominal.Conditional where
 
 import Formula
+import Formula.Solver
 import Prelude hiding (not)
 
 ----------------------------------------------------------------------------------------------------
@@ -31,3 +32,12 @@ instance (Conditional a, Conditional b) => Conditional (a, b) where
 instance (Conditional a, Conditional b, Conditional c) => Conditional (a, b, c) where
     iF c (a1, b1, c1) (a2, b2, c2) = ((iF c a1 a2), (iF c b1 b2), (iF c c1 c2))
 
+----------------------------------------------------------------------------------------------------
+-- if then else with formula
+----------------------------------------------------------------------------------------------------
+
+ite :: Conditional a => Formula -> a -> a -> a
+ite c x1 x2 = case unsafeSolve c of
+                Just True -> x1
+                Just False -> x2
+                Nothing -> iF c x1 x2

@@ -1,7 +1,7 @@
 module Formula where
 
 import Prelude hiding (or, and, not)
-import Data.Set (Set, delete, empty, fromList, member, union)
+import Data.Set (Set, delete, empty, fromList, member, singleton, union)
 import Nominal.Variable (Variable, quantificationVariable)
 
 ----------------------------------------------------------------------------------------------------
@@ -51,17 +51,17 @@ false = F
 equals :: Variable -> Variable -> Formula
 equals x1 x2 = if x1 == x2 then T else Constraint Equals x1 x2
 
-lt :: Variable -> Variable -> Formula
-lt x1 x2 = if x1 == x2 then F else Constraint LessThan x1 x2
+lessThan :: Variable -> Variable -> Formula
+lessThan x1 x2 = if x1 == x2 then F else Constraint LessThan x1 x2
 
-le :: Variable -> Variable -> Formula
-le x1 x2 = if x1 == x2 then T else Constraint LessEquals x1 x2
+lessEquals :: Variable -> Variable -> Formula
+lessEquals x1 x2 = if x1 == x2 then T else Constraint LessEquals x1 x2
 
-gt :: Variable -> Variable -> Formula
-gt x1 x2 = if x1 == x2 then F else Constraint GreaterThan x1 x2
+greaterThan :: Variable -> Variable -> Formula
+greaterThan x1 x2 = if x1 == x2 then F else Constraint GreaterThan x1 x2
 
-ge :: Variable -> Variable -> Formula
-ge x1 x2 = if x1 == x2 then T else Constraint GreaterEquals x1 x2
+greaterEquals :: Variable -> Variable -> Formula
+greaterEquals x1 x2 = if x1 == x2 then T else Constraint GreaterEquals x1 x2
 
 -- and
 (/\) :: Formula -> Formula -> Formula
@@ -69,6 +69,33 @@ T /\ f = f
 F /\ _ = F
 f /\ T = f
 _ /\ F = F
+
+-- FIXME: uprościć
+f@(Constraint LessThan x1 x2) /\ (Constraint LessEquals y1 y2) | x1 == y1 && x2 == y2 = f
+(Constraint LessThan x1 x2) /\ (Constraint Equals y1 y2) | x1 == y1 && x2 == y2 = lessEquals x1 x2
+(Constraint LessThan x1 x2) /\ (Constraint GreaterThan y1 y2) | x1 == y1 && x2 == y2 = F
+(Constraint LessThan x1 x2) /\ (Constraint GreaterEquals y1 y2) | x1 == y1 && x2 == y2 = F
+
+(Constraint LessEquals x1 x2) /\ f@(Constraint LessThan y1 y2) | x1 == y1 && x2 == y2 = f
+f@(Constraint LessEquals x1 x2) /\ (Constraint Equals y1 y2) | x1 == y1 && x2 == y2 = f
+(Constraint LessEquals x1 x2) /\ (Constraint GreaterThan y1 y2) | x1 == y1 && x2 == y2 = F
+(Constraint LessEquals x1 x2) /\ (Constraint GreaterEquals y1 y2) | x1 == y1 && x2 == y2 = equals x1 x2
+
+(Constraint Equals x1 x2) /\ (Constraint LessThan y1 y2) | x1 == y1 && x2 == y2 = lessEquals x1 x2
+(Constraint Equals x1 x2) /\ f@(Constraint LessEquals y1 y2) | x1 == y1 && x2 == y2 = f
+(Constraint Equals x1 x2) /\ (Constraint GreaterThan y1 y2) | x1 == y1 && x2 == y2 = greaterEquals x1 x2
+(Constraint Equals x1 x2) /\ f@(Constraint GreaterEquals y1 y2) | x1 == y1 && x2 == y2 = f
+
+(Constraint GreaterThan x1 x2) /\ (Constraint LessThan y1 y2) | x1 == y1 && x2 == y2 = F
+(Constraint GreaterThan x1 x2) /\ (Constraint LessEquals y1 y2) | x1 == y1 && x2 == y2 = F
+(Constraint GreaterThan x1 x2) /\ (Constraint Equals y1 y2) | x1 == y1 && x2 == y2 = greaterEquals x1 x2
+f@(Constraint GreaterThan x1 x2) /\ (Constraint GreaterEquals y1 y2) | x1 == y1 && x2 == y2 = f
+
+(Constraint GreaterEquals x1 x2) /\ (Constraint LessThan y1 y2) | x1 == y1 && x2 == y2 = F
+(Constraint GreaterEquals x1 x2) /\ (Constraint LessEquals y1 y2) | x1 == y1 && x2 == y2 = equals x1 x2
+f@(Constraint GreaterEquals x1 x2) /\ (Constraint Equals y1 y2) | x1 == y1 && x2 == y2 = f
+(Constraint GreaterEquals x1 x2) /\ f@(Constraint GreaterThan y1 y2) | x1 == y1 && x2 == y2 = f
+
 (Not f1) /\ (Not f2) = (not (f1 \/ f2))
 f1 /\ f2
     | f1 == f2       = f1
@@ -99,10 +126,10 @@ or fs = foldr1 (\/) fs
 not :: Formula -> Formula
 not F = T
 not T = F
-not (Constraint LessThan x1 x2) = gt x1 x2
-not (Constraint LessEquals x1 x2) = ge x1 x2
-not (Constraint GreaterThan x1 x2) = lt x1 x2
-not (Constraint GreaterEquals x1 x2) = le x1 x2
+not (Constraint LessThan x1 x2) = greaterEquals x1 x2
+not (Constraint LessEquals x1 x2) = greaterThan x1 x2
+not (Constraint GreaterThan x1 x2) = lessEquals x1 x2
+not (Constraint GreaterEquals x1 x2) = lessThan x1 x2
 not (Not f) = f
 not f = Not f
 
@@ -208,9 +235,12 @@ instance Ord Formula where
     compare F _ = GT
     compare _ F = LT
 
+    compare (Constraint Equals x1 y1) (Constraint Equals x2 y2) = compareEquivalentPairs (x1, y1) (x2, y2)
     compare (Constraint r1 x1 y1) (Constraint r2 x2 y2) = if r1 == r2
-                                                           then compareEquivalentPairs (x1, y1) (x2, y2)
-                                                           else compare r1 r2
+                                                            then compareSortedPairs (x1, y1) (x2, y2)
+                                                            else if symmetricRelations r1 r2
+                                                                   then compareSortedPairs (x1, x2) (y2, y1)
+                                                                   else compare r1 r2
     compare (Constraint _ _ _) _ = GT
     compare _ (Constraint _ _ _) = LT
 
@@ -251,10 +281,17 @@ instance Eq Formula where
 
 relationOperation :: Relation -> Variable -> Variable -> Formula
 relationOperation Equals = equals
-relationOperation LessThan = lt
-relationOperation LessEquals = le
-relationOperation GreaterThan = gt
-relationOperation GreaterEquals = ge
+relationOperation LessThan = lessThan
+relationOperation LessEquals = lessEquals
+relationOperation GreaterThan = greaterThan
+relationOperation GreaterEquals = greaterEquals
+
+symmetricRelations :: Relation -> Relation -> Bool
+symmetricRelations LessThan GreaterThan = True
+symmetricRelations GreaterThan LessThan = True
+symmetricRelations LessEquals GreaterEquals = True
+symmetricRelations GreaterEquals LessEquals = True
+symmetricRelations _ _ = False
 
 freeVariables :: Formula -> Set Variable
 freeVariables T = empty
@@ -316,3 +353,16 @@ quantificationFormula makeFormula x f = if member x $ freeVariables f
 fromBool :: Bool -> Formula
 fromBool True = T
 fromBool False = F
+
+getFormulaRelations :: Formula -> Set Relation
+getFormulaRelations T = empty
+getFormulaRelations F = empty
+getFormulaRelations (Constraint r _ _) = singleton r
+getFormulaRelations (And f1 f2) = union (getFormulaRelations f1) (getFormulaRelations f2)
+getFormulaRelations (Or f1 f2) = union (getFormulaRelations f1) (getFormulaRelations f2)
+getFormulaRelations (Not f) = getFormulaRelations f
+getFormulaRelations (Imply f1 f2) = union (getFormulaRelations f1) (getFormulaRelations f2)
+getFormulaRelations (Equivalent f1 f2) = union (getFormulaRelations f1) (getFormulaRelations f2)
+getFormulaRelations (ForAll _ f) = getFormulaRelations f
+getFormulaRelations (Exists _ f) = getFormulaRelations f
+

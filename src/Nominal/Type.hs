@@ -4,7 +4,7 @@ import Data.Map (Map, findWithDefault)
 import Data.Set (Set, empty, insert)
 import Formula (Formula, (/\), and, equals, freeVariables, foldFormulaVariables, fromBool, iff, mapFormulaVariables, or)
 import Nominal.Variable (Variable)
-import Nominal.Variants (Variants, fromList, map, toList, variant)
+import Nominal.Variants (Variants, fromList, map, toList, variant, variantsRelation)
 import Prelude hiding (and, or, map)
 
 ----------------------------------------------------------------------------------------------------
@@ -78,7 +78,7 @@ instance (NominalType a, NominalType b, NominalType c) => NominalType (a, b, c) 
     foldVariables f acc (a, b, c) = foldVariables f (foldVariables f (foldVariables f acc a) b) c
 
 instance NominalType a => NominalType (Variants a) where
-    eq vs1 vs2 = or [(eq v1 v2) /\ c1 /\ c2 | (v1, c1) <- toList vs1, (v2, c2) <- toList vs2]
+    eq = variantsRelation eq
     variants = map variant
     mapVariables f = fromList . mapVariables f . toList
     foldVariables f acc = foldl (foldVariables f) acc . toList
