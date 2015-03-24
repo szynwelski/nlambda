@@ -32,3 +32,13 @@ SPRAWDZIĆ:
 - eq atomSet atomSet
 - filter (contains $ delete a sa) sa
 - iF cond [] [a]
+
+Algorytmy:
+- grafy:
+-- dwudzielnosc,
+-- trojkolorowalnosc,
+-- dijkstra,
+-- osiagalnosc,
+- automaty:
+-- minimalizacja,
+-- rownowaznosc.
