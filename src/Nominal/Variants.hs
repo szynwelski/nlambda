@@ -38,8 +38,19 @@ fromList = Variants . Map.fromList
 values :: Variants a -> [a]
 values (Variants vs) = Map.keys vs
 
+satisfying :: (a -> Bool) -> Variants a -> Formula
+satisfying f (Variants vs) = or $ Map.elems $ Map.filterWithKey (const . f) vs
+
 map :: Ord b => (a -> b) -> Variants a -> Variants b
-map f (Variants vs) = Variants (Map.mapKeys f vs)
+map f (Variants vs) = Variants (Map.mapKeysWith (\/) f vs)
+
+filter :: (a -> Bool) -> Variants a -> Variants a
+filter f (Variants vs) = Variants $ Map.filterWithKey (const . f) vs
+
+fromVariant :: Variants a -> a
+fromVariant vs = case values vs of
+                v:[] -> v
+                otherwise -> error "Nominal.Variants.fromVariant: not single variant"
 
 variantsRelation :: (a -> a -> Formula) -> Variants a -> Variants a -> Formula
 variantsRelation r vs1 vs2 = or [(r v1 v2) /\ c1 /\ c2 | (v1, c1) <- toList vs1, (v2, c2) <- toList vs2]
