@@ -1,19 +1,20 @@
 module Nominal.Set where
 
 import Data.List.Utils (join)
-import Data.Maybe (fromJust)
+import qualified Data.Maybe as Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import Formula
 import Nominal.Conditional
+import Nominal.Maybe
 import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Variable (Timestamp, Variable, changeIterationLevel, clearTimestamp, getIterationLevel,
                          getTimestampNotEqual, hasNoTimestamp, hasTimestampEquals, iterationVariablesList,
                          iterationVariable, setIterationLevel, setTimestamp, variableName)
-import Nominal.Variants (Atom, Variants, atom, toList, variant)
+import Nominal.Variants (Atom, Variants, atom, fromVariant, toList, variant)
 import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -38,7 +39,7 @@ checkVariablesInElement (v, (vs, c)) =
     in if ISet.null iterVars
        then (v, (Set.empty, c'))
        else let oldIterVars = ISet.toList iterVars
-                newIterVars = iterationVariablesList (minimum $ fmap (fromJust . getIterationLevel) $ Set.elems vs)
+                newIterVars = iterationVariablesList (minimum $ fmap (Maybe.fromJust . getIterationLevel) $ Set.elems vs)
                                                      (length oldIterVars)
             in if oldIterVars == newIterVars
                then (v, (Set.fromList oldIterVars, c'))
@@ -164,6 +165,9 @@ insertAll es s = foldl (flip insert) s es
 fromList :: NominalType a => [a] -> Set a
 fromList es = insertAll es empty
 
+mapFilter :: (NominalType a, NominalType b) => (a -> NominalMaybe b) -> Set a -> Set b
+mapFilter f = map fromVariant . map fromJust . filter isJust . map f
+
 deleteAll :: NominalType a => [a] -> Set a -> Set a
 deleteAll es s = foldl (flip delete) s es
 
@@ -208,7 +212,23 @@ infixl 9 \\
 s1 \\ s2 = difference s1 s2
 
 pairs :: (NominalType a, NominalType b) => Set a -> Set b -> Set (a, b)
-pairs s1 s2 = sum $ map (\e1 -> map (\e2 -> (e1, e2)) s2) s1
+pairs = pairsWith (,)
+
+pairsWith :: (NominalType a, NominalType b, NominalType c) => (a -> b -> c) -> Set a -> Set b -> Set c
+pairsWith f s1 s2 = sum $ map (\e1 -> map (f e1) s2) s1
+
+atomsPairs :: Set (Atom, Atom)
+atomsPairs  = pairs atoms atoms
 
 triples :: (NominalType a, NominalType b, NominalType c) => Set a -> Set b -> Set c -> Set (a, b, c)
-triples s1 s2 s3 = sum $ map (\(e1, e2) -> map (\e3 -> (e1, e2, e3)) s3) (pairs s1 s2)
+triples = triplesWith (,,)
+
+triplesWith :: (NominalType a, NominalType b, NominalType c, NominalType d)
+               => (a -> b -> c -> d) -> Set a -> Set b -> Set c -> Set d
+triplesWith f s1 s2 s3 = sum $ sum $ map (\e1 -> map (\e2 -> map (f e1 e2) s3) s2) s1
+
+atomsTriples :: Set (Atom, Atom, Atom)
+atomsTriples = triples atoms atoms atoms
+
+fromFunction :: (NominalType a, NominalType b) => (a -> b) -> Set a -> Set (a,b)
+fromFunction f s = map (\x -> (x, f x)) s
