@@ -2,10 +2,11 @@ module Nominal.Type where
 
 import Data.Map (Map, findWithDefault)
 import Data.Set (Set, empty, insert)
-import Formula (Formula, (/\), and, equals, freeVariables, foldFormulaVariables, fromBool, iff, mapFormulaVariables, or)
+import Formula (Formula, (/\), and, equals, false, freeVariables, foldFormulaVariables, fromBool,
+                iff, mapFormulaVariables, not, or, true)
 import Nominal.Variable (Variable)
 import Nominal.Variants (Variants, fromList, map, toList, variant, variantsRelation)
-import Prelude hiding (and, or, map)
+import Prelude hiding (and, map, not, or)
 
 ----------------------------------------------------------------------------------------------------
 -- NominalType
@@ -22,6 +23,8 @@ class (Show a, Ord a) => NominalType a where
     foldVariables :: (Variable -> b -> b) -> b -> a -> b
     foldVariables _ acc _ = acc
 
+neq :: NominalType a => a -> a -> Formula
+neq x1 x2 = not $ eq x1 x2
 
 collectWith :: (NominalType a, Ord b) => (Variable -> Maybe b) -> a -> Set b
 collectWith cf = foldVariables (maybe id insert . cf) empty
@@ -63,7 +66,7 @@ instance NominalType Ordering
 instance NominalType a => NominalType [a] where
     eq l1 l2 = and $ zipWith eq l1 l2
     mapVariables f = fmap $ mapVariables f
-    foldVariables f acc = foldl (foldVariables f) acc
+    foldVariables f = foldl $ foldVariables f
 
 instance NominalType ()
 
@@ -82,3 +85,19 @@ instance NominalType a => NominalType (Variants a) where
     variants = map variant
     mapVariables f = fromList . mapVariables f . toList
     foldVariables f acc = foldl (foldVariables f) acc . toList
+
+instance NominalType a => NominalType (Maybe a) where
+    eq Nothing Nothing = true
+    eq (Just v1) (Just v2) = eq v1 v2
+    eq _ _ = false
+    mapVariables f = fmap $ mapVariables f
+    foldVariables _ acc Nothing = acc
+    foldVariables f acc (Just v) = foldVariables f acc v
+
+instance (NominalType a, NominalType b) => NominalType (Either a b) where
+    eq (Left v1) (Left v2) = eq v1 v2
+    eq (Right v1) (Right v2) = eq v1 v2
+    eq _ _ = false
+    mapVariables f = fmap $ mapVariables f
+    foldVariables f acc (Left v) = foldVariables f acc v
+    foldVariables f acc (Right v) = foldVariables f acc v
