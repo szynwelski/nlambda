@@ -44,9 +44,6 @@ satisfying f (Variants vs) = or $ Map.elems $ Map.filterWithKey (const . f) vs
 map :: Ord b => (a -> b) -> Variants a -> Variants b
 map f (Variants vs) = Variants (Map.mapKeysWith (\/) f vs)
 
-filter :: (a -> Bool) -> Variants a -> Variants a
-filter f (Variants vs) = Variants $ Map.filterWithKey (const . f) vs
-
 fromVariant :: Variants a -> a
 fromVariant vs = case values vs of
                 v:[] -> v

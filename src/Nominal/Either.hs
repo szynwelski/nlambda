@@ -18,14 +18,10 @@ right :: b -> NominalEither a b
 right v = variant (Right v)
 
 fromLeft :: Ord a => NominalEither a b -> Variants a
-fromLeft = map Utils.fromLeft . filter isLeft
-    where isLeft (Left _) = True
-          isLeft (Right _) = False
+fromLeft = map Utils.fromLeft
 
 fromRight :: Ord b => NominalEither a b -> Variants b
-fromRight = map Utils.fromRight . filter isRight
-    where isRight (Left _) = False
-          isRight (Right _) = True
+fromRight = map Utils.fromRight
 
 fromEither :: Ord a => NominalEither a a -> Variants a
 fromEither = map Utils.fromEither

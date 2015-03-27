@@ -17,9 +17,8 @@ nothing = variant Nothing
 just :: a -> NominalMaybe a
 just = variant . Just
 
--- FIXME: empty variants
 fromJust :: Ord a => NominalMaybe a -> Variants a
-fromJust = map Maybe.fromJust . filter Maybe.isJust
+fromJust = map Maybe.fromJust
 
 fromMaybe :: Ord a => a -> NominalMaybe a -> Variants a
 fromMaybe dv = map (Maybe.fromMaybe dv)
