@@ -1,7 +1,7 @@
 module Nominal.Conditional where
 
-import Formula
-import Formula.Solver
+import Nominal.Formula
+import Nominal.Formula.Solver
 import Prelude hiding (not)
 
 ----------------------------------------------------------------------------------------------------

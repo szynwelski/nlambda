@@ -1,9 +1,9 @@
 module NLambda where
 
-import Formula
-import Formula.Solver
 import Nominal.Conditional
 import Nominal.Either
+import Nominal.Formula
+import Nominal.Formula.Solver
 import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Set
@@ -58,3 +58,5 @@ nlProgram = do
     return $ let set = insert a atoms
              in insert b set
 
+
+g = atomsGraph $ filter (\(x,y) -> eq x a \/ eq y a) atomsPairs

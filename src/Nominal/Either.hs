@@ -1,7 +1,7 @@
 module Nominal.Either where
 
 import qualified Data.Either.Utils as Utils
-import Formula
+import Nominal.Formula
 import Nominal.Variants
 import Prelude hiding (filter, map, or)
 

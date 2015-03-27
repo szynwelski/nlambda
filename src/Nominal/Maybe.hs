@@ -1,7 +1,7 @@
 module Nominal.Maybe where
 
 import qualified Data.Maybe as Maybe
-import Formula
+import Nominal.Formula
 import Nominal.Variants
 import Prelude hiding (filter, map, or)
 
@@ -17,6 +17,7 @@ nothing = variant Nothing
 just :: a -> NominalMaybe a
 just = variant . Just
 
+-- FIXME: empty variants
 fromJust :: Ord a => NominalMaybe a -> Variants a
 fromJust = map Maybe.fromJust . filter Maybe.isJust
 

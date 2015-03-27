@@ -3,8 +3,8 @@ module Nominal.Variants where
 import Data.List.Utils (join)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Formula
 import Nominal.Conditional
+import Nominal.Formula
 import Nominal.Variable (Variable, variable)
 import Prelude hiding (or, not)
 

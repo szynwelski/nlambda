@@ -1,7 +1,7 @@
 module Nominal.Graph where
 
-import Formula
 import Nominal.Conditional
+import Nominal.Formula
 import Nominal.Maybe
 import Nominal.Set
 import Nominal.Type
@@ -12,7 +12,14 @@ import Prelude hiding (filter, map)
 -- Graph
 ----------------------------------------------------------------------------------------------------
 
-data Graph a = Graph {vertices :: Set a, edges :: Set (a, a)} deriving Show
+data Graph a = Graph {vertices :: Set a, edges :: Set (a, a)} deriving (Eq, Ord, Show)
+
+instance NominalType a => NominalType (Graph a) where
+    eq (Graph vs1 es1) (Graph vs2 es2) = eq vs1 vs2 /\ eq es1 es2
+    mapVariables f (Graph vs es) = Graph (mapVariables f vs) (mapVariables f es)
+    foldVariables f acc (Graph vs es) = foldVariables f (foldVariables f acc vs) es
+    simplify (Graph vs es) = Graph (simplify vs) (simplify es)
+
 
 graph :: Set a -> Set (a,a) -> Graph a
 graph = Graph

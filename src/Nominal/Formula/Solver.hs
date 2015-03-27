@@ -1,8 +1,9 @@
-module Formula.Solver (isTrue, isFalse, solve, unsafeIsTrue, unsafeIsFalse, unsafeSolve) where
+module Nominal.Formula.Solver (isTrue, isFalse, solve, unsafeIsTrue, unsafeIsFalse, unsafeSolve) where
 
 import Data.Set (map, member, toList)
-import Formula
+import Nominal.Formula
 import Nominal.Variable (variableNameAscii)
+import Prelude hiding (not)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import System.IO.Unsafe (unsafePerformIO)
@@ -112,7 +113,7 @@ isTrue f = do
         return $ isSatisfiable result
 
 isFalse :: Formula -> IO Bool
-isFalse f = isTrue (Formula.not f)
+isFalse f = isTrue (not f)
 
 solve :: Formula -> IO (Maybe Bool)
 solve f = do

@@ -1,4 +1,4 @@
-module Formula where
+module Nominal.Formula where
 
 import Prelude hiding (or, and, not)
 import Data.Set (Set, delete, empty, fromList, member, singleton, union)
