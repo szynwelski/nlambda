@@ -3,12 +3,15 @@ module NLambda where
 import Formula
 import Formula.Solver
 import Nominal.Conditional
+import Nominal.Either
+import Nominal.Graph
+import Nominal.Maybe
 import Nominal.Set
 import Nominal.Type
 import Nominal.Variable
 import Nominal.VariablesSpace
-import Nominal.Variants hiding (map, fromList)
-import Prelude hiding (or, and, not, sum, map, filter)
+import Nominal.Variants hiding (filter, fromList, map)
+import Prelude hiding (or, and, not, sum, map, filter, maybe)
 
 ----------------------------------------------------------------------------------------------------
 -- Examples
@@ -54,3 +57,4 @@ nlProgram = do
     b <- newAtom
     return $ let set = insert a atoms
              in insert b set
+
