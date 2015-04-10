@@ -41,7 +41,6 @@ set1 = fromList [a, b]
 set2 = singleton at
 sa = atoms
 da = delete a sa
-ps = pairs sa sa
 ts = triples sa sa sa
 
 a1 = variant $ iterationVariable 0 1
@@ -60,3 +59,4 @@ nlProgram = do
 
 
 g = atomsGraph $ filter (\(x,y) -> eq x a \/ eq y a) atomsPairs
+gAB = addEdge (a,b) emptyGraph
