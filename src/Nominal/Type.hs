@@ -13,8 +13,7 @@ import Prelude hiding (and, map, not, or)
 -- NominalType
 ----------------------------------------------------------------------------------------------------
 
--- remove Show
-class (Show a, Ord a) => NominalType a where
+class Ord a => NominalType a where
     eq :: a -> a -> Formula
     eq x y = fromBool (x == y)
     variants :: a -> Variants a

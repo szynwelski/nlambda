@@ -1,6 +1,7 @@
 - dokumentacja za pomoca haddock,
 - pragma MINIMAL 
 - stworzyc listy eksportowe dla modułów,
+- napisać testy jednostkowe
 
 - Formula: 
 -- przenieść ifFormula i dodać simplify i solve,

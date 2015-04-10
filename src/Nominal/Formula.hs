@@ -70,31 +70,12 @@ F /\ _ = F
 f /\ T = f
 _ /\ F = F
 
--- FIXME: uprościć
-f@(Constraint LessThan x1 x2) /\ (Constraint LessEquals y1 y2) | x1 == y1 && x2 == y2 = f
-(Constraint LessThan x1 x2) /\ (Constraint Equals y1 y2) | x1 == y1 && x2 == y2 = lessEquals x1 x2
-(Constraint LessThan x1 x2) /\ (Constraint GreaterThan y1 y2) | x1 == y1 && x2 == y2 = F
-(Constraint LessThan x1 x2) /\ (Constraint GreaterEquals y1 y2) | x1 == y1 && x2 == y2 = F
-
-(Constraint LessEquals x1 x2) /\ f@(Constraint LessThan y1 y2) | x1 == y1 && x2 == y2 = f
-f@(Constraint LessEquals x1 x2) /\ (Constraint Equals y1 y2) | x1 == y1 && x2 == y2 = f
-(Constraint LessEquals x1 x2) /\ (Constraint GreaterThan y1 y2) | x1 == y1 && x2 == y2 = F
-(Constraint LessEquals x1 x2) /\ (Constraint GreaterEquals y1 y2) | x1 == y1 && x2 == y2 = equals x1 x2
-
-(Constraint Equals x1 x2) /\ (Constraint LessThan y1 y2) | x1 == y1 && x2 == y2 = lessEquals x1 x2
-(Constraint Equals x1 x2) /\ f@(Constraint LessEquals y1 y2) | x1 == y1 && x2 == y2 = f
-(Constraint Equals x1 x2) /\ (Constraint GreaterThan y1 y2) | x1 == y1 && x2 == y2 = greaterEquals x1 x2
-(Constraint Equals x1 x2) /\ f@(Constraint GreaterEquals y1 y2) | x1 == y1 && x2 == y2 = f
-
-(Constraint GreaterThan x1 x2) /\ (Constraint LessThan y1 y2) | x1 == y1 && x2 == y2 = F
-(Constraint GreaterThan x1 x2) /\ (Constraint LessEquals y1 y2) | x1 == y1 && x2 == y2 = F
-(Constraint GreaterThan x1 x2) /\ (Constraint Equals y1 y2) | x1 == y1 && x2 == y2 = greaterEquals x1 x2
-f@(Constraint GreaterThan x1 x2) /\ (Constraint GreaterEquals y1 y2) | x1 == y1 && x2 == y2 = f
-
-(Constraint GreaterEquals x1 x2) /\ (Constraint LessThan y1 y2) | x1 == y1 && x2 == y2 = F
-(Constraint GreaterEquals x1 x2) /\ (Constraint LessEquals y1 y2) | x1 == y1 && x2 == y2 = equals x1 x2
-f@(Constraint GreaterEquals x1 x2) /\ (Constraint Equals y1 y2) | x1 == y1 && x2 == y2 = f
-(Constraint GreaterEquals x1 x2) /\ f@(Constraint GreaterThan y1 y2) | x1 == y1 && x2 == y2 = f
+f1@(Constraint r1 x1 y1) /\ f2@(Constraint r2 x2 y2)
+    | x1 == y2 && y1 == x2 = f1 /\ Constraint (symmetricRelation r2) y2 x2
+    | contradictoryRelations r1 r2 && x1 == x2 && y1 == y2 = F
+    | symmetricRelations r1 r2 && x1 == x2 && y1 == y2 = equals x1 y1
+    | isSubrelationOf r1 r2 && x1 == x2 && y1 == y2 = f1
+    | isSubrelationOf r2 r1 && x1 == x2 && y1 == y2 = f2
 
 (Not f1) /\ (Not f2) = (not (f1 \/ f2))
 f1 /\ f2
@@ -112,6 +93,17 @@ F \/ f = f
 T \/ _ = T
 f \/ F = f
 _ \/ T = T
+
+f1@(Constraint r1 x1 y1) \/ f2@(Constraint r2 x2 y2)
+    | x1 == y2 && y1 == x2 = f1 \/ Constraint (symmetricRelation r2) y2 x2
+    | isSubrelationOf r1 r2 && x1 == x2 && y1 == y2 = f2
+    | isSubrelationOf r2 r1 && x1 == x2 && y1 == y2 = f1
+    | compareEquivalentPairs (r1, r2) (LessThan, Equals) == EQ && x1 == x2 && y1 == y2 = lessEquals x1 y1
+    | compareEquivalentPairs (r1, r2) (LessThan, GreaterThan) == EQ && x1 == x2 && y1 == y2 = not $ equals x1 y1
+    | compareEquivalentPairs (r1, r2) (LessThan, GreaterEquals) == EQ && x1 == x2 && y1 == y2 = T
+    | compareEquivalentPairs (r1, r2) (LessEquals, GreaterThan) == EQ && x1 == x2 && y1 == y2 = T
+    | compareEquivalentPairs (r1, r2) (Equals, GreaterThan) == EQ && x1 == x2 && y1 == y2 = greaterEquals x1 y1
+
 (Not f1) \/ (Not f2) = (not (f1 /\ f2))
 f1 \/ f2
     | f1 == f2       = f1
@@ -178,6 +170,12 @@ forAllVars = (∀)
 (∃) _ T = T
 (∃) _ F = F
 (∃) x (Not f) = not $ (∀) x f
+(∃) x (Constraint Equals y _) | x == y = T
+(∃) x (Constraint Equals _ y) | x == y = T
+(∃) x (And (Constraint Equals y z) f) | x == y = replaceFormulaVariable x z f
+(∃) x (And (Constraint Equals y z) f) | x == z = replaceFormulaVariable x y f
+(∃) x (And f (Constraint Equals y z)) | x == y = replaceFormulaVariable x z f
+(∃) x (And f (Constraint Equals y z)) | x == z = replaceFormulaVariable x y f
 (∃) x f = quantificationFormula Exists x f
 
 existsVar :: Variable -> Formula -> Formula
@@ -286,12 +284,35 @@ relationOperation LessEquals = lessEquals
 relationOperation GreaterThan = greaterThan
 relationOperation GreaterEquals = greaterEquals
 
+symmetricRelation :: Relation -> Relation
+symmetricRelation LessThan = GreaterThan
+symmetricRelation LessEquals = GreaterEquals
+symmetricRelation GreaterThan = LessThan
+symmetricRelation GreaterEquals = LessEquals
+symmetricRelation Equals = Equals
+
 symmetricRelations :: Relation -> Relation -> Bool
-symmetricRelations LessThan GreaterThan = True
-symmetricRelations GreaterThan LessThan = True
-symmetricRelations LessEquals GreaterEquals = True
-symmetricRelations GreaterEquals LessEquals = True
-symmetricRelations _ _ = False
+symmetricRelations r1 r2 = r1 == symmetricRelation r2
+
+contradictoryRelations :: Relation -> Relation -> Bool
+contradictoryRelations LessThan Equals = True
+contradictoryRelations LessThan GreaterThan = True
+contradictoryRelations LessThan GreaterEquals = True
+contradictoryRelations LessEquals GreaterThan = True
+contradictoryRelations Equals LessThan = True
+contradictoryRelations Equals GreaterThan = True
+contradictoryRelations GreaterEquals LessThan = True
+contradictoryRelations GreaterThan Equals = True
+contradictoryRelations GreaterThan LessThan = True
+contradictoryRelations GreaterThan LessEquals = True
+contradictoryRelations _ _ = False
+
+isSubrelationOf :: Relation -> Relation -> Bool
+isSubrelationOf LessThan LessEquals = True
+isSubrelationOf Equals LessEquals = True
+isSubrelationOf Equals GreaterEquals = True
+isSubrelationOf GreaterThan GreaterEquals = True
+isSubrelationOf r1 r2 = r1 == r2
 
 freeVariables :: Formula -> Set Variable
 freeVariables T = empty
