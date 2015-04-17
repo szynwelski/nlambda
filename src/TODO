@@ -23,6 +23,7 @@
 -- dodać typ liniowy i klasę z funkcjami: le, lt, ge, gt.
 -- pomyśleć nad problemem rozwiązywania konfliktu nazw zmiennych iteracyjnych - czy istnieje rozwiązanie "strict"?
 -- pomyśleć nad problemem obliczania wsparcia dla zbioru: insert a atomSet - może przy "insert" trzeba sprawdzić "contains", czyli rozwiązać formułę
+-- rozwiązywanie konfliktów zmiennych - poziomy zgodnie z zagnieżdzeniem, a nie: {{{(a₁,c₁,b₁) : for b₁ ∊ 𝔸} : for c₁ ∊ 𝔸} : for a₁ ∊ 𝔸}
 
 -- rozmiar zbioru, fold - krata, obliczanie maxa dla funkcji Atom -> Int
 -- automatyczne wyliczanie formuł
@@ -35,6 +36,8 @@ SPRAWDZIĆ:
 - iF cond [] [a]
 
 Algorytmy:
+- zbiory:
+-- istnieje ekwiwariantna bijekcja: (A\{a} A\{b} {a,b})
 - grafy:
 -- dwudzielnosc,
 -- trojkolorowalnosc,

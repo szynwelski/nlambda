@@ -1,5 +1,6 @@
 module Nominal.Set where
 
+import Data.List ((\\))
 import Data.List.Utils (join)
 import qualified Data.Maybe as Maybe
 import Data.Map (Map)
@@ -11,9 +12,8 @@ import Nominal.Formula
 import Nominal.Maybe
 import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
-import Nominal.Variable (Timestamp, Variable, changeIterationLevel, clearTimestamp, getIterationLevel,
-                         getTimestampNotEqual, hasNoTimestamp, hasTimestampEquals, iterationVariablesList,
-                         iterationVariable, setIterationLevel, setTimestamp, variableName)
+import Nominal.Variable (Timestamp, Variable, changeIterationLevel, clearTimestamp, getIterationLevel, hasTimestampEquals,
+                         hasTimestampNotEquals, iterationVariablesList, iterationVariable, setTimestamp, variableName)
 import Nominal.Variants (Atom, Variants, atom, fromVariant, toList, variant)
 import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
@@ -60,11 +60,11 @@ filterNotFalse = Map.filter ((/= F) . snd)
 ----------------------------------------------------------------------------------------------------
 
 checkTimestamps :: NominalType a => Timestamp -> a -> SetElementCondition-> (a, SetElementCondition)
-checkTimestamps t v cond = let newLevel = Set.size $ collectWith (getTimestampNotEqual t) v
-                               iterVarsNames = Set.map variableName $ fst cond
-                               v' = mapVariablesIf (\var -> hasNoTimestamp var && Set.member (variableName var) iterVarsNames)
-                                                   (changeIterationLevel succ) v
-                           in mapVariablesIf (hasTimestampEquals t) (clearTimestamp . setIterationLevel newLevel) (v', cond)
+checkTimestamps t v cond = let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasTimestampNotEquals t var then getIterationLevel var else Nothing) v
+                               iterVarsLevels = Set.toAscList $ collectWith getIterationLevel $ fst cond
+                               newIterVarsLevels = [0..] Data.List.\\ otherVarsLevels
+                               changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
+                           in mapVariablesIf (hasTimestampEquals t) (clearTimestamp . changeIterationLevel changeLevelsMap) (v, cond)
 
 applyWithTimestamps :: (NominalType a, NominalType b) => (a -> b) -> a -> SetElementCondition -> [(b, SetElementCondition)]
 applyWithTimestamps f v cond = let t = unsafePerformIO getPOSIXTime
@@ -208,7 +208,7 @@ intersection :: NominalType a => Set a -> Set a -> Set a
 intersection s1 s2 = filter (contains s1) s2
 
 difference :: NominalType a => Set a -> Set a -> Set a
-difference s1 s2 = filter (notContains s1) s2
+difference s1 s2 = filter (notContains s2) s1
 
 infixl 9 \\
 (\\) :: NominalType a => Set a -> Set a -> Set a
@@ -235,6 +235,9 @@ triplesWith f s1 s2 s3 = sum $ sum $ map (\e1 -> map (\e2 -> map (f e1 e2) s3) s
 
 atomsTriples :: Set (Atom, Atom, Atom)
 atomsTriples = triples atoms atoms atoms
+
+isSingleton :: NominalType a => Set a -> Formula
+isSingleton s = forall (uncurry eq) (squared s)
 
 fromFunction :: (NominalType a, NominalType b) => (a -> b) -> Set a -> Set (a,b)
 fromFunction f s = map (\x -> (x, f x)) s

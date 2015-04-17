@@ -172,10 +172,16 @@ forAllVars = (∀)
 (∃) x (Not f) = not $ (∀) x f
 (∃) x (Constraint Equals y _) | x == y = T
 (∃) x (Constraint Equals _ y) | x == y = T
+-- FIXME uprościć
 (∃) x (And (Constraint Equals y z) f) | x == y = replaceFormulaVariable x z f
 (∃) x (And (Constraint Equals y z) f) | x == z = replaceFormulaVariable x y f
 (∃) x (And f (Constraint Equals y z)) | x == y = replaceFormulaVariable x z f
 (∃) x (And f (Constraint Equals y z)) | x == z = replaceFormulaVariable x y f
+(∃) x (Or (Constraint Equals y _) _) | x == y = T
+(∃) x (Or (Constraint Equals _ y) _) | x == y = T
+(∃) x (Or _ (Constraint Equals y z)) | x == y = T
+(∃) x (Or _ (Constraint Equals y z)) | x == y = T
+
 (∃) x f = quantificationFormula Exists x f
 
 existsVar :: Variable -> Formula -> Formula

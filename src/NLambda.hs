@@ -46,9 +46,6 @@ ts = triples sa sa sa
 a1 = variant $ iterationVariable 0 1
 b1 = variant $ iterationVariable 1 1
 
-isSingleton :: NominalType a => Set a -> Formula
-isSingleton s = notContains (sum $ map (\x -> map (\y -> eq x y) s) s) false
-
 -- example program
 
 nlProgram = do
@@ -59,4 +56,7 @@ nlProgram = do
 
 
 g = atomsGraph $ filter (\(x,y) -> eq x a \/ eq y a) atomsPairs
+gIn = atomsGraph $ filter (eq a . snd) atomsPairs
+gOut = atomsGraph $ filter (eq a . fst) atomsPairs
 gAB = addEdge (a,b) emptyGraph
+g2 = atomsGraph $ filter (\(x,y) -> (lt x a /\ lt y a) \/ (gt x a /\ gt y a)) atomsPairs

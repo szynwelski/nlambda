@@ -1,5 +1,6 @@
 module Nominal.Variable where
 
+import Data.Map (Map, findWithDefault)
 import Data.Maybe (isNothing)
 import Data.Time.Clock.POSIX (POSIXTime)
 
@@ -10,7 +11,7 @@ import Data.Time.Clock.POSIX (POSIXTime)
 type Timestamp = POSIXTime
 data Variable = Var String | QuantificationVariable Int | IterationVariable Int Int (Maybe Timestamp) deriving (Eq, Ord)
 
-----------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------
 -- Variable name
 ----------------------------------------------------------------------------------------------------
 
@@ -66,14 +67,11 @@ onlyForIteration _ f (IterationVariable level index timestamp) = f level index t
 setTimestamp :: Timestamp -> Variable -> Variable
 setTimestamp t v = onlyForIteration v (\l i _ -> IterationVariable l i (Just t)) v
 
-hasNoTimestamp :: Variable -> Bool
-hasNoTimestamp = onlyForIteration True (\_ _ t -> isNothing t)
-
 hasTimestampEquals :: Timestamp -> Variable -> Bool
 hasTimestampEquals t = onlyForIteration False (\_ _ vt -> maybe False (== t) vt)
 
-getTimestampNotEqual :: Timestamp -> Variable -> Maybe Timestamp
-getTimestampNotEqual t = onlyForIteration Nothing (\_ _ vt -> if maybe False (/= t) vt then vt else Nothing)
+hasTimestampNotEquals :: Timestamp -> Variable -> Bool
+hasTimestampNotEquals t = onlyForIteration False (\_ _ vt -> maybe True (/= t) vt)
 
 clearTimestamp :: Variable -> Variable
 clearTimestamp v = onlyForIteration v (\l i _ -> iterationVariable l i) v
@@ -81,8 +79,5 @@ clearTimestamp v = onlyForIteration v (\l i _ -> iterationVariable l i) v
 getIterationLevel :: Variable -> Maybe Int
 getIterationLevel = onlyForIteration Nothing (\l _ _ -> Just l)
 
-setIterationLevel :: Int -> Variable -> Variable
-setIterationLevel level v = onlyForIteration v (\l i t -> IterationVariable level i t) v
-
-changeIterationLevel :: (Int -> Int) -> Variable -> Variable
-changeIterationLevel f v = onlyForIteration v (\l i t -> IterationVariable (f l) i t) v
+changeIterationLevel :: Map Int Int -> Variable -> Variable
+changeIterationLevel m v = onlyForIteration v (\l i t -> IterationVariable (findWithDefault l l m) i t) v
