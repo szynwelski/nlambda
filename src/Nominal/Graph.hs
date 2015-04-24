@@ -89,7 +89,7 @@ undirected (Graph vs es) = Graph vs $ union es (map swap es)
 subgraph :: NominalType a => Graph a -> Set a -> Graph a
 subgraph (Graph vs es) vs' =
     Graph (vs' `intersection` vs)
-          (mapFilter (\(v1, v2) -> iF (contains vs' v1 \/ contains vs' v2) (just (v1, v2)) nothing) es)
+          (mapFilter (\(v1, v2) -> iF (contains vs' v1 /\ contains vs' v2) (just (v1, v2)) nothing) es)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph algorithms
