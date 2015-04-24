@@ -10,7 +10,7 @@ import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import Nominal.Conditional
 import Nominal.Formula
 import Nominal.Maybe
-import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, replaceVariables)
+import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Variable (Timestamp, Variable, changeIterationLevel, clearTimestamp, getIterationLevel, hasTimestampEquals,
                          hasTimestampNotEquals, iterationVariablesList, iterationVariable, setTimestamp, variableName)
@@ -61,7 +61,7 @@ filterNotFalse = Map.filter ((/= F) . snd)
 
 checkTimestamps :: NominalType a => Timestamp -> a -> SetElementCondition-> (a, SetElementCondition)
 checkTimestamps t v cond = let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasTimestampNotEquals t var then getIterationLevel var else Nothing) v
-                               iterVarsLevels = Set.toAscList $ collectWith getIterationLevel $ fst cond
+                               iterVarsLevels = Set.toAscList $ collectWith (\var -> if hasTimestampEquals t var then getIterationLevel var else Nothing) v
                                newIterVarsLevels = [0..] Data.List.\\ otherVarsLevels
                                changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
                            in mapVariablesIf (hasTimestampEquals t) (clearTimestamp . changeIterationLevel changeLevelsMap) (v, cond)
@@ -236,8 +236,15 @@ triplesWith f s1 s2 s3 = sum $ sum $ map (\e1 -> map (\e2 -> map (f e1 e2) s3) s
 atomsTriples :: Set (Atom, Atom, Atom)
 atomsTriples = triples atoms atoms atoms
 
-isSingleton :: NominalType a => Set a -> Formula
-isSingleton s = forall (uncurry eq) (squared s)
+mapList :: (NominalType a, NominalType b) => ([a] -> b) -> [Set a] -> Set b
+mapList f sets = map f $ foldr (pairsWith (:)) (singleton []) sets
 
-fromFunction :: (NominalType a, NominalType b) => (a -> b) -> Set a -> Set (a,b)
-fromFunction f s = map (\x -> (x, f x)) s
+hasSizeLessThan :: NominalType a => Set a -> Int -> Formula
+hasSizeLessThan s n = forall id $ mapList (\xs -> let l = length xs in or [eq (xs!!i) (xs!!j) | i <- [0..l-1], j <- [0..l-1], i<j]) (replicate n s)
+
+hasSize :: NominalType a => Set a -> Int -> Formula
+hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)
+
+size :: NominalType a => Set a -> Variants Int
+size s = findSize s 1 where findSize s n = ite (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
+
