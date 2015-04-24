@@ -21,6 +21,11 @@ instance NominalType a => NominalType (Graph a) where
     foldVariables f acc (Graph vs es) = foldVariables f (foldVariables f acc vs) es
     simplify (Graph vs es) = Graph (simplify vs) (simplify es)
 
+----------------------------------------------------------------------------------------------------
+-- Forest
+----------------------------------------------------------------------------------------------------
+
+type Forest a = Set (Graph a)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph constructors
@@ -57,9 +62,6 @@ monotonicGraph = atomsGraph $ filter (uncurry lt) atomsPairs
 -- Graph operations
 ----------------------------------------------------------------------------------------------------
 
-undirected :: NominalType a => Graph a => Graph a
-undirected (Graph vs es) = Graph vs $ union es (map swap es)
-
 addVertex :: NominalType a => a -> Graph a -> Graph a
 addVertex v (Graph vs es) = Graph (insert v vs) es
 
@@ -78,6 +80,17 @@ addLoops (Graph vs es) = Graph vs $ union es (map (\v -> (v,v)) vs)
 removeLoops :: NominalType a => Graph a -> Graph a
 removeLoops (Graph vs es) = Graph vs $ filter (uncurry neq) es
 
+reverseEdges :: NominalType a => Graph a -> Graph a
+reverseEdges (Graph vs es) = Graph vs $ map swap es
+
+undirected :: NominalType a => Graph a => Graph a
+undirected (Graph vs es) = Graph vs $ union es (map swap es)
+
+subgraph :: NominalType a => Graph a -> Set a -> Graph a
+subgraph (Graph vs es) vs' =
+    Graph (vs' `intersection` vs)
+          (mapFilter (\(v1, v2) -> iF (contains vs' v1 \/ contains vs' v2) (just (v1, v2)) nothing) es)
+
 ----------------------------------------------------------------------------------------------------
 -- Graph algorithms
 ----------------------------------------------------------------------------------------------------
@@ -91,25 +104,44 @@ isSimple = not . hasLoop
 containsEdge :: NominalType a => Graph a -> (a, a) -> Formula
 containsEdge (Graph vs es) e = contains es e
 
-preNeighbors :: NominalType a => Graph a -> a -> Set a
-preNeighbors g v = mapFilter (\(a, b) -> iF (eq b v) (just a) nothing) (edges g)
+preds :: NominalType a => Graph a -> a -> Set a
+preds g v = mapFilter (\(a, b) -> iF (eq b v) (just a) nothing) (edges g)
 
-succNeighbors :: NominalType a => Graph a -> a -> Set a
-succNeighbors g v = mapFilter (\(a, b) -> iF (eq a v) (just b) nothing) (edges g)
+succs :: NominalType a => Graph a -> a -> Set a
+succs g v = mapFilter (\(a, b) -> iF (eq a v) (just b) nothing) (edges g)
 
 neighbors :: NominalType a => Graph a -> a -> Set a
-neighbors g v = union (succNeighbors g v) (preNeighbors g v)
-
-edgesTransitiveClosure :: NominalType a => Set (a, a) -> Set (a, a)
-edgesTransitiveClosure es = let es' = mapFilter (\((a, b), (c, d)) -> iF (eq b c) (just (a, d)) nothing) $ squared es
-                                es'' = union es es'
-                            in ite (eq es es'') es (edgesTransitiveClosure es'')
+neighbors g v = union (succs g v) (preds g v)
 
 transitiveClosure :: NominalType a => Graph a -> Graph a
-transitiveClosure (Graph vs es) = graph vs (edgesTransitiveClosure es)
+transitiveClosure (Graph vs es) = Graph vs (edgesClosure es)
+    where edgesClosure es = let es' = mapFilter (\((a, b), (c, d)) -> iF (eq b c) (just (a, d)) nothing) $ squared es
+                                es'' = simplify $ union es es'
+                            in ite (eq es es'') es (edgesClosure es'')
 
 existsPath :: NominalType a => Graph a -> a -> a -> Formula
 existsPath g v1 v2 = containsEdge (transitiveClosure g) (v1, v2)
 
-isConnected :: NominalType a => Graph a -> Formula
-isConnected g = eq (transitiveClosure g) (clique $ vertices g)
+isStronglyConnected :: NominalType a => Graph a -> Formula
+isStronglyConnected g = eq (transitiveClosure g) (clique $ vertices g)
+
+isWeaklyConnected :: NominalType a => Graph a -> Formula
+isWeaklyConnected = isStronglyConnected . undirected
+
+hasCycle :: NominalType a => Graph a -> Formula
+hasCycle = hasLoop . transitiveClosure
+
+reachable :: NominalType a => Graph a -> a -> Set a
+reachable g v = insert v $ succs (transitiveClosure g) v
+
+weaklyConnectedComponent :: NominalType a => Graph a -> a -> Graph a
+weaklyConnectedComponent g v = subgraph g $ union (reachable g v) (reachable (reverseEdges g) v)
+
+weaklyConnectedComponents :: NominalType a => Graph a -> Forest a
+weaklyConnectedComponents g = map (weaklyConnectedComponent g) (vertices g)
+
+stronglyConnectedComponent :: NominalType a => Graph a -> a -> Graph a
+stronglyConnectedComponent g v = subgraph g $ intersection (reachable g v) (reachable (reverseEdges g) v)
+
+stronglyConnectedComponents :: NominalType a => Graph a -> Forest a
+stronglyConnectedComponents g = map (stronglyConnectedComponent g) (vertices g)
