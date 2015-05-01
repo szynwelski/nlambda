@@ -1,5 +1,7 @@
 module NLambda where
 
+import Nominal.Automaton.Deterministic
+import Nominal.Automaton.Nondeterministic
 import Nominal.Conditional
 import Nominal.Either
 import Nominal.Formula
@@ -41,7 +43,7 @@ set1 = singleton at
 set2 = fromList [a, b]
 set3 = fromList [a, b, c]
 sa = atoms
-da = delete a sa
+del = delete a sa
 ts = triples sa sa sa
 
 a1 = variant $ iterationVariable 0 1
