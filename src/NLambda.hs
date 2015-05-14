@@ -5,7 +5,6 @@ import Nominal.Automaton.Nondeterministic
 import Nominal.Conditional
 import Nominal.Either
 import Nominal.Formula
-import Nominal.Formula.Solver
 import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Set
@@ -58,9 +57,18 @@ nlProgram = do
              in insert b set
 
 
+-- graph
+
 g = atomsGraph $ filter (\(x,y) -> eq x a \/ eq y a) atomsPairs
 gIn = atomsGraph $ filter (eq a . snd) atomsPairs
 gOut = atomsGraph $ filter (eq a . fst) atomsPairs
 gAB = addEdge (a,b) emptyGraph
 bigraph = atomsGraph $ filter (\(x,y) -> (lt x a /\ lt y a) \/ (gt x a /\ gt y a)) atomsPairs
 bigraphMonotonic = atomsGraph $ filter (\(x,y) -> (lt x y) /\ ((lt x a /\ lt y a) \/ (gt x a /\ gt y a))) atomsPairs
+
+-- auto
+
+result = simplify $ dAccepts (da (\x y -> iF (eq x y) a b) a (singleton c)) [a,b,c]
+-- ((a /= b || a /= c) && (b /= c || a = b) && b = c) || (((a /= b && b = c) || (a = b && a = c)) && a = c)
+-- (((a /= b && b = c) || (a = b && a = c)) && a = c) || (((a /= b || a /= c) && (b /= c || a = b)) && b = c)
+result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b)

@@ -1,7 +1,6 @@
 module Nominal.Conditional where
 
 import Nominal.Formula
-import Nominal.Formula.Solver
 import Prelude hiding (not)
 
 ----------------------------------------------------------------------------------------------------
@@ -37,7 +36,7 @@ instance (Conditional a, Conditional b, Conditional c) => Conditional (a, b, c) 
 ----------------------------------------------------------------------------------------------------
 
 ite :: Conditional a => Formula -> a -> a -> a
-ite c x1 x2 = case unsafeSolve c of
+ite c x1 x2 = case solve c of
                 Just True -> x1
                 Just False -> x2
                 Nothing -> iF c x1 x2

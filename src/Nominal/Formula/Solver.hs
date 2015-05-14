@@ -1,7 +1,9 @@
-module Nominal.Formula.Solver (isTrue, isFalse, solve, unsafeIsTrue, unsafeIsFalse, unsafeSolve) where
+module Nominal.Formula.Solver (isTrueIO, isFalseIO, solveIO, isTrue, isFalse, solve) where
 
-import Data.Set (map, member, toList)
-import Nominal.Formula
+import Data.Set (Set, elems, empty, map, member, singleton, toList, unions)
+import Nominal.Formula.Constructors
+import Nominal.Formula.Definition
+import Nominal.Formula.Simplifier
 import Nominal.Variable (variableNameAscii)
 import Prelude hiding (not)
 import System.Directory (findExecutable)
@@ -27,6 +29,16 @@ getSmtLogicForRelation LessThan = lra
 getSmtLogicForRelation LessEquals = lra
 getSmtLogicForRelation GreaterThan = lra
 getSmtLogicForRelation GreaterEquals = lra
+
+getFormulaRelations :: Formula -> Set Relation
+getFormulaRelations T = empty
+getFormulaRelations F = empty
+getFormulaRelations (Constraint r _ _) = singleton r
+getFormulaRelations (And fs) = unions $ fmap getFormulaRelations $ elems fs
+getFormulaRelations (Or fs) = unions $ fmap getFormulaRelations $ elems fs
+getFormulaRelations (Not f) = getFormulaRelations f
+getFormulaRelations (ForAll _ f) = getFormulaRelations f
+getFormulaRelations (Exists _ f) = getFormulaRelations f
 
 getSmtLogic :: Formula -> SmtLogic
 getSmtLogic f = if member lra $ Data.Set.map getSmtLogicForRelation $ getFormulaRelations f then lra else lia
@@ -78,11 +90,9 @@ getSmtAssert :: SmtLogic -> Formula -> String
 getSmtAssert _ T = "true"
 getSmtAssert _ F = "false"
 getSmtAssert _ (Constraint r x1 x2) = "(" ++ relationAscii r ++ " " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
-getSmtAssert l (And f1 f2) = getSmtAssertOp l "and" [f1, f2]
-getSmtAssert l (Or f1 f2) = getSmtAssertOp l "or" [f1, f2]
+getSmtAssert l (And fs) = getSmtAssertOp l "and" $ elems fs
+getSmtAssert l (Or fs) = getSmtAssertOp l "or" $ elems fs
 getSmtAssert l (Not f) = getSmtAssertOp l "not" [f]
-getSmtAssert l (Imply f1 f2) = getSmtAssertOp l "=>" [f1, f2]
-getSmtAssert l (Equivalent f1 f2) = getSmtAssertOp l "=" [f1, f2]
 getSmtAssert l (ForAll x f) = "(forall ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
 getSmtAssert l (Exists x f) = "(exists ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
 
@@ -105,23 +115,23 @@ getSmtScript f = let l = getSmtLogic f
 -- Formula solving
 ----------------------------------------------------------------------------------------------------
 
-isTrue :: Formula -> IO Bool
-isTrue T = return True
-isTrue F = return False
-isTrue f = do
+isTrueIO :: Formula -> IO Bool
+isTrueIO T = return True
+isTrueIO F = return False
+isTrueIO f = do
         result <- runSolver z3Solver (getSmtScript f)
         return $ isSatisfiable result
 
-isFalse :: Formula -> IO Bool
-isFalse f = isTrue (not f)
+isFalseIO :: Formula -> IO Bool
+isFalseIO f = isTrueIO (not f)
 
-solve :: Formula -> IO (Maybe Bool)
-solve f = do
-        true <- isTrue f
+solveIO :: Formula -> IO (Maybe Bool)
+solveIO f = do
+        true <- isTrueIO f
         if true
             then return (Just True)
             else do
-                 false <- isFalse f
+                 false <- isFalseIO f
                  if false
                     then return (Just False)
                     else return Nothing
@@ -130,14 +140,14 @@ solve f = do
 -- Formula unsafe solving
 ----------------------------------------------------------------------------------------------------
 
-unsafeIsTrue :: Formula -> Bool
-unsafeIsTrue = unsafePerformIO . isTrue
+isTrue :: Formula -> Bool
+isTrue = unsafePerformIO . isTrueIO
 
-unsafeIsFalse :: Formula -> Bool
-unsafeIsFalse = unsafePerformIO . isFalse
+isFalse :: Formula -> Bool
+isFalse = unsafePerformIO . isFalseIO
 
-unsafeSolve :: Formula -> Maybe Bool
-unsafeSolve f
-         | unsafeIsTrue f  = Just True
-         | unsafeIsFalse f = Just False
-         | otherwise = Nothing
+solve :: Formula -> Maybe Bool
+solve f
+    | isTrue f  = Just True
+    | isFalse f = Just False
+    | otherwise = Nothing

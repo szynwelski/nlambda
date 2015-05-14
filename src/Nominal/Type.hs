@@ -3,8 +3,7 @@ module Nominal.Type where
 import Data.Map (Map, findWithDefault)
 import Data.Set (Set, empty, insert)
 import Nominal.Conditional
-import Nominal.Formula (Formula, (/\), and, equals, false, freeVariables, foldFormulaVariables, fromBool, iff,
-                        mapFormulaVariables, not, or, true)
+import Nominal.Formula
 import Nominal.Variable (Variable)
 import Nominal.Variants (Variants, fromList, map, toList, variant, variantsRelation)
 import Prelude hiding (and, map, not, or)

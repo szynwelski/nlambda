@@ -49,6 +49,10 @@ variable = Var
 quantificationVariable :: Int -> Variable
 quantificationVariable = QuantificationVariable
 
+isQuantificationVariable :: Variable -> Bool
+isQuantificationVariable (QuantificationVariable _) = True
+isQuantificationVariable _ = False
+
 iterationVariable :: Int -> Int -> Variable
 iterationVariable level index = IterationVariable level index Nothing
 
