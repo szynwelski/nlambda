@@ -60,9 +60,11 @@ not :: Formula -> Formula
 not f = simplifyFormula $ Not f
 
 -- imply
+infix 8 ==>
 (==>) :: Formula -> Formula -> Formula
 f1 ==> f2 = not f1 \/ f2
 
+infix 8 <==
 (<==) :: Formula -> Formula -> Formula
 f1 <== f2 = f1 \/ not f2
 
@@ -70,8 +72,9 @@ implies :: Formula -> Formula -> Formula
 implies = (==>)
 
 -- equivalent
+infix 8 <==>
 (<==>) :: Formula -> Formula -> Formula
-f1 <==> f2 = f1 ==> f2 /\ f1 <== f2
+f1 <==> f2 = (f1 ==> f2) /\ (f1 <== f2)
 
 iff :: Formula -> Formula -> Formula
 iff = (<==>)

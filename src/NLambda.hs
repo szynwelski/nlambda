@@ -5,6 +5,8 @@ import Nominal.Automaton.Nondeterministic
 import Nominal.Conditional
 import Nominal.Either
 import Nominal.Formula
+--import Nominal.Formula.Definition
+--import Nominal.Formula.Simplifier
 import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Set
@@ -36,6 +38,8 @@ eef = (∃) x $ (∃) y cc
 a = atom "a"
 b = atom "b"
 c = atom "c"
+d = atom "d"
+e = atom "e"
 cond = eq a b
 at = iF cond a b
 set1 = singleton at
@@ -67,6 +71,11 @@ bigraph = atomsGraph $ filter (\(x,y) -> (lt x a /\ lt y a) \/ (gt x a /\ gt y a
 bigraphMonotonic = atomsGraph $ filter (\(x,y) -> (lt x y) /\ ((lt x a /\ lt y a) \/ (gt x a /\ gt y a))) atomsPairs
 
 -- auto
+
+f1 = le a b
+f2 = le b c
+f3 = le c d
+f4 = le d e
 
 result = simplify $ dAccepts (da (\x y -> iF (eq x y) a b) a (singleton c)) [a,b,c]
 -- ((a /= b || a /= c) && (b /= c || a = b) && b = c) || (((a /= b && b = c) || (a = b && a = c)) && a = c)

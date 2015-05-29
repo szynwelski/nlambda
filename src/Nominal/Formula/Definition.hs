@@ -6,19 +6,21 @@ import Nominal.Variable (Variable)
 ----------------------------------------------------------------------------------------------------
 -- Relation
 ----------------------------------------------------------------------------------------------------
-data Relation = Equals | LessThan | LessEquals | GreaterThan | GreaterEquals deriving (Eq, Ord)
+data Relation = LessThan | LessEquals | Equals | NotEquals | GreaterEquals | GreaterThan deriving (Eq, Ord)
 
 instance Show Relation where
-    show Equals = "="
     show LessThan = "<"
     show LessEquals = "≤"
+    show Equals = "="
+    show NotEquals = "≠"
     show GreaterThan = ">"
     show GreaterEquals = "≥"
 
 relationAscii :: Relation -> String
-relationAscii Equals = "="
 relationAscii LessThan = "<"
 relationAscii LessEquals = "<="
+relationAscii Equals = "="
+relationAscii NotEquals = "/="
 relationAscii GreaterThan = ">"
 relationAscii GreaterEquals = ">="
 

@@ -24,9 +24,10 @@ lra :: SmtLogic
 lra = SmtLogic "Real" "LRA"
 
 getSmtLogicForRelation :: Relation -> SmtLogic
-getSmtLogicForRelation Equals = lia
 getSmtLogicForRelation LessThan = lra
 getSmtLogicForRelation LessEquals = lra
+getSmtLogicForRelation Equals = lia
+getSmtLogicForRelation NotEquals = lia
 getSmtLogicForRelation GreaterThan = lra
 getSmtLogicForRelation GreaterEquals = lra
 
@@ -89,6 +90,7 @@ getSmtAssertOp l op fs = "(" ++ op ++ " " ++ (concat $ fmap (getSmtAssert l) fs)
 getSmtAssert :: SmtLogic -> Formula -> String
 getSmtAssert _ T = "true"
 getSmtAssert _ F = "false"
+getSmtAssert _ (Constraint NotEquals x1 x2) = "(not (= " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ "))"
 getSmtAssert _ (Constraint r x1 x2) = "(" ++ relationAscii r ++ " " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
 getSmtAssert l (And fs) = getSmtAssertOp l "and" $ elems fs
 getSmtAssert l (Or fs) = getSmtAssertOp l "or" $ elems fs

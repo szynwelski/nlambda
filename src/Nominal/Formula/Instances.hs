@@ -21,7 +21,6 @@ instance Show Formula where
     show T = "true"
     show F = "false"
     show (Constraint r x1 x2) = show x1 ++ " " ++ show r ++ " " ++ show x2
-    show (Not (Constraint Equals x1 x2)) = show x1 ++ " ≠ " ++ show x2
     show (And fs) = join " ∧ " $ fmap showFormula $ elems fs
     show (Or fs) = join " ∨ " $ fmap showFormula $ elems fs
     show (Not f) = "¬(" ++ show f ++ ")"
@@ -49,6 +48,7 @@ symmetricRelation LessEquals = GreaterEquals
 symmetricRelation GreaterThan = LessThan
 symmetricRelation GreaterEquals = LessEquals
 symmetricRelation Equals = Equals
+symmetricRelation NotEquals = NotEquals
 
 symmetricRelations :: Relation -> Relation -> Bool
 symmetricRelations r1 r2 = r1 == symmetricRelation r2
@@ -62,7 +62,8 @@ instance Ord Formula where
     compare F _ = GT
     compare _ F = LT
 
-    compare (Constraint Equals x1 y1) (Constraint Equals x2 y2) = compareEquivalentPairs (x1, y1) (x2, y2)
+    compare (Constraint r1 x1 y1) (Constraint r2 x2 y2)
+        | r1 == r2 && (r1 == Equals || r1 == NotEquals) = compareEquivalentPairs (x1, y1) (x2, y2)
     compare (Constraint r1 x1 y1) (Constraint r2 x2 y2) = if r1 == r2
                                                             then compareSortedPairs (x1, y1) (x2, y2)
                                                             else if symmetricRelations r1 r2
