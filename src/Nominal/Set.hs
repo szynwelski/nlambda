@@ -18,8 +18,6 @@ import Nominal.Variants (Atom, Variants, atom, fromVariant, toList, variant)
 import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
 
-import Debug.Trace
-
 ----------------------------------------------------------------------------------------------------
 -- Set elements
 ----------------------------------------------------------------------------------------------------

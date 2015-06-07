@@ -67,7 +67,7 @@ instance Ord Formula where
     compare (Constraint r1 x1 y1) (Constraint r2 x2 y2) = if r1 == r2
                                                             then compareSortedPairs (x1, y1) (x2, y2)
                                                             else if symmetricRelations r1 r2
-                                                                   then compareSortedPairs (x1, x2) (y2, y1)
+                                                                   then compareSortedPairs (x1, y1) (y2, x1)
                                                                    else compare r1 r2
     compare (Constraint _ _ _) _ = GT
     compare _ (Constraint _ _ _) = LT

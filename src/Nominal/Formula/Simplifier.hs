@@ -56,28 +56,28 @@ simplifyFormula (Not (Exists x f)) = simplifyFormula $ ForAll x $ simpleNot f
 ----------------------------------------------------------------------------------------------------
 -- Simplify universal quantification
 ----------------------------------------------------------------------------------------------------
--- TODO constraints
 
+--simplifyFormula (ForAll x f) | trace ("forall " ++ show x ++ ": " ++ show f) False = undefined
 simplifyFormula (ForAll _ T) = T
 simplifyFormula (ForAll _ F) = F
-simplifyFormula (ForAll x f)
-    | not $ member x (freeVariables f) = f
-    | not (isQuantificationVariable x) =
-        let qv = quantificationVariable $ succ $ getQuantificationLevel f
-        in ForAll qv (replaceFormulaVariable x qv f)
+simplifyFormula (ForAll x f) | not $ member x (freeVariables f) = f
+simplifyFormula (ForAll _ (Constraint _ _ _)) = F
+simplifyFormula (ForAll x f) | not (isQuantificationVariable x) =
+    let qv = quantificationVariable $ succ $ getQuantificationLevel f
+    in simplifyQuantifiedAndOr $ ForAll qv (replaceFormulaVariable x qv f)
 
 ----------------------------------------------------------------------------------------------------
 -- Simplify existential quantification
 ----------------------------------------------------------------------------------------------------
--- TODO constraints
 
+--simplifyFormula (Exists x f) | trace ("exists " ++ show x ++ ": " ++ show f) False = undefined
 simplifyFormula (Exists _ T) = T
 simplifyFormula (Exists _ F) = F
-simplifyFormula (Exists x f)
-    | not $ member x (freeVariables f) = f
-    | not (isQuantificationVariable x) =
-        let qv = quantificationVariable $ succ $ getQuantificationLevel f
-        in Exists qv (replaceFormulaVariable x qv f)
+simplifyFormula (Exists x f) | not $ member x (freeVariables f) = f
+simplifyFormula (Exists _ (Constraint _ _ _)) = T
+simplifyFormula (Exists x f) | not (isQuantificationVariable x) =
+    let qv = quantificationVariable $ succ $ getQuantificationLevel f
+    in simplifyQuantifiedAndOr $ Exists qv (replaceFormulaVariable x qv f)
 
 ----------------------------------------------------------------------------------------------------
 -- Otherwise
@@ -204,13 +204,15 @@ checkBoolInAnd fs = if member F fs then singleton F else delete T fs
 ---- /\ {f1, f2, ...}  ~~> f1 /\ f2 /\ ...        ----
 ------------------------------------------------------
 
-checkAndSize :: Set Formula -> Formula
-checkAndSize fs
---    | trace ("checkAndSize " ++ show fs) False = undefined
-    | null fs = T
+checkSize :: Formula -> (Set Formula -> Formula) -> Set Formula -> Formula
+checkSize df lf fs
+--    | trace ("checkSize " ++ show fs) False = undefined
+    | null fs = df
     | size fs == 1 = findMin fs
-    | otherwise = And $ fs
+    | otherwise = lf fs
 
+checkAndSize :: Set Formula -> Formula
+checkAndSize = checkSize T And
 
 ------------------------------------------------------
 ---- simplification function                      ----
@@ -334,11 +336,7 @@ checkBoolInOr fs = if member T fs then singleton T else delete F fs
 ------------------------------------------------------
 
 checkOrSize :: Set Formula -> Formula
-checkOrSize fs
---    | trace ("checkOrSize " ++ show fs) False = undefined
-    | null fs = T
-    | size fs == 1 = findMin fs
-    | otherwise = Or $ fs
+checkOrSize = checkSize F Or
 
 ------------------------------------------------------
 ---- simplification function                      ----
@@ -351,6 +349,32 @@ simplifyOrFormula :: Set Formula -> Formula
 simplifyOrFormula = checkOrSize . findFixedPoint orSimplifier
 
 ----------------------------------------------------------------------------------------------------
+-- Simplify quantified conjunction/disjunction formula
+----------------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------
+---- exists x (f1 /\ f2(x)) ~~> f1 /\ (exists x f2(x)) ----
+---- exists x (f1 \/ f2(x)) ~~> f1 \/ (exists x f2(x)) ----
+---- forall x (f1 /\ f2(x)) ~~> f1 /\ (forall x f2(x)) ----
+---- forall x (f1 \/ f2(x)) ~~> f1 \/ (forall x f2(x)) ----
+-----------------------------------------------------------
+
+simplifyQuantifiedAndOr' :: (Variable -> Formula -> Formula) -> Variable
+                            -> (Set Formula -> Formula) -> Set Formula -> Formula
+simplifyQuantifiedAndOr' qf x lf fs | not (null fs1 || null fs2) =
+    simplifyFormula $ lf $ fromList [simplifyFormula $ qf x (checkSize undefined lf fs1), (checkSize undefined lf fs2)]
+    where (fs1, fs2) = partition (member x . freeVariables) fs
+simplifyQuantifiedAndOr' qf x lf fs = qf x (lf fs)
+
+simplifyQuantifiedAndOr :: Formula -> Formula
+--simplifyQuantifiedAndOr f | trace ("simplifyQuantifiedAndOr " ++ show f) False = undefined
+simplifyQuantifiedAndOr (Exists x (And fs)) = simplifyQuantifiedAndOr' Exists x And fs
+simplifyQuantifiedAndOr (Exists x (Or fs)) = simplifyQuantifiedAndOr' Exists x Or fs
+simplifyQuantifiedAndOr (ForAll x (And fs)) = simplifyQuantifiedAndOr' ForAll x And fs
+simplifyQuantifiedAndOr (ForAll x (Or fs)) = simplifyQuantifiedAndOr' ForAll x Or fs
+simplifyQuantifiedAndOr f = f
+
+----------------------------------------------------------------------------------------------------
 -- Auxiliary function
 ----------------------------------------------------------------------------------------------------
 
@@ -358,7 +382,8 @@ simpleNot :: Formula -> Formula
 --simpleNot f | trace ("simpleNot " ++ show f) False = undefined
 simpleNot f = simplifyFormula $ Not f
 
-findFixedPoint :: Eq a => (a -> a) -> a -> a
+findFixedPoint :: (Show a, Eq a) => (a -> a) -> a -> a
+--findFixedPoint _ x | trace ("fix point: " ++ show x) False = undefined
 findFixedPoint f x = let fx = f x in if fx == x then x else findFixedPoint f fx
 
 foldFormulaVariables :: (Variable -> a -> a) -> a -> Formula -> a

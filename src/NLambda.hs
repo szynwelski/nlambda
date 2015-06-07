@@ -81,3 +81,5 @@ result = simplify $ dAccepts (da (\x y -> iF (eq x y) a b) a (singleton c)) [a,b
 -- ((a /= b || a /= c) && (b /= c || a = b) && b = c) || (((a /= b && b = c) || (a = b && a = c)) && a = c)
 -- (((a /= b && b = c) || (a = b && a = c)) && a = c) || (((a /= b || a /= c) && (b /= c || a = b)) && b = c)
 result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b)
+
+toMin = da (flip (:)) [] (filter (\[a1,a2,a3] -> eq a1 a2 \/ eq a1 a3) $ triplesWith (\ a1 a2 a3 -> [a1,a2,a3]) atoms atoms atoms)
