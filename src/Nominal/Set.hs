@@ -52,7 +52,7 @@ filterSetElems :: NominalType a => (a -> SetElementCondition) -> Map a SetElemen
 filterSetElems f = filterNotFalse . Map.mapWithKey (\v (vs, c) -> let fv = f v in (Set.union vs $ fst fv, c /\ snd fv))
 
 filterNotFalse :: Map a SetElementCondition -> Map a SetElementCondition
-filterNotFalse = Map.filter ((/= F) . snd)
+filterNotFalse = Map.filter ((/= false) . snd)
 
 ----------------------------------------------------------------------------------------------------
 -- Timestamps
@@ -81,7 +81,7 @@ data Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
 instance Show a => Show (Set a) where
     show s = "{" ++ (join ", " (fmap showSetElement (Map.assocs $ setElements s))) ++ "}"
       where showSetElement (v, (vs, c)) =
-              let formula = if c == T then "" else " " ++ show c
+              let formula = if c == true then "" else " " ++ show c
                   variables = if Set.null vs
                                 then ""
                                 else " for " ++ (join "," (fmap show $ Set.elems vs)) ++ " ∊ 𝔸"
@@ -151,7 +151,7 @@ sum = Set . checkVariables
 
 atoms :: Set Atom
 atoms = let iterVar = iterationVariable 0 1
-        in Set $ Map.singleton (variant iterVar) (Set.singleton iterVar, T)
+        in Set $ Map.singleton (variant iterVar) (Set.singleton iterVar, true)
 
 ----------------------------------------------------------------------------------------------------
 -- Additional functions
@@ -193,6 +193,12 @@ contains s e = exists (eq e) s
 notContains :: NominalType a => Set a -> a -> Formula
 notContains s = not . contains s
 
+member :: NominalType a => a -> Set a -> Formula
+member = flip contains
+
+notMember :: NominalType a => a -> Set a -> Formula
+notMember = flip notContains
+
 isSubsetOf :: NominalType a => Set a -> Set a -> Formula
 isSubsetOf s1 s2 = forall (contains s2) s1
 
@@ -207,6 +213,9 @@ isNotProperSubsetOf s = not . isProperSubsetOf s
 
 intersection :: NominalType a => Set a -> Set a -> Set a
 intersection s1 s2 = filter (contains s1) s2
+
+intersect :: NominalType a => Set a -> Set a -> Formula
+intersect s1 s2 = isNotEmpty $ intersection s1 s2
 
 difference :: NominalType a => Set a -> Set a -> Set a
 difference s1 s2 = filter (notContains s2) s1
@@ -239,6 +248,18 @@ atomsTriples = triples atoms atoms atoms
 
 mapList :: (NominalType a, NominalType b) => ([a] -> b) -> [Set a] -> Set b
 mapList f sets = map f $ foldr (pairsWith (:)) (singleton []) sets
+
+replicateSet :: NominalType a => Int -> Set a -> Set [a]
+replicateSet n s = mapList id (replicate n s)
+
+replicateSetUntil :: NominalType a => Int -> Set a -> Set [a]
+replicateSetUntil n s = unions $ fmap (flip replicateSet s) [0..n]
+
+replicateAtoms :: Int -> Set [Atom]
+replicateAtoms n = replicateSet n atoms
+
+replicateAtomsUntil :: Int -> Set [Atom]
+replicateAtomsUntil n = replicateSetUntil n atoms
 
 hasSizeLessThan :: NominalType a => Set a -> Int -> Formula
 hasSizeLessThan s n = forall id $ mapList (\xs -> let l = length xs in or [eq (xs!!i) (xs!!j) | i <- [0..l-1], j <- [0..l-1], i<j]) (replicate n s)

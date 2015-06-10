@@ -16,8 +16,7 @@ na :: Set (a, b, a) -> Set a -> Set a -> NAutomaton a b
 na = NAutomaton
 
 nAccepts :: (NominalType a, NominalType b) => NAutomaton a b -> [b] -> Formula
-nAccepts a = isNotEmpty
-           . intersection (finalStates a)
+nAccepts a = intersect (finalStates a)
            . foldl
                (\s l -> mapFilter (\(s1, l', s2) -> ite (contains s s1 /\ eq l l') (just s2) nothing) (delta a))
                (initialStates a)

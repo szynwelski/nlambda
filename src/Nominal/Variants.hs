@@ -15,11 +15,11 @@ import Prelude hiding (or, not)
 data Variants a = Variants (Map a Formula) deriving (Eq, Ord)
 
 variant :: a -> Variants a
-variant x = Variants $ Map.singleton x T
+variant x = Variants $ Map.singleton x true
 
 instance Show a => Show (Variants a) where
     show (Variants vs) = join " | " (fmap showVariant $ Map.assocs vs)
-      where showVariant (v, c) = show v ++ if c == T then "" else " : " ++ show c
+      where showVariant (v, c) = show v ++ if c == true then "" else " : " ++ show c
 
 instance Ord a => Conditional (Variants a) where
     iF c (Variants vs1) (Variants vs2) = Variants $ unionVariants c vs1 vs2

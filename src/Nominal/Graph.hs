@@ -15,6 +15,9 @@ import Prelude hiding (filter, map, not)
 
 data Graph a = Graph {vertices :: Set a, edges :: Set (a, a)} deriving (Eq, Ord, Show)
 
+instance NominalType a => Conditional (Graph a) where
+    iF c (Graph vs1 es1) (Graph vs2 es2) = Graph (iF c vs1 vs2) (iF c es1 es2)
+
 instance NominalType a => NominalType (Graph a) where
     eq (Graph vs1 es1) (Graph vs2 es2) = eq vs1 vs2 /\ eq es1 es2
     mapVariables f (Graph vs es) = Graph (mapVariables f vs) (mapVariables f es)

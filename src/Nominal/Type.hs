@@ -66,7 +66,7 @@ instance NominalType Integer
 instance NominalType Ordering
 
 instance NominalType a => NominalType [a] where
-    eq l1 l2 = and $ zipWith eq l1 l2
+    eq l1 l2 = if length l1 == length l2 then and $ zipWith eq l1 l2 else false
     mapVariables f = fmap $ mapVariables f
     foldVariables f = foldl $ foldVariables f
     simplify = fmap simplify

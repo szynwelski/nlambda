@@ -1,5 +1,5 @@
 module Nominal.Formula (
-    Formula(..),
+    Formula,
 
     -- constructors
     true,
