@@ -65,6 +65,7 @@ simplifyFormula (ForAll _ (Constraint _ _ _)) = F
 simplifyFormula (ForAll x f) | not (isQuantificationVariable x) =
     let qv = quantificationVariable $ succ $ getQuantificationLevel f
     in simplifyQuantifiedAndOr $ ForAll qv (replaceFormulaVariable x qv f)
+simplifyFormula qf@(ForAll x f) =  simplifyQuantifiedAndOr qf
 
 ----------------------------------------------------------------------------------------------------
 -- Simplify existential quantification
@@ -78,6 +79,7 @@ simplifyFormula (Exists _ (Constraint _ _ _)) = T
 simplifyFormula (Exists x f) | not (isQuantificationVariable x) =
     let qv = quantificationVariable $ succ $ getQuantificationLevel f
     in simplifyQuantifiedAndOr $ Exists qv (replaceFormulaVariable x qv f)
+simplifyFormula qf@(Exists x f) =  simplifyQuantifiedAndOr qf
 
 ----------------------------------------------------------------------------------------------------
 -- Otherwise
