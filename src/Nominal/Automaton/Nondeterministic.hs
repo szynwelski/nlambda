@@ -13,7 +13,7 @@ import Prelude hiding (not)
 ----------------------------------------------------------------------------------------------------
 
 na :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a
-na q a d i f = Automaton q a (intersection d $ triples q a q) i f
+na q a d i f = Automaton q a (intersection d $ triples q a q) (intersection q i) (intersection q f)
 
 atomsNA :: NominalType q => Set q -> Set (q, Atom, q) -> Set q -> Set q -> Automaton q Atom
 atomsNA q d i f = na q atoms d i f
