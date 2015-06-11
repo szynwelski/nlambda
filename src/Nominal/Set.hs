@@ -7,6 +7,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
+import Nominal.Atom (Atom, atom)
 import Nominal.Conditional
 import Nominal.Formula
 import Nominal.Maybe
@@ -14,7 +15,7 @@ import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, neq, replaceV
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Variable (Timestamp, Variable, changeIterationLevel, clearTimestamp, getIterationLevel, hasTimestampEquals,
                          hasTimestampNotEquals, iterationVariablesList, iterationVariable, setTimestamp, variableName)
-import Nominal.Variants (Atom, Variants, atom, fromVariant, toList, variant)
+import Nominal.Variants (Variants, fromVariant, toList, variant)
 import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
 

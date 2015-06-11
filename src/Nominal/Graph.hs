@@ -1,6 +1,7 @@
 module Nominal.Graph where
 
 import Data.Tuple (swap)
+import Nominal.Atom
 import Nominal.Conditional
 import Nominal.Formula
 import Nominal.Maybe

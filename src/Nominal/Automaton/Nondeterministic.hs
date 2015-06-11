@@ -1,5 +1,6 @@
 module Nominal.Automaton.Nondeterministic where
 
+import Nominal.Atom
 import Nominal.Automaton.Base
 import Nominal.Automaton.Deterministic (isDeterministic)
 import Nominal.Formula

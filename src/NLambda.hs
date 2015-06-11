@@ -1,13 +1,12 @@
 module NLambda where
 
+import Nominal.Atom
 import Nominal.Automaton.Base
 import Nominal.Automaton.Deterministic
 import Nominal.Automaton.Nondeterministic
 import Nominal.Conditional
 import Nominal.Either
 import Nominal.Formula
---import Nominal.Formula.Definition
---import Nominal.Formula.Simplifier
 import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Set

@@ -2,7 +2,7 @@ module Nominal.VariablesSpace where
 
 import Control.Monad (replicateM)
 import Control.Monad.State (State, evalState, state)
-import Nominal.Variants (Atom, atom)
+import Nominal.Atom (Atom, atom)
 
 ----------------------------------------------------------------------------------------------------
 -- Variable space

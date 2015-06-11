@@ -5,7 +5,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Nominal.Conditional
 import Nominal.Formula
-import Nominal.Variable (Variable, variable)
 import Prelude hiding (or, not)
 
 ----------------------------------------------------------------------------------------------------
@@ -54,24 +53,3 @@ fromVariant vs = case values vs of
 
 variantsRelation :: (a -> a -> Formula) -> Variants a -> Variants a -> Formula
 variantsRelation r vs1 vs2 = or [(r v1 v2) /\ c1 /\ c2 | (v1, c1) <- toList vs1, (v2, c2) <- toList vs2]
-
-----------------------------------------------------------------------------------------------------
--- Atom
-----------------------------------------------------------------------------------------------------
-
-type Atom = Variants Variable
-
-atom :: String -> Atom
-atom = variant . variable
-
-lt :: Atom -> Atom -> Formula
-lt = variantsRelation lessThan
-
-le :: Atom -> Atom -> Formula
-le = variantsRelation lessEquals
-
-gt :: Atom -> Atom -> Formula
-gt = variantsRelation greaterThan
-
-ge :: Atom -> Atom -> Formula
-ge = variantsRelation greaterEquals
