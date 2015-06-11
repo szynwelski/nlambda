@@ -1,28 +1,22 @@
 module Nominal.Automaton.Nondeterministic where
 
-import Nominal.Conditional
+import Nominal.Automaton.Base
+import Nominal.Automaton.Deterministic (isDeterministic)
 import Nominal.Formula
-import Nominal.Maybe
 import Nominal.Set
 import Nominal.Type
+import Nominal.Variants
+import Prelude hiding (not)
 
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Nondeterministic automaton
 ----------------------------------------------------------------------------------------------------
 
-data NAutomaton a b = NAutomaton {delta :: Set (a, b, a), initialStates :: Set a, finalStates :: Set a} deriving Show
+na :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a
+na q a d i f = Automaton q a (intersection d $ triples q a q) i f
 
-na :: Set (a, b, a) -> Set a -> Set a -> NAutomaton a b
-na = NAutomaton
+atomsNA :: NominalType q => Set q -> Set (q, Atom, q) -> Set q -> Set q -> Automaton q Atom
+atomsNA q d i f = na q atoms d i f
 
-nAccepts :: (NominalType a, NominalType b) => NAutomaton a b -> [b] -> Formula
-nAccepts a = intersect (finalStates a)
-           . foldl
-               (\s l -> mapFilter (\(s1, l', s2) -> ite (contains s s1 /\ eq l l') (just s2) nothing) (delta a))
-               (initialStates a)
-
-nMinimize :: NAutomaton a b -> NAutomaton (Set a) b
-nMinimize a = undefined
-
-
-
+isNondeterministic :: (NominalType q, NominalType a) => Automaton q a -> Formula
+isNondeterministic = not . isDeterministic

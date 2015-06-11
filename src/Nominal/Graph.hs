@@ -7,7 +7,7 @@ import Nominal.Maybe
 import Nominal.Set
 import Nominal.Type
 import Nominal.Variants hiding (filter, map)
-import Prelude hiding (filter, map, not)
+import Prelude hiding (filter, map, not, sum)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph
@@ -92,7 +92,7 @@ undirected (Graph vs es) = Graph vs $ union es (map swap es)
 subgraph :: NominalType a => Graph a -> Set a -> Graph a
 subgraph (Graph vs es) vs' =
     Graph (vs' `intersection` vs)
-          (mapFilter (\(v1, v2) -> iF (contains vs' v1 /\ contains vs' v2) (just (v1, v2)) nothing) es)
+          (mapFilter (\(v1, v2) -> when (contains vs' v1 /\ contains vs' v2) (v1, v2)) es)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph algorithms
@@ -108,17 +108,17 @@ containsEdge :: NominalType a => Graph a -> (a, a) -> Formula
 containsEdge (Graph vs es) e = contains es e
 
 preds :: NominalType a => Graph a -> a -> Set a
-preds g v = mapFilter (\(a, b) -> iF (eq b v) (just a) nothing) (edges g)
+preds g v = mapFilter (\(a, b) -> when (eq b v) a) (edges g)
 
 succs :: NominalType a => Graph a -> a -> Set a
-succs g v = mapFilter (\(a, b) -> iF (eq a v) (just b) nothing) (edges g)
+succs g v = mapFilter (\(a, b) -> when (eq a v) b) (edges g)
 
 neighbors :: NominalType a => Graph a -> a -> Set a
 neighbors g v = union (succs g v) (preds g v)
 
 transitiveClosure :: NominalType a => Graph a -> Graph a
 transitiveClosure (Graph vs es) = Graph vs (edgesClosure es)
-    where edgesClosure es = let es' = mapFilter (\((a, b), (c, d)) -> iF (eq b c) (just (a, d)) nothing) $ squared es
+    where edgesClosure es = let es' = mapFilter (\((a, b), (c, d)) -> when (eq b c) (a, d)) $ squared es
                                 es'' = simplify $ union es es'
                             in ite (eq es es'') es (edgesClosure es'')
 
@@ -136,6 +136,9 @@ hasCycle = hasLoop . transitiveClosure
 
 reachable :: NominalType a => Graph a -> a -> Set a
 reachable g v = insert v $ succs (transitiveClosure g) v
+
+reachableFromSet :: NominalType a => Graph a -> Set a -> Set a
+reachableFromSet g s = sum $ map (reachable g) s
 
 weaklyConnectedComponent :: NominalType a => Graph a -> a -> Graph a
 weaklyConnectedComponent g v = subgraph g $ union (reachable g v) (reachable (reverseEdges g) v)

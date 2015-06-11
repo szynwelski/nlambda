@@ -131,7 +131,8 @@ delete :: NominalType a => a -> Set a -> Set a
 delete e = filter (not . (eq e)) . Set . (Map.delete e) . setElements
 
 map :: (NominalType a, NominalType b) => (a -> b) -> Set a -> Set b
-map f = Set . checkVariables
+map f = Set . filterNotFalse
+            . checkVariables
             . Map.fromListWith sumCondition
             . Map.foldrWithKey (mapAndMerge f) []
             . setElements
@@ -230,6 +231,9 @@ pairs = pairsWith (,)
 pairsWith :: (NominalType a, NominalType b, NominalType c) => (a -> b -> c) -> Set a -> Set b -> Set c
 pairsWith f s1 s2 = sum $ map (\e1 -> map (f e1) s2) s1
 
+pairsWithFilter :: (NominalType a, NominalType b, NominalType c) => (a -> b -> NominalMaybe c) -> Set a -> Set b -> Set c
+pairsWithFilter f s1 s2 = mapFilter id (pairsWith f s1 s2)
+
 squared :: NominalType a => Set a -> Set (a, a)
 squared s = pairs s s
 
@@ -240,8 +244,12 @@ triples :: (NominalType a, NominalType b, NominalType c) => Set a -> Set b -> Se
 triples = triplesWith (,,)
 
 triplesWith :: (NominalType a, NominalType b, NominalType c, NominalType d)
-               => (a -> b -> c -> d) -> Set a -> Set b -> Set c -> Set d
+    => (a -> b -> c -> d) -> Set a -> Set b -> Set c -> Set d
 triplesWith f s1 s2 s3 = sum $ sum $ map (\e1 -> map (\e2 -> map (f e1 e2) s3) s2) s1
+
+triplesWithFilter :: (NominalType a, NominalType b, NominalType c, NominalType d)
+    => (a -> b -> c -> NominalMaybe d) -> Set a -> Set b -> Set c -> Set d
+triplesWithFilter f s1 s2 s3 = mapFilter id (triplesWith f s1 s2 s3)
 
 atomsTriples :: Set (Atom, Atom, Atom)
 atomsTriples = triples atoms atoms atoms
