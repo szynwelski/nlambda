@@ -34,4 +34,4 @@ isNothing :: NominalMaybe a -> Formula
 isNothing = satisfying Maybe.isNothing
 
 when :: Ord a => Formula -> a -> NominalMaybe a
-when c v = iF c (just v) nothing
+when c v = ite c (just v) nothing

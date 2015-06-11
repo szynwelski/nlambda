@@ -20,8 +20,8 @@ data Automaton q a = Automaton {states :: Set q, alphabet :: Set a, delta :: Set
 ----------------------------------------------------------------------------------------------------
 
 instance (Conditional q, NominalType q, NominalType a) => Conditional (Automaton q a) where
-    iF c (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) =
-        Automaton (iF c q1 q2) (iF c a1 a2) (iF c d1 d2) (iF c i1 i2) (iF c f1 f2)
+    ite c (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) =
+        Automaton (ite c q1 q2) (ite c a1 a2) (ite c d1 d2) (ite c i1 i2) (ite c f1 f2)
 
 instance (NominalType q, NominalType a) => NominalType (Automaton q a) where
     eq (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) = eq q1 q2 /\ eq a1 a2 /\ eq d1 d2 /\ eq i1 i2 /\ eq f1 f2
@@ -36,7 +36,7 @@ instance (NominalType q, NominalType a) => NominalType (Automaton q a) where
 ----------------------------------------------------------------------------------------------------
 
 transit :: (NominalType q, NominalType a) => Automaton q a -> Set q -> a -> Set q
-transit aut ss l = mapFilter (\(s1, l', s2) -> iF (contains ss s1 /\ eq l l') (just s2) nothing) (delta aut)
+transit aut ss l = mapFilter (\(s1, l', s2) -> ite (contains ss s1 /\ eq l l') (just s2) nothing) (delta aut)
 
 accepts :: (NominalType q, NominalType a) => Automaton q a -> [a] -> Formula
 accepts aut = intersect (finalStates aut) . foldl (transit aut) (initialStates aut)

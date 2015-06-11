@@ -42,7 +42,7 @@ c = atom "c"
 d = atom "d"
 e = atom "e"
 cond = eq a b
-at = iF cond a b
+at = ite cond a b
 set1 = singleton at
 set2 = fromList [a, b]
 set3 = fromList [a, b, c]
@@ -78,7 +78,7 @@ f2 = le b c
 f3 = le c d
 f4 = le d e
 
-result = simplify $ accepts (atomsDA (fromList [a,b,c]) (\x y -> iF (eq x y) a b) a (singleton c)) [a,b,c]
+result = simplify $ accepts (atomsDA (fromList [a,b,c]) (\x y -> ite (eq x y) a b) a (singleton c)) [a,b,c]
 -- ((a /= b || a /= c) && (b /= c || a = b) && b = c) || (((a /= b && b = c) || (a = b && a = c)) && a = c)
 -- (((a /= b && b = c) || (a = b && a = c)) && a = c) || (((a /= b || a /= c) && (b /= c || a = b)) && b = c)
 result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b)

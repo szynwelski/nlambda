@@ -14,7 +14,7 @@ import Nominal.Variants
 
 da :: (NominalType q, NominalType a) => Set q -> Set a -> (q -> a -> q) -> q -> Set q -> Automaton q a
 da q a d i f = Automaton q a d' (singleton i) f
-    where d' = pairsWithFilter (\s l -> let s' = d s l in iF (contains q s') (just (s,l,s')) nothing) q a
+    where d' = pairsWithFilter (\s l -> let s' = d s l in ite (contains q s') (just (s,l,s')) nothing) q a
 
 
 isDeterministic :: (NominalType q, NominalType a) => Automaton q a -> Formula

@@ -89,7 +89,7 @@ instance Show a => Show (Set a) where
               in show v ++ (if null condition then "" else " :" ++ condition)
 
 instance NominalType a => Conditional (Set a) where
-    iF c s1 s2 = union (filter (const c) s1) (filter (const $ not c) s2)
+    ite c s1 s2 = union (filter (const c) s1) (filter (const $ not c) s2)
 
 instance NominalType a => NominalType (Set a) where
     eq s1 s2 = (isSubsetOf s1 s2) /\ (isSubsetOf s2 s1)
@@ -276,5 +276,5 @@ hasSize :: NominalType a => Set a -> Int -> Formula
 hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)
 
 size :: NominalType a => Set a -> Variants Int
-size s = findSize s 1 where findSize s n = ite (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
+size s = findSize s 1 where findSize s n = ite' (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
 

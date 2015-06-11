@@ -49,7 +49,7 @@ instance NominalType Formula where
     eq = iff
     mapVariables = mapFormulaVariables
     foldVariables = foldFormulaVariables
-    simplify f = ite f true false
+    simplify f = ite' f true false
 
 instance NominalType Bool
 
