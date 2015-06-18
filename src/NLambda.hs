@@ -7,6 +7,7 @@ import Nominal.Automaton.Nondeterministic
 import Nominal.Conditional
 import Nominal.Either
 import Nominal.Formula
+import Nominal.Formula.Simplifier
 import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Set
@@ -19,6 +20,7 @@ import Prelude hiding (or, and, not, sum, map, filter, maybe)
 ----------------------------------------------------------------------------------------------------
 -- Examples
 ----------------------------------------------------------------------------------------------------
+w = variable "w"
 x = variable "x"
 y = variable "y"
 z = variable "z"

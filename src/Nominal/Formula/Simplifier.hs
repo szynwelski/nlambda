@@ -1,6 +1,8 @@
 module Nominal.Formula.Simplifier where
 
 import Data.List (groupBy)
+import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Set hiding (foldr)
 import Nominal.Formula.Definition
 import Nominal.Formula.Instances
@@ -10,85 +12,18 @@ import Prelude hiding (foldl, map, null)
 --import Debug.Trace
 
 ----------------------------------------------------------------------------------------------------
--- Signature of simplification function
-----------------------------------------------------------------------------------------------------
-
-simplifyFormula :: Formula -> Formula
-
-----------------------------------------------------------------------------------------------------
 -- Simplify constraint
 ----------------------------------------------------------------------------------------------------
 
-simplifyFormula (Constraint r x1 x2)
+simplifyConstraint :: Relation -> Variable -> Variable -> Formula
+--simplifyConstraint r x1 x2 | trace ("simplifyConstraint " ++ show r ++ " " ++ show x1 ++ " " ++ show x2) False = undefined
+simplifyConstraint r x1 x2
     | x1 == x2 = if r == LessThan || r == GreaterThan || r == NotEquals then F else T
     | x1 > x2 = Constraint (symmetricRelation r) x2 x1
+    | otherwise = Constraint r x1 x2
 
 ----------------------------------------------------------------------------------------------------
 -- Simplify conjunction
-----------------------------------------------------------------------------------------------------
-
-simplifyFormula (And fs) = simplifyAndFormula fs
-
-----------------------------------------------------------------------------------------------------
--- Simplify disjunction
-----------------------------------------------------------------------------------------------------
-
-simplifyFormula (Or fs) = simplifyOrFormula fs
-
-----------------------------------------------------------------------------------------------------
--- Simplify negation
-----------------------------------------------------------------------------------------------------
-
-simplifyFormula (Not T) = F
-simplifyFormula (Not F) = T
-simplifyFormula (Not (Constraint LessThan x1 x2)) = Constraint GreaterEquals x1 x2
-simplifyFormula (Not (Constraint LessEquals x1 x2)) = Constraint GreaterThan x1 x2
-simplifyFormula (Not (Constraint Equals x1 x2)) = Constraint NotEquals x1 x2
-simplifyFormula (Not (Constraint NotEquals x1 x2)) = Constraint Equals x1 x2
-simplifyFormula (Not (Constraint GreaterThan x1 x2)) = Constraint LessEquals x1 x2
-simplifyFormula (Not (Constraint GreaterEquals x1 x2)) = Constraint LessThan x1 x2
-simplifyFormula (Not (Not f)) = f
-simplifyFormula (Not (Or fs)) = simplifyFormula $ And $ map simpleNot fs
-simplifyFormula (Not (And fs)) = simplifyFormula $ Or $ map simpleNot fs
-simplifyFormula (Not (ForAll x f)) = simplifyFormula $ Exists x $ simpleNot f
-simplifyFormula (Not (Exists x f)) = simplifyFormula $ ForAll x $ simpleNot f
-
-----------------------------------------------------------------------------------------------------
--- Simplify universal quantification
-----------------------------------------------------------------------------------------------------
-
---simplifyFormula (ForAll x f) | trace ("forall " ++ show x ++ ": " ++ show f) False = undefined
-simplifyFormula (ForAll _ T) = T
-simplifyFormula (ForAll _ F) = F
-simplifyFormula (ForAll x f) | not $ member x (freeVariables f) = f
-simplifyFormula (ForAll _ (Constraint _ _ _)) = F
-simplifyFormula (ForAll x f) | not (isQuantificationVariable x) =
-    let qv = quantificationVariable $ succ $ getQuantificationLevel f
-    in simplifyQuantifiedAndOr $ ForAll qv (replaceFormulaVariable x qv f)
-simplifyFormula qf@(ForAll x f) =  simplifyQuantifiedAndOr qf
-
-----------------------------------------------------------------------------------------------------
--- Simplify existential quantification
-----------------------------------------------------------------------------------------------------
-
---simplifyFormula (Exists x f) | trace ("exists " ++ show x ++ ": " ++ show f) False = undefined
-simplifyFormula (Exists _ T) = T
-simplifyFormula (Exists _ F) = F
-simplifyFormula (Exists x f) | not $ member x (freeVariables f) = f
-simplifyFormula (Exists _ (Constraint _ _ _)) = T
-simplifyFormula (Exists x f) | not (isQuantificationVariable x) =
-    let qv = quantificationVariable $ succ $ getQuantificationLevel f
-    in simplifyQuantifiedAndOr $ Exists qv (replaceFormulaVariable x qv f)
-simplifyFormula qf@(Exists x f) =  simplifyQuantifiedAndOr qf
-
-----------------------------------------------------------------------------------------------------
--- Otherwise
-----------------------------------------------------------------------------------------------------
-
-simplifyFormula f = f
-
-----------------------------------------------------------------------------------------------------
--- Simplify conjunction formula
 ----------------------------------------------------------------------------------------------------
 
 ------------------------------------------------------
@@ -107,14 +42,18 @@ andUnion fs = unions $ fmap fromAnd $ elems fs
 ---- (x = y) /\ f ~~> (x = y) /\ f[y:=x]          ----
 ------------------------------------------------------
 
-replaceVariableFromEquation :: Set Formula -> Formula -> Set Formula
-replaceVariableFromEquation sf f@(Constraint Equals x1 x2) =
-    map (\f'-> if f' == f then f' else replaceFormulaVariable x2 x1 f') sf
-replaceVariableFromEquation sf _ = sf
+isEquation :: Formula -> Bool
+isEquation (Constraint Equals _ _) = True
+isEquation _ = False
 
 checkEquationsInAnd :: Set Formula -> Set Formula
---checkEquationsInAnd fs | trace ("checkEquationsInAnd " ++ show fs) False = undefined
-checkEquationsInAnd fs = foldl replaceVariableFromEquation fs fs
+checkEquationsInAnd fs = union (fromMap eqMap) (map (replaceFormulaVariables eqMap) fs2)
+    where (fs1, fs2) = partition isEquation fs
+          eqMap = foldl findEquationsMap Map.empty fs1
+          findEquationsMap eqMap (Constraint Equals x1 x2) =
+            let x = min (Map.findWithDefault x1 x1 eqMap) (Map.findWithDefault x1 x2 eqMap)
+            in Map.insert x1 x $ Map.insert x2 x eqMap
+          fromMap = fromList . fmap (\(x1, x2) -> simplifyConstraint Equals x2 x1) . Map.assocs
 
 ------------------------------------------------------
 ---- (x >= y) /\ (x <= y) ~~> x = y              -----
@@ -173,16 +112,16 @@ orDelete f (Or fs) = checkOrSize $ delete f fs
 
 addToAnd :: Set Formula -> Formula -> Set Formula
 --addToAnd fs f | trace ("add " ++ show f ++ " to and " ++ show fs) False = undefined
-addToAnd fs f | member (simpleNot f) fs = singleton F
+addToAnd fs f | member (simplifyNot f) fs = singleton F
 addToAnd fs f | not $ null fs1 = addToAnd fs2 f
     where (fs1, fs2) = partition (flip orContains f) fs
 addToAnd fs f | not $ null fs1 = addToAnd (union (map (orDelete nf) fs1) fs2) f
-    where nf = simpleNot f
+    where nf = simplifyNot f
           (fs1, fs2) = partition (flip orContains $ nf) fs
 addToAnd fs f@(Or _) | not $ null fs1 = fs
     where (fs1, fs2) = partition (orContains f) fs
-addToAnd fs f@(Or _) | not $ null fs1 = addToAnd fs (orDelete (simpleNot $ findMin fs1) f)
-        where (fs1, fs2) = partition (orContains f . simpleNot) fs
+addToAnd fs f@(Or _) | not $ null fs1 = addToAnd fs (orDelete (simplifyNot $ findMin fs1) f)
+        where (fs1, fs2) = partition (orContains f . simplifyNot) fs
 addToAnd fs f = insert f fs
 
 checkAndPairs :: Set Formula -> Set Formula
@@ -223,11 +162,11 @@ checkAndSize = checkSize T And
 andSimplifier :: Set Formula -> Set Formula
 andSimplifier = checkBoolInAnd . checkAndPairs . checkAndConstraints . checkEquationsInAnd . andUnion
 
-simplifyAndFormula :: Set Formula -> Formula
-simplifyAndFormula = checkAndSize . findFixedPoint andSimplifier
+simplifyAnd :: Set Formula -> Formula
+simplifyAnd = checkAndSize . findFixedPoint andSimplifier
 
 ----------------------------------------------------------------------------------------------------
--- Simplify disjunction formula
+-- Simplify disjunction
 ----------------------------------------------------------------------------------------------------
 
 ------------------------------------------------------
@@ -241,19 +180,6 @@ fromOr f = singleton f
 orUnion :: Set Formula -> Set Formula
 --orUnion fs | trace ("orUnion " ++ show fs) False = undefined
 orUnion fs = unions $ fmap fromOr $ elems fs
-
-------------------------------------------------------
----- (x /= y) \/ f ~~> (x /= y) /\ f[y:=x]        ----
-------------------------------------------------------
-
-replaceVariableFromInequation :: Set Formula -> Formula -> Set Formula
-replaceVariableFromInequation sf f@(Constraint NotEquals x1 x2) =
-    map (\f'-> if f' == f then f' else replaceFormulaVariable x2 x1 f') sf
-replaceVariableFromInequation sf _ = sf
-
-checkInequationsInOr :: Set Formula -> Set Formula
---checkInequationsInOr fs | trace ("checkInequationsInOr " ++ show fs) False = undefined
-checkInequationsInOr fs = foldl replaceVariableFromInequation fs fs
 
 ------------------------------------------------------
 ---- (x > y) \/ (x < y)  ~~> x /= y              -----
@@ -304,16 +230,16 @@ andDelete f (And fs) = checkAndSize $ delete f fs
 
 addToOr :: Set Formula -> Formula -> Set Formula
 --addToOr fs f | trace ("add " ++ show f ++ " to or " ++ show fs) False = undefined
-addToOr fs f | member (simpleNot f) fs = singleton T
+addToOr fs f | member (simplifyNot f) fs = singleton T
 addToOr fs f | not $ null fs1 = addToOr fs2 f
     where (fs1, fs2) = partition (flip andContains f) fs
 addToOr fs f | not $ null fs1 = addToOr (union (map (andDelete nf) fs1) fs2) f
-    where nf = simpleNot f
+    where nf = simplifyNot f
           (fs1, fs2) = partition (flip andContains $ nf) fs
 addToOr fs f@(And _) | not $ null fs1 = fs
     where (fs1, fs2) = partition (andContains f) fs
-addToOr fs f@(And _) | not $ null fs1 = addToOr fs (andDelete (simpleNot $ findMin fs1) f)
-        where (fs1, fs2) = partition (andContains f . simpleNot) fs
+addToOr fs f@(And _) | not $ null fs1 = addToOr fs (andDelete (simplifyNot $ findMin fs1) f)
+        where (fs1, fs2) = partition (andContains f . simplifyNot) fs
 addToOr fs f = insert f fs
 
 checkOrPairs :: Set Formula -> Set Formula
@@ -345,10 +271,69 @@ checkOrSize = checkSize F Or
 ------------------------------------------------------
 
 orSimplifier :: Set Formula -> Set Formula
-orSimplifier = checkBoolInOr . checkOrPairs . checkOrConstraints . checkInequationsInOr . orUnion
+orSimplifier = checkBoolInOr . checkOrPairs . checkOrConstraints . orUnion
 
-simplifyOrFormula :: Set Formula -> Formula
-simplifyOrFormula = checkOrSize . findFixedPoint orSimplifier
+simplifyOr :: Set Formula -> Formula
+--simplifyOr fs | trace ("simplifyOr " ++ show fs) False = undefined
+simplifyOr fs = checkOrSize $ findFixedPoint orSimplifier fs
+--simplifyOr = checkOrSize . findFixedPoint orSimplifier
+
+----------------------------------------------------------------------------------------------------
+-- Simplify negation
+----------------------------------------------------------------------------------------------------
+
+simplifyNot :: Formula -> Formula
+--simplifyNot f | trace ("simplifyNot " ++ show f) False = undefined
+simplifyNot T = F
+simplifyNot F = T
+simplifyNot (Constraint LessThan x1 x2) = Constraint GreaterEquals x1 x2
+simplifyNot (Constraint LessEquals x1 x2) = Constraint GreaterThan x1 x2
+simplifyNot (Constraint Equals x1 x2) = Constraint NotEquals x1 x2
+simplifyNot (Constraint NotEquals x1 x2) = Constraint Equals x1 x2
+simplifyNot (Constraint GreaterThan x1 x2) = Constraint LessEquals x1 x2
+simplifyNot (Constraint GreaterEquals x1 x2) = Constraint LessThan x1 x2
+simplifyNot (Not f) = f
+simplifyNot (Or fs) = simplifyAnd $ map simplifyNot fs
+simplifyNot (And fs) = simplifyOr $ map simplifyNot fs
+simplifyNot (ForAll x f) = simplifyExists x $ simplifyNot f
+simplifyNot (Exists x f) = simplifyForAll x $ simplifyNot f
+
+----------------------------------------------------------------------------------------------------
+-- Simplify universal quantification
+----------------------------------------------------------------------------------------------------
+
+simplifyForAll :: Variable -> Formula -> Formula
+--simplifyForAll x f | trace ("forall " ++ show x ++ ": " ++ show f) False = undefined
+simplifyForAll _ T = T
+simplifyForAll _ F = F
+simplifyForAll x f | not $ member x (freeVariables f) = f
+simplifyForAll _ (Constraint _ _ _) = F
+simplifyForAll x f | not (isQuantificationVariable x) =
+    let qv = quantificationVariable $ succ $ getQuantificationLevel f
+    in simplifyQuantifiedAndOr $ ForAll qv (replaceFormulaVariable x qv f)
+simplifyForAll x f =  simplifyQuantifiedAndOr $ ForAll x f
+
+----------------------------------------------------------------------------------------------------
+-- Simplify existential quantification
+----------------------------------------------------------------------------------------------------
+
+simplifyExists :: Variable -> Formula -> Formula
+--simplifyExists x f | trace ("simplifyExists " ++ show x ++ ": " ++ show f) False = undefined
+simplifyExists _ T = T
+simplifyExists _ F = F
+simplifyExists _ (Constraint _ _ _) = T
+simplifyExists x (And fs) | not $ null fs2 =
+    simplifyAnd $ fromList [simplifyExists x (checkAndSize fs1), (checkAndSize fs2)]
+    where (fs1, fs2) = partition (member x . freeVariables) fs
+simplifyExists x (Or fs) | not $ null fs2 =
+    simplifyOr $ fromList [simplifyExists x (checkOrSize fs1), (checkOrSize fs2)]
+    where (fs1, fs2) = partition (member x . freeVariables) fs
+--simplifyExists _ _ | trace ("simplifyExistsCheck") False = undefined
+simplifyExists x f | not $ member x (freeVariables f) = f
+simplifyExists x f = if isQuantificationVariable x
+                     then Exists x f
+                     else let qv = quantificationVariable $ succ $ getQuantificationLevel f
+                          in Exists qv (replaceFormulaVariable x qv f)
 
 ----------------------------------------------------------------------------------------------------
 -- Simplify quantified conjunction/disjunction formula
@@ -364,25 +349,21 @@ simplifyOrFormula = checkOrSize . findFixedPoint orSimplifier
 simplifyQuantifiedAndOr' :: (Variable -> Formula -> Formula) -> Variable
                             -> (Set Formula -> Formula) -> Set Formula -> Formula
 simplifyQuantifiedAndOr' qf x lf fs | not (null fs1 || null fs2) =
-    simplifyFormula $ lf $ fromList [simplifyFormula $ qf x (checkSize undefined lf fs1), (checkSize undefined lf fs2)]
+    lf $ fromList [qf x (checkSize undefined lf fs1), (checkSize undefined lf fs2)]
     where (fs1, fs2) = partition (member x . freeVariables) fs
 simplifyQuantifiedAndOr' qf x lf fs = qf x (lf fs)
 
 simplifyQuantifiedAndOr :: Formula -> Formula
 --simplifyQuantifiedAndOr f | trace ("simplifyQuantifiedAndOr " ++ show f) False = undefined
-simplifyQuantifiedAndOr (Exists x (And fs)) = simplifyQuantifiedAndOr' Exists x And fs
-simplifyQuantifiedAndOr (Exists x (Or fs)) = simplifyQuantifiedAndOr' Exists x Or fs
-simplifyQuantifiedAndOr (ForAll x (And fs)) = simplifyQuantifiedAndOr' ForAll x And fs
-simplifyQuantifiedAndOr (ForAll x (Or fs)) = simplifyQuantifiedAndOr' ForAll x Or fs
+simplifyQuantifiedAndOr (Exists x (And fs)) = simplifyQuantifiedAndOr' simplifyExists x simplifyAnd fs
+simplifyQuantifiedAndOr (Exists x (Or fs)) = simplifyQuantifiedAndOr' simplifyExists x simplifyOr fs
+simplifyQuantifiedAndOr (ForAll x (And fs)) = simplifyQuantifiedAndOr' simplifyForAll x simplifyAnd fs
+simplifyQuantifiedAndOr (ForAll x (Or fs)) = simplifyQuantifiedAndOr' simplifyForAll x simplifyOr fs
 simplifyQuantifiedAndOr f = f
 
 ----------------------------------------------------------------------------------------------------
 -- Auxiliary function
 ----------------------------------------------------------------------------------------------------
-
-simpleNot :: Formula -> Formula
---simpleNot f | trace ("simpleNot " ++ show f) False = undefined
-simpleNot f = simplifyFormula $ Not f
 
 findFixedPoint :: (Show a, Eq a) => (a -> a) -> a -> a
 --findFixedPoint _ x | trace ("fix point: " ++ show x) False = undefined
@@ -401,15 +382,18 @@ foldFormulaVariables fun acc (Exists x f) = foldFormulaVariables fun (fun x acc)
 mapFormulaVariables :: (Variable -> Variable) -> Formula -> Formula
 mapFormulaVariables _ T = T
 mapFormulaVariables _ F = F
-mapFormulaVariables fun (Constraint r x1 x2) = simplifyFormula $ Constraint r (fun x1) (fun x2)
-mapFormulaVariables fun (And fs) = simplifyFormula $ And $ map (mapFormulaVariables fun) fs
-mapFormulaVariables fun (Or fs) = simplifyFormula $ Or $ map (mapFormulaVariables fun) fs
-mapFormulaVariables fun (Not f) = simplifyFormula $ Not $ mapFormulaVariables fun f
-mapFormulaVariables fun (ForAll x f) = simplifyFormula $ ForAll (fun x) (mapFormulaVariables fun f)
-mapFormulaVariables fun (Exists x f) = simplifyFormula $ Exists (fun x) (mapFormulaVariables fun f)
+mapFormulaVariables fun (Constraint r x1 x2) = simplifyConstraint r (fun x1) (fun x2)
+mapFormulaVariables fun (And fs) = simplifyAnd $ map (mapFormulaVariables fun) fs
+mapFormulaVariables fun (Or fs) = simplifyOr $ map (mapFormulaVariables fun) fs
+mapFormulaVariables fun (Not f) = simplifyNot $ mapFormulaVariables fun f
+mapFormulaVariables fun (ForAll x f) = simplifyForAll (fun x) (mapFormulaVariables fun f)
+mapFormulaVariables fun (Exists x f) = simplifyExists (fun x) (mapFormulaVariables fun f)
 
 replaceFormulaVariable :: Variable -> Variable -> Formula -> Formula
 replaceFormulaVariable oldVar newVar = mapFormulaVariables (\var -> if oldVar == var then newVar else var)
+
+replaceFormulaVariables :: Map Variable Variable -> Formula -> Formula
+replaceFormulaVariables vMap = mapFormulaVariables (\var -> Map.findWithDefault var var vMap)
 
 getQuantificationLevel :: Formula -> Int
 getQuantificationLevel T = 0
