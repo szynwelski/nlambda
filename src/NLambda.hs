@@ -91,4 +91,5 @@ result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b)
 toMinAuto = atomsDA (replicateAtomsUntil 3) (flip (:)) [] (filter (\[a1,a2,a3] -> eq a1 a2 \/ eq a1 a3) $ replicateAtoms 3)
 parityAuto = atomsDA (fromList [0,1]) (\q _ -> mod (succ q) 2) 0 (singleton 0) :: Automaton Int Atom
 
-main = print $ equivalentDA (differenceDA toMinAuto parityAuto) toMinAuto
+result2 = simplify $ equivalentDA (differenceDA toMinAuto parityAuto) toMinAuto
+result3 = simplify $ equivalentDA (differenceDA parityAuto toMinAuto) parityAuto

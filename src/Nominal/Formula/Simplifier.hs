@@ -5,7 +5,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Set hiding (foldr, filter)
 import Nominal.Formula.Definition
-import Nominal.Formula.Instances
 import qualified Nominal.Util.UnionFind as UF
 import Nominal.Variable (Variable, isQuantificationVariable, quantificationVariable)
 import Prelude hiding (foldl, map, null)
@@ -240,6 +239,14 @@ simplifyForAll x f = simplifyNot $ simplifyExists x $ simplifyNot f
 ----------------------------------------------------------------------------------------------------
 -- Auxiliary function
 ----------------------------------------------------------------------------------------------------
+
+symmetricRelation :: Relation -> Relation
+symmetricRelation LessThan = GreaterThan
+symmetricRelation LessEquals = GreaterEquals
+symmetricRelation GreaterThan = LessThan
+symmetricRelation GreaterEquals = LessEquals
+symmetricRelation Equals = Equals
+symmetricRelation NotEquals = NotEquals
 
 findFixedPoint :: (Show a, Eq a) => (a -> a) -> a -> a
 --findFixedPoint _ x | trace ("fix point: " ++ show x) False = undefined
