@@ -87,7 +87,7 @@ removeLoops (Graph vs es) = Graph vs $ filter (uncurry neq) es
 reverseEdges :: NominalType a => Graph a -> Graph a
 reverseEdges (Graph vs es) = Graph vs $ map swap es
 
-undirected :: NominalType a => Graph a => Graph a
+undirected :: NominalType a => Graph a -> Graph a
 undirected (Graph vs es) = Graph vs $ union es (map swap es)
 
 subgraph :: NominalType a => Graph a -> Set a -> Graph a

@@ -79,16 +79,16 @@ f1 <==> f2 = (f1 ==> f2) /\ (f1 <== f2)
 iff :: Formula -> Formula -> Formula
 iff = (<==>)
 
--- for all
-(∀) :: Variable -> Formula -> Formula
-(∀) x f = simplifyForAll x f
-
-forAllVars :: Variable -> Formula -> Formula
-forAllVars = (∀)
-
 -- exists
 (∃) :: Variable -> Formula -> Formula
 (∃) x f = simplifyExists x f
 
 existsVar :: Variable -> Formula -> Formula
 existsVar = (∃)
+
+-- for all
+(∀) :: Variable -> Formula -> Formula
+(∀) x f = simplifyForAll x f
+
+forAllVars :: Variable -> Formula -> Formula
+forAllVars = (∀)

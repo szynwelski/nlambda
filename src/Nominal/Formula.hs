@@ -20,10 +20,10 @@ module Nominal.Formula (
     implies,
     (<==>),
     iff,
-    (∀),
-    forAllVars,
     (∃),
     existsVar,
+    (∀),
+    forAllVars,
 
     -- operations
     foldFormulaVariables,

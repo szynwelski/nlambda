@@ -35,5 +35,5 @@ data Formula
     | And (Set Formula)
     | Or (Set Formula)
     | Not Formula
-    | ForAll Variable Formula
     | Exists Variable Formula
+    | ForAll Variable Formula

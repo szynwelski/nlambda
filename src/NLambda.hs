@@ -17,6 +17,8 @@ import Nominal.VariablesSpace
 import Nominal.Variants hiding (filter, fromList, map)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 
+
+
 ----------------------------------------------------------------------------------------------------
 -- Examples
 ----------------------------------------------------------------------------------------------------
@@ -52,7 +54,9 @@ del = delete a sa
 ts = triples sa sa sa
 
 a1 = variant $ iterationVariable 0 1
+a2 = variant $ iterationVariable 0 2
 b1 = variant $ iterationVariable 1 1
+b2 = variant $ iterationVariable 1 2
 
 -- example program
 
@@ -86,3 +90,5 @@ result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b)
 
 toMinAuto = atomsDA (replicateAtomsUntil 3) (flip (:)) [] (filter (\[a1,a2,a3] -> eq a1 a2 \/ eq a1 a3) $ replicateAtoms 3)
 parityAuto = atomsDA (fromList [0,1]) (\q _ -> mod (succ q) 2) 0 (singleton 0) :: Automaton Int Atom
+
+main = print $ equivalentDA (differenceDA toMinAuto parityAuto) toMinAuto

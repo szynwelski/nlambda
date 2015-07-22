@@ -13,8 +13,8 @@ import Nominal.Formula.Definition
 showFormula :: Formula -> String
 showFormula f@(And fs) = "(" ++ show f ++ ")"
 showFormula f@(Or fs) = "(" ++ show f ++ ")"
-showFormula (ForAll x f) = "∀" ++ show x ++ "(" ++ show f ++ ")"
 showFormula (Exists x f) = "∃" ++ show x ++ "(" ++ show f ++ ")"
+showFormula (ForAll x f) = "∀" ++ show x ++ "(" ++ show f ++ ")"
 showFormula f = show f
 
 instance Show Formula where
@@ -24,8 +24,8 @@ instance Show Formula where
     show (And fs) = join " ∧ " $ fmap showFormula $ elems fs
     show (Or fs) = join " ∨ " $ fmap showFormula $ elems fs
     show (Not f) = "¬(" ++ show f ++ ")"
-    show (ForAll x f) = "∀" ++ show x ++ " " ++ show f
     show (Exists x f) = "∃" ++ show x ++ " " ++ show f
+    show (ForAll x f) = "∀" ++ show x ++ " " ++ show f
 
 -- Ord
 
@@ -84,11 +84,11 @@ instance Ord Formula where
     compare (Not _) _ = GT
     compare _ (Not _) = LT
 
-    compare (ForAll x1 f1) (ForAll x2 f2) =  compareSortedPairs (x1, f1) (x2, f2)
-    compare (ForAll _ _) _ = GT
-    compare _ (ForAll _ _) = LT
-
     compare (Exists x1 f1) (Exists x2 f2) =  compareSortedPairs (x1, f1) (x2, f2)
+    compare (Exists _ _) _ = GT
+    compare _ (Exists _ _) = LT
+
+    compare (ForAll x1 f1) (ForAll x2 f2) =  compareSortedPairs (x1, f1) (x2, f2)
 
 -- Eq
 
