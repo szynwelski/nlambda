@@ -1,11 +1,10 @@
 module Nominal.Formula.Solver (isTrueIO, isFalseIO, solveIO, isTrue, isFalse, solve) where
 
-import Data.Set (Set, elems, empty, map, member, singleton, toList, unions)
+import Data.Set (Set, elems, empty, map, member, null, singleton, unions)
 import Nominal.Formula.Constructors
 import Nominal.Formula.Definition
-import Nominal.Formula.Simplifier
-import Nominal.Variable (variableNameAscii)
-import Prelude hiding (not)
+import Nominal.Variable (Variable, variableNameAscii)
+import Prelude hiding (map, null)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import System.IO.Unsafe (unsafePerformIO)
@@ -31,7 +30,7 @@ getSmtLogicForRelation NotEquals = lia
 getSmtLogicForRelation GreaterThan = lra
 getSmtLogicForRelation GreaterEquals = lra
 
-getFormulaRelations :: Formula -> Set Relation
+getFormulaRelations :: FormulaStructure -> Set Relation
 getFormulaRelations T = empty
 getFormulaRelations F = empty
 getFormulaRelations (Constraint r _ _) = singleton r
@@ -41,8 +40,8 @@ getFormulaRelations (Not f) = getFormulaRelations f
 getFormulaRelations (ForAll _ f) = getFormulaRelations f
 getFormulaRelations (Exists _ f) = getFormulaRelations f
 
-getSmtLogic :: Formula -> SmtLogic
-getSmtLogic f = if member lra $ Data.Set.map getSmtLogicForRelation $ getFormulaRelations f then lra else lia
+getSmtLogic :: FormulaStructure -> SmtLogic
+getSmtLogic f = if member lra $ map getSmtLogicForRelation $ getFormulaRelations f then lra else lia
 
 ----------------------------------------------------------------------------------------------------
 -- SMT Solver
@@ -84,10 +83,10 @@ runSolver solver script = do
 -- SMT-LIB script
 ----------------------------------------------------------------------------------------------------
 
-getSmtAssertOp :: SmtLogic -> String -> [Formula] -> String
+getSmtAssertOp :: SmtLogic -> String -> [FormulaStructure] -> String
 getSmtAssertOp l op fs = "(" ++ op ++ " " ++ (concat $ fmap (getSmtAssert l) fs) ++ ")"
 
-getSmtAssert :: SmtLogic -> Formula -> String
+getSmtAssert :: SmtLogic -> FormulaStructure -> String
 getSmtAssert _ T = "true"
 getSmtAssert _ F = "false"
 getSmtAssert _ (Constraint NotEquals x1 x2) = "(not (= " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ "))"
@@ -98,34 +97,33 @@ getSmtAssert l (Not f) = getSmtAssertOp l "not" [f]
 getSmtAssert l (ForAll x f) = "(forall ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
 getSmtAssert l (Exists x f) = "(exists ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
 
-getSmtAssertForAllFree :: SmtLogic -> Formula -> String
-getSmtAssertForAllFree l f =
-    if null fvs
-        then (getSmtAssert l f)
-        else "(forall ("
-             ++ (concat $ fmap (\x -> "(" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")") fvs)
-             ++ ")"
-             ++ (getSmtAssert l f)
-             ++ ")"
-    where fvs = toList $ freeVariables f
+getSmtAssertForAllFree :: SmtLogic -> Set Variable -> FormulaStructure -> String
+getSmtAssertForAllFree l fv f =
+    if null fv
+    then (getSmtAssert l f)
+    else "(forall ("
+         ++ (concat $ fmap (\x -> "(" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")") $ elems fv)
+         ++")"
+         ++ (getSmtAssert l f)
+         ++ ")"
 
-getSmtScript :: Formula -> SmtScript
-getSmtScript f = let l = getSmtLogic f
-                 in "(set-logic " ++ logic l ++ ")(assert " ++ (getSmtAssertForAllFree l f) ++ ")(check-sat)"
+getSmtScript :: Set Variable -> FormulaStructure -> SmtScript
+getSmtScript fv f = let l = getSmtLogic f
+                    in "(set-logic " ++ logic l ++ ")(assert " ++ (getSmtAssertForAllFree l fv f) ++ ")(check-sat)"
 
 ----------------------------------------------------------------------------------------------------
 -- Formula solving
 ----------------------------------------------------------------------------------------------------
 
 isTrueIO :: Formula -> IO Bool
-isTrueIO T = return True
-isTrueIO F = return False
-isTrueIO f = do
-        result <- runSolver z3Solver (getSmtScript f)
+isTrueIO (Formula _ T) = return True
+isTrueIO (Formula _ F) = return False
+isTrueIO (Formula fv f) = do
+        result <- runSolver z3Solver (getSmtScript fv f)
         return $ isSatisfiable result
 
 isFalseIO :: Formula -> IO Bool
-isFalseIO f = isTrueIO (not f)
+isFalseIO (Formula fv f) = isTrueIO (Formula fv $ Not f)
 
 solveIO :: Formula -> IO (Maybe Bool)
 solveIO f = do

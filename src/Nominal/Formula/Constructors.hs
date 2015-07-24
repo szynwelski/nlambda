@@ -1,10 +1,8 @@
 module Nominal.Formula.Constructors where
 
-import Data.Set (fromList)
+import Data.Set (empty, fromList)
 import Nominal.Formula.Definition
-import Nominal.Formula.Simplifier
 import Nominal.Variable (Variable)
-import Prelude hiding (not)
 
 ----------------------------------------------------------------------------------------------------
 -- Formula constructors
@@ -12,83 +10,46 @@ import Prelude hiding (not)
 
 -- true
 true :: Formula
-true = T
+true = Formula empty T
 
 -- false
 false :: Formula
-false = F
+false = Formula empty F
 
 -- from bool
 fromBool :: Bool -> Formula
-fromBool True = T
-fromBool False = F
+fromBool True = true
+fromBool False = false
 
--- constraints
+----------------------------------------------------------------------------------------------------
+-- Constraints
+----------------------------------------------------------------------------------------------------
+
+symmetricRelation :: Relation -> Relation
+symmetricRelation LessThan = GreaterThan
+symmetricRelation LessEquals = GreaterEquals
+symmetricRelation GreaterThan = LessThan
+symmetricRelation GreaterEquals = LessEquals
+symmetricRelation Equals = Equals
+symmetricRelation NotEquals = NotEquals
+
+constraint :: Relation -> Variable -> Variable -> Formula
+constraint r x1 x2
+    | x1 == x2 = if r == LessThan || r == GreaterThan || r == NotEquals then false else true
+    | x1 > x2 = Formula (fromList [x1, x2]) (Constraint (symmetricRelation r) x2 x1)
+    | otherwise = Formula (fromList [x1, x2]) (Constraint r x1 x2)
+
 equals :: Variable -> Variable -> Formula
-equals x1 x2 = simplifyConstraint Equals x1 x2
+equals = constraint Equals
 
 lessThan :: Variable -> Variable -> Formula
-lessThan x1 x2 = simplifyConstraint LessThan x1 x2
+lessThan = constraint LessThan
 
 lessEquals :: Variable -> Variable -> Formula
-lessEquals x1 x2 = simplifyConstraint LessEquals x1 x2
+lessEquals = constraint LessEquals
 
 greaterThan :: Variable -> Variable -> Formula
-greaterThan x1 x2 = simplifyConstraint GreaterThan x1 x2
+greaterThan = constraint GreaterThan
 
 greaterEquals :: Variable -> Variable -> Formula
-greaterEquals x1 x2 = simplifyConstraint GreaterEquals x1 x2
-
--- and
-(/\) :: Formula -> Formula -> Formula
-f1 /\ f2 = simplifyAnd $ fromList [f1, f2]
-
-and :: [Formula] -> Formula
-and [] = T
-and fs = foldr1 (/\) fs
-
--- or
-(\/) :: Formula -> Formula -> Formula
-f1 \/ f2 = simplifyOr $ fromList [f1, f2]
-
-or :: [Formula] -> Formula
-or [] = F
-or fs = foldr1 (\/) fs
-
--- not
-not :: Formula -> Formula
-not f = simplifyNot f
-
--- imply
-infix 8 ==>
-(==>) :: Formula -> Formula -> Formula
-f1 ==> f2 = not f1 \/ f2
-
-infix 8 <==
-(<==) :: Formula -> Formula -> Formula
-f1 <== f2 = f1 \/ not f2
-
-implies :: Formula -> Formula -> Formula
-implies = (==>)
-
--- equivalent
-infix 8 <==>
-(<==>) :: Formula -> Formula -> Formula
-f1 <==> f2 = (f1 ==> f2) /\ (f1 <== f2)
-
-iff :: Formula -> Formula -> Formula
-iff = (<==>)
-
--- exists
-(∃) :: Variable -> Formula -> Formula
-(∃) x f = simplifyExists x f
-
-existsVar :: Variable -> Formula -> Formula
-existsVar = (∃)
-
--- for all
-(∀) :: Variable -> Formula -> Formula
-(∀) x f = simplifyForAll x f
-
-forAllVars :: Variable -> Formula -> Formula
-forAllVars = (∀)
+greaterEquals = constraint GreaterEquals

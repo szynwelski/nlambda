@@ -10,6 +10,8 @@ module Nominal.Formula (
     lessEquals,
     greaterThan,
     greaterEquals,
+
+    -- connectives
     (/\),
     and,
     (\/),
@@ -20,12 +22,14 @@ module Nominal.Formula (
     implies,
     (<==>),
     iff,
+
+    -- quantifiers
     (∃),
     existsVar,
     (∀),
     forAllVars,
 
-    -- operations
+    -- variable functions
     foldFormulaVariables,
     mapFormulaVariables,
 
@@ -36,6 +40,6 @@ module Nominal.Formula (
 
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
-import Nominal.Formula.Simplifier
+import Nominal.Formula.Operators
 import Nominal.Formula.Solver
 import Prelude hiding (and, not, or)
