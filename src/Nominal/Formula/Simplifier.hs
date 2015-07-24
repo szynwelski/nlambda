@@ -163,11 +163,11 @@ checkOrSize = checkSize F Or
 ------------------------------------------------------
 
 andSimplifier :: Set Formula -> Set Formula
-andSimplifier = checkAndPairs . checkAndConstraints . checkEquationsInAnd . andUnion . checkBoolInAnd
+andSimplifier = {-checkAndPairs . checkEquationsInAnd .-} checkAndConstraints . andUnion . checkBoolInAnd
 
 simplifyAnd :: Set Formula -> Formula
 --simplifyAnd fs | trace ("simplifyAnd " ++ show fs) False = undefined
-simplifyAnd fs = checkAndSize $ findFixedPoint andSimplifier fs
+simplifyAnd fs = checkAndSize $ {-findFixedPoint-} andSimplifier fs
 --simplifyAnd = checkAndSize . findFixedPoint andSimplifier
 
 ----------------------------------------------------------------------------------------------------

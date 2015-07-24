@@ -93,3 +93,5 @@ parityAuto = atomsDA (fromList [0,1]) (\q _ -> mod (succ q) 2) 0 (singleton 0) :
 
 result2 = simplify $ equivalentDA (differenceDA toMinAuto parityAuto) toMinAuto
 result3 = simplify $ equivalentDA (differenceDA parityAuto toMinAuto) parityAuto
+result4 = minimize toMinAuto
+gg = graph (square (states toMinAuto)) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta (delta toMinAuto) (delta toMinAuto))

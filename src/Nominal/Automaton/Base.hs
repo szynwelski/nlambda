@@ -32,14 +32,20 @@ instance (NominalType q, NominalType a) => NominalType (Automaton q a) where
     simplify (Automaton q a d i f) = Automaton (simplify q) (simplify a) (simplify d) (simplify i) (simplify f)
 
 ----------------------------------------------------------------------------------------------------
--- Automaton operations
+-- Automaton functions
 ----------------------------------------------------------------------------------------------------
 
-transit :: (NominalType q, NominalType a) => Automaton q a -> Set q -> a -> Set q
-transit aut ss l = mapFilter (\(s1, l', s2) -> ite (contains ss s1 /\ eq l l') (just s2) nothing) (delta aut)
+transitFromStates :: (NominalType q, NominalType a) => Automaton q a -> (q -> Formula) -> a -> Set q
+transitFromStates aut cf l = mapFilter (\(s1, l', s2) -> when (cf s1 /\ eq l l') s2) (delta aut)
+
+transit :: (NominalType q, NominalType a) => Automaton q a -> q -> a -> Set q
+transit aut s = transitFromStates aut (eq s)
+
+transitSet :: (NominalType q, NominalType a) => Automaton q a -> Set q -> a -> Set q
+transitSet aut ss = transitFromStates aut (contains ss)
 
 accepts :: (NominalType q, NominalType a) => Automaton q a -> [a] -> Formula
-accepts aut = intersect (finalStates aut) . foldl (transit aut) (initialStates aut)
+accepts aut = intersect (finalStates aut) . foldl (transitSet aut) (initialStates aut)
 
 transitionGraph :: (NominalType q, NominalType a) => Automaton q a -> Graph q
 transitionGraph aut = graph (states aut) (map (\(s1, _, s2) -> (s1, s2)) $ delta aut)
@@ -50,18 +56,33 @@ isNotEmptyAutomaton aut = intersect (reachableFromSet (transitionGraph aut) (ini
 isEmptyAutomaton :: (NominalType q, NominalType a) => Automaton q a -> Formula
 isEmptyAutomaton = not . isNotEmptyAutomaton
 
-pairsAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a
-    -> Set a -> Set (q1, q2) -> Automaton (q1, q2) a
-pairsAutomaton (Automaton q1 _ d1 i1 _) (Automaton q2 _ d2 i2 _) a f = Automaton (pairs q1 q2) a d (pairs i1 i2) f
-    where d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> when (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
+pairsDelta :: (NominalType q1, NominalType q2, NominalType a) => Set (q1,a,q1) -> Set (q2,a,q2) -> Set ((q1,q2),a,(q1,q2))
+pairsDelta d1 d2 = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> when (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
+
+pairsAutomaton :: (NominalType q1, NominalType q2, NominalType a) =>
+    Automaton q1 a -> Automaton q2 a -> Set a -> Set (q1, q2) -> Automaton (q1, q2) a
+pairsAutomaton (Automaton q1 _ d1 i1 _) (Automaton q2 _ d2 i2 _) a f =
+    Automaton (pairs q1 q2) a (pairsDelta d1 d2) (pairs i1 i2) f
 
 -- FIXME nie działa dla delta(q) nie należącego do stanów
-unionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a
-    -> Automaton (q1, q2) a
+unionAutomaton :: (NominalType q1, NominalType q2, NominalType a) =>
+    Automaton q1 a -> Automaton q2 a -> Automaton (q1, q2) a
 unionAutomaton aut1 aut2 = pairsAutomaton aut1 aut2 (union (alphabet aut1) (alphabet aut2))
                            (union (pairs (states aut1) (finalStates aut2)) (pairs (finalStates aut1) (states aut2)))
 
-intersectionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a
-    -> Automaton (q1, q2) a
+intersectionAutomaton :: (NominalType q1, NominalType q2, NominalType a) =>
+    Automaton q1 a -> Automaton q2 a -> Automaton (q1, q2) a
 intersectionAutomaton aut1 aut2 = pairsAutomaton aut1 aut2 (intersection (alphabet aut1) (alphabet aut2))
                            (pairs (finalStates aut1) (finalStates aut2))
+
+----------------------------------------------------------------------------------------------------
+-- Automaton minimization
+----------------------------------------------------------------------------------------------------
+
+--minimize :: Automaton q a -> Automaton (Set q) a
+minimize aut@(Automaton q a d i f) = simplify equiv
+    where relGraph = graph (square q) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta d d)
+          nf = q \\ f
+          equiv = square q \\ reachableFromSet (reverseEdges relGraph) (union (pairs nf f) (pairs f nf))
+          q' = map vertices (stronglyConnectedComponents $ graph q equiv)
+

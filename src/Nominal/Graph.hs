@@ -14,7 +14,7 @@ import Prelude hiding (filter, map, not, sum)
 -- Graph
 ----------------------------------------------------------------------------------------------------
 
-data Graph a = Graph {vertices :: Set a, edges :: Set (a, a)} deriving (Eq, Ord, Show)
+data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)} deriving (Eq, Ord, Show)
 
 instance NominalType a => Conditional (Graph a) where
     ite c (Graph vs1 es1) (Graph vs2 es2) = Graph (ite c vs1 vs2) (ite c es1 es2)
@@ -48,7 +48,7 @@ emptyAtomsGraph :: Graph Atom
 emptyAtomsGraph = atomsGraph empty
 
 clique :: NominalType a => Set a -> Graph a
-clique vs = graph vs (squared vs)
+clique vs = graph vs (square vs)
 
 atomsClique :: Graph Atom
 atomsClique = atomsGraph atomsPairs
@@ -108,23 +108,34 @@ isSimple = not . hasLoop
 containsEdge :: NominalType a => Graph a -> (a, a) -> Formula
 containsEdge (Graph vs es) e = contains es e
 
+predsFunction :: NominalType a => Graph a -> (a -> Formula) -> Set a
+predsFunction g cf = mapFilter (\(a, b) -> when (cf b) a) (edges g)
+
 preds :: NominalType a => Graph a -> a -> Set a
-preds g v = mapFilter (\(a, b) -> when (eq b v) a) (edges g)
+preds g v = predsFunction g (eq v)
+
+predsFromSet :: NominalType a => Graph a -> Set a -> Set a
+predsFromSet g s = predsFunction g (contains s)
+
+succsFunction :: NominalType a => Graph a -> (a -> Formula) -> Set a
+succsFunction g cf = mapFilter (\(a, b) -> when (cf a) b) (edges g)
 
 succs :: NominalType a => Graph a -> a -> Set a
-succs g v = mapFilter (\(a, b) -> when (eq a v) b) (edges g)
+succs g v = succsFunction g (eq v)
+
+succsFromSet :: NominalType a => Graph a -> Set a -> Set a
+succsFromSet g s = succsFunction g (contains s)
 
 neighbors :: NominalType a => Graph a -> a -> Set a
 neighbors g v = union (succs g v) (preds g v)
 
 transitiveClosure :: NominalType a => Graph a -> Graph a
 transitiveClosure (Graph vs es) = Graph vs (edgesClosure es)
-    where edgesClosure es = let es' = mapFilter (\((a, b), (c, d)) -> when (eq b c) (a, d)) $ squared es
-                                es'' = simplify $ union es es'
-                            in ite' (eq es es'') es (edgesClosure es'')
+    where edgesClosure es = let es' = union es $ pairsWithFilter (\(a, b) (c, d) -> when (eq b c) (a, d)) es es
+                            in ite' (eq es es') es (edgesClosure es')
 
 existsPath :: NominalType a => Graph a -> a -> a -> Formula
-existsPath g v1 v2 = containsEdge (transitiveClosure g) (v1, v2)
+existsPath g v1 v2 = contains (reachable g v1) v2 \/ contains (reachable g v2) v1
 
 isStronglyConnected :: NominalType a => Graph a -> Formula
 isStronglyConnected g = eq (transitiveClosure g) (clique $ vertices g)
@@ -136,10 +147,11 @@ hasCycle :: NominalType a => Graph a -> Formula
 hasCycle = hasLoop . transitiveClosure
 
 reachable :: NominalType a => Graph a -> a -> Set a
-reachable g v = insert v $ succs (transitiveClosure g) v
+reachable g v = reachableFromSet g (singleton v)
 
 reachableFromSet :: NominalType a => Graph a -> Set a -> Set a
-reachableFromSet g s = sum $ map (reachable g) s
+reachableFromSet g s = let s' = union s $ succsFromSet g s
+                       in ite' (eq s s') s (reachableFromSet g s')
 
 weaklyConnectedComponent :: NominalType a => Graph a -> a -> Graph a
 weaklyConnectedComponent g v = subgraph g $ union (reachable g v) (reachable (reverseEdges g) v)

@@ -235,11 +235,11 @@ pairsWith f s1 s2 = sum $ map (\e1 -> map (f e1) s2) s1
 pairsWithFilter :: (NominalType a, NominalType b, NominalType c) => (a -> b -> NominalMaybe c) -> Set a -> Set b -> Set c
 pairsWithFilter f s1 s2 = mapFilter id (pairsWith f s1 s2)
 
-squared :: NominalType a => Set a -> Set (a, a)
-squared s = pairs s s
+square :: NominalType a => Set a -> Set (a, a)
+square s = pairs s s
 
 atomsPairs :: Set (Atom, Atom)
-atomsPairs  = squared atoms
+atomsPairs  = square atoms
 
 triples :: (NominalType a, NominalType b, NominalType c) => Set a -> Set b -> Set c -> Set (a, b, c)
 triples = triplesWith (,,)

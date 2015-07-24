@@ -1,3 +1,8 @@
+- dodać moduł BinaryRelation z ktorego bedzie korzystał graph
+- specjalny show dla prostego zbioru atomów
+- pomyśleć nad kratą dla folda na zbiorze nominalnym
+
+
 - dokumentacja za pomoca haddock,
 - pragma MINIMAL 
 - stworzyc listy eksportowe dla modułów,
