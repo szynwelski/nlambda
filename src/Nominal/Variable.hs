@@ -2,14 +2,13 @@ module Nominal.Variable where
 
 import Data.Map (Map, findWithDefault)
 import Data.Maybe (isNothing)
-import Data.Time.Clock.POSIX (POSIXTime)
 
 ----------------------------------------------------------------------------------------------------
 -- Variable
 ----------------------------------------------------------------------------------------------------
 
-type Timestamp = POSIXTime
-data Variable = Var String | QuantificationVariable Int | IterationVariable Int Int (Maybe Timestamp) deriving (Eq, Ord)
+type Identifier = Int
+data Variable = Var String | QuantificationVariable Int | IterationVariable Int Int (Maybe Identifier) deriving (Eq, Ord)
 
 ---------------------------------------------------------------------------------------------------
 -- Variable name
@@ -63,22 +62,22 @@ iterationVariablesList level size = fmap (iterationVariable level) [1..size]
 -- Operations on iteratation variables
 ----------------------------------------------------------------------------------------------------
 
-onlyForIteration :: a -> (Int -> Int -> Maybe Timestamp -> a) -> Variable -> a
+onlyForIteration :: a -> (Int -> Int -> Maybe Identifier -> a) -> Variable -> a
 onlyForIteration result _ (Var _) = result
 onlyForIteration result _ (QuantificationVariable _) = result
-onlyForIteration _ f (IterationVariable level index timestamp) = f level index timestamp
+onlyForIteration _ f (IterationVariable level index id) = f level index id
 
-setTimestamp :: Timestamp -> Variable -> Variable
-setTimestamp t v = onlyForIteration v (\l i _ -> IterationVariable l i (Just t)) v
+setIdentifier :: Identifier -> Variable -> Variable
+setIdentifier t v = onlyForIteration v (\l i _ -> IterationVariable l i (Just t)) v
 
-hasTimestampEquals :: Timestamp -> Variable -> Bool
-hasTimestampEquals t = onlyForIteration False (\_ _ vt -> maybe False (== t) vt)
+hasIdentifierEquals :: Identifier -> Variable -> Bool
+hasIdentifierEquals t = onlyForIteration False (\_ _ vt -> maybe False (== t) vt)
 
-hasTimestampNotEquals :: Timestamp -> Variable -> Bool
-hasTimestampNotEquals t = onlyForIteration False (\_ _ vt -> maybe True (/= t) vt)
+hasIdentifierNotEquals :: Identifier -> Variable -> Bool
+hasIdentifierNotEquals t = onlyForIteration False (\_ _ vt -> maybe True (/= t) vt)
 
-clearTimestamp :: Variable -> Variable
-clearTimestamp v = onlyForIteration v (\l i _ -> iterationVariable l i) v
+clearIdentifier :: Variable -> Variable
+clearIdentifier v = onlyForIteration v (\l i _ -> iterationVariable l i) v
 
 getIterationLevel :: Variable -> Maybe Int
 getIterationLevel = onlyForIteration Nothing (\l _ _ -> Just l)

@@ -6,18 +6,18 @@ import qualified Data.Maybe as Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
 import Nominal.Atom (Atom, atom)
 import Nominal.Conditional
 import Nominal.Formula
 import Nominal.Maybe
 import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
-import Nominal.Variable (Timestamp, Variable, changeIterationLevel, clearTimestamp, getIterationLevel, hasTimestampEquals,
-                         hasTimestampNotEquals, iterationVariablesList, iterationVariable, setTimestamp, variableName)
+import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, getIterationLevel, hasIdentifierEquals,
+                         hasIdentifierNotEquals, iterationVariablesList, iterationVariable, setIdentifier, variableName)
 import Nominal.Variants (Variants, fromVariant, toList, variant)
 import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
+import System.Random (randomIO)
 
 ----------------------------------------------------------------------------------------------------
 -- Set elements
@@ -56,22 +56,22 @@ filterNotFalse :: Map a SetElementCondition -> Map a SetElementCondition
 filterNotFalse = Map.filter ((/= false) . snd)
 
 ----------------------------------------------------------------------------------------------------
--- Timestamps
+-- Identifiers
 ----------------------------------------------------------------------------------------------------
 
-checkTimestamps :: (NominalType a, NominalType b) => Timestamp -> (a, (b, SetElementCondition)) -> (a, (b, SetElementCondition))
-checkTimestamps t (oldV, (newV, cond)) =
-    let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasTimestampNotEquals t var then getIterationLevel var else Nothing) newV
-        iterVarsLevels = Set.toAscList $ collectWith (\var -> if hasTimestampEquals t var then getIterationLevel var else Nothing) newV
+checkIdentifiers :: (NominalType a, NominalType b) => Identifier -> (a, (b, SetElementCondition)) -> (a, (b, SetElementCondition))
+checkIdentifiers t (oldV, (newV, cond)) =
+    let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierNotEquals t var then getIterationLevel var else Nothing) newV
+        iterVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierEquals t var then getIterationLevel var else Nothing) newV
         newIterVarsLevels = [0..] Data.List.\\ otherVarsLevels
         changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
-    in mapVariablesIf (hasTimestampEquals t) (clearTimestamp . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
+    in mapVariablesIf (hasIdentifierEquals t) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
 
-applyWithTimestamps :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
-applyWithTimestamps f (v, cond) =
-    let t = unsafePerformIO getPOSIXTime
-        (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setTimestamp t) (v, cond)
-    in fmap (\(v'', c) -> checkTimestamps t (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
+applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
+applyWithIdentifiers f (v, cond) =
+    let t = unsafePerformIO randomIO
+        (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setIdentifier t) (v, cond)
+    in fmap (\(v'', c) -> checkIdentifiers t (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
 
 ----------------------------------------------------------------------------------------------------
 -- Set
@@ -137,14 +137,14 @@ map f = Set . filterNotFalse
             . Map.fromListWith sumCondition
             . Map.foldrWithKey (mapAndMerge f) []
             . setElements
-    where mapAndMerge f v cond rs = fmap snd (applyWithTimestamps f (v, cond)) ++ rs
+    where mapAndMerge f v cond rs = fmap snd (applyWithIdentifiers f (v, cond)) ++ rs
 
 filter :: NominalType a => (a -> Formula) -> Set a -> Set a
 filter f = Set . filterNotFalse
                . Map.fromListWith sumCondition
                . Map.foldrWithKey (filterAndMerge f) []
                . setElements
-    where filterAndMerge f v cond rs = fmap (\(v', (c, cond')) -> (v', (fst cond', c /\ snd cond'))) (applyWithTimestamps f (v, cond)) ++ rs
+    where filterAndMerge f v cond rs = fmap (\(v', (c, cond')) -> (v', (fst cond', c /\ snd cond'))) (applyWithIdentifiers f (v, cond)) ++ rs
 
 sum :: NominalType a => Set (Set a) -> Set a
 sum = Set . checkVariables
