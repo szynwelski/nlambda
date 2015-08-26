@@ -80,7 +80,7 @@ intersectionAutomaton aut1 aut2 = pairsAutomaton aut1 aut2 (intersection (alphab
 ----------------------------------------------------------------------------------------------------
 
 --minimize :: Automaton q a -> Automaton (Set q) a
-minimize aut@(Automaton q a d i f) = simplify $ stronglyConnectedComponent (graph q equiv) []
+minimize aut@(Automaton q a d i f) = q'
     where relGraph = graph (square q) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta d d)
           nf = q \\ f
           equiv = square q \\ reachableFromSet (reverseEdges relGraph) (union (pairs nf f) (pairs f nf))

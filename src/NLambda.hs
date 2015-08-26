@@ -16,8 +16,6 @@ import Nominal.VariablesSpace
 import Nominal.Variants hiding (filter, fromList, map)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 
-
-
 ----------------------------------------------------------------------------------------------------
 -- Examples
 ----------------------------------------------------------------------------------------------------
@@ -85,7 +83,7 @@ f4 = le d e
 result = simplify $ accepts (atomsDA (fromList [a,b,c]) (\x y -> ite (eq x y) a b) a (singleton c)) [a,b,c]
 -- ((a /= b || a /= c) && (b /= c || a = b) && b = c) || (((a /= b && b = c) || (a = b && a = c)) && a = c)
 -- (((a /= b && b = c) || (a = b && a = c)) && a = c) || (((a /= b || a /= c) && (b /= c || a = b)) && b = c)
-result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b)
+result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b) -- -> false
 
 toMinAuto = atomsDA (replicateAtomsUntil 3) (flip (:)) [] (filter (\[a1,a2,a3] -> eq a1 a2 \/ eq a1 a3) $ replicateAtoms 3)
 parityAuto = atomsDA (fromList [0,1]) (\q _ -> mod (succ q) 2) 0 (singleton 0) :: Automaton Int Atom

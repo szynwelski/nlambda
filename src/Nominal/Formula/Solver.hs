@@ -30,17 +30,18 @@ getSmtLogicForRelation NotEquals = lia
 getSmtLogicForRelation GreaterThan = lra
 getSmtLogicForRelation GreaterEquals = lra
 
-getFormulaRelations :: FormulaStructure -> Set Relation
-getFormulaRelations T = empty
-getFormulaRelations F = empty
-getFormulaRelations (Constraint r _ _) = singleton r
-getFormulaRelations (And fs) = unions $ fmap getFormulaRelations $ elems fs
-getFormulaRelations (Or fs) = unions $ fmap getFormulaRelations $ elems fs
-getFormulaRelations (Not f) = getFormulaRelations f
-getFormulaRelations (ForAll _ f) = getFormulaRelations f
-getFormulaRelations (Exists _ f) = getFormulaRelations f
+getFormulaRelations :: Formula -> Set Relation
+getFormulaRelations (Formula _ f) = getRelations f
+    where getRelations T = empty
+          getRelations F = empty
+          getRelations (Constraint r _ _) = singleton r
+          getRelations (And fs) = unions $ fmap getFormulaRelations $ elems fs
+          getRelations (Or fs) = unions $ fmap getFormulaRelations $ elems fs
+          getRelations (Not f) = getFormulaRelations f
+          getRelations (ForAll _ f) = getFormulaRelations f
+          getRelations (Exists _ f) = getFormulaRelations f
 
-getSmtLogic :: FormulaStructure -> SmtLogic
+getSmtLogic :: Formula -> SmtLogic
 getSmtLogic f = if member lra $ map getSmtLogicForRelation $ getFormulaRelations f then lra else lia
 
 ----------------------------------------------------------------------------------------------------
@@ -83,33 +84,34 @@ runSolver solver script = do
 -- SMT-LIB script
 ----------------------------------------------------------------------------------------------------
 
-getSmtAssertOp :: SmtLogic -> String -> [FormulaStructure] -> String
+getSmtAssertOp :: SmtLogic -> String -> [Formula] -> String
 getSmtAssertOp l op fs = "(" ++ op ++ " " ++ (concat $ fmap (getSmtAssert l) fs) ++ ")"
 
-getSmtAssert :: SmtLogic -> FormulaStructure -> String
-getSmtAssert _ T = "true"
-getSmtAssert _ F = "false"
-getSmtAssert _ (Constraint NotEquals x1 x2) = "(not (= " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ "))"
-getSmtAssert _ (Constraint r x1 x2) = "(" ++ relationAscii r ++ " " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
-getSmtAssert l (And fs) = getSmtAssertOp l "and" $ elems fs
-getSmtAssert l (Or fs) = getSmtAssertOp l "or" $ elems fs
-getSmtAssert l (Not f) = getSmtAssertOp l "not" [f]
-getSmtAssert l (ForAll x f) = "(forall ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
-getSmtAssert l (Exists x f) = "(exists ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
+getSmtAssert :: SmtLogic -> Formula -> String
+getSmtAssert l (Formula _ f) = getAssert l f
+    where getAssert _ T = "true"
+          getAssert _ F = "false"
+          getAssert _ (Constraint NotEquals x1 x2) = "(not (= " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ "))"
+          getAssert _ (Constraint r x1 x2) = "(" ++ relationAscii r ++ " " ++ (variableNameAscii x1) ++ " " ++ (variableNameAscii x2) ++ ")"
+          getAssert l (And fs) = getSmtAssertOp l "and" $ elems fs
+          getAssert l (Or fs) = getSmtAssertOp l "or" $ elems fs
+          getAssert l (Not f) = getSmtAssertOp l "not" [f]
+          getAssert l (ForAll x f) = "(forall ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
+          getAssert l (Exists x f) = "(exists ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
 
-getSmtAssertForAllFree :: SmtLogic -> Set Variable -> FormulaStructure -> String
-getSmtAssertForAllFree l fv f =
-    if null fv
+getSmtAssertForAllFree :: SmtLogic -> Formula -> String
+getSmtAssertForAllFree l f@(Formula fvs _) =
+    if null fvs
     then (getSmtAssert l f)
     else "(forall ("
-         ++ (concat $ fmap (\x -> "(" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")") $ elems fv)
+         ++ (concat $ fmap (\x -> "(" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")") $ elems fvs)
          ++")"
          ++ (getSmtAssert l f)
          ++ ")"
 
-getSmtScript :: Set Variable -> FormulaStructure -> SmtScript
-getSmtScript fv f = let l = getSmtLogic f
-                    in "(set-logic " ++ logic l ++ ")(assert " ++ (getSmtAssertForAllFree l fv f) ++ ")(check-sat)"
+getSmtScript :: Formula -> SmtScript
+getSmtScript f = let l = getSmtLogic f
+                 in "(set-logic " ++ logic l ++ ")(assert " ++ (getSmtAssertForAllFree l f) ++ ")(check-sat)"
 
 ----------------------------------------------------------------------------------------------------
 -- Formula solving
@@ -118,12 +120,12 @@ getSmtScript fv f = let l = getSmtLogic f
 isTrueIO :: Formula -> IO Bool
 isTrueIO (Formula _ T) = return True
 isTrueIO (Formula _ F) = return False
-isTrueIO (Formula fv f) = do
-        result <- runSolver z3Solver (getSmtScript fv f)
-        return $ isSatisfiable result
+isTrueIO f = do
+               result <- runSolver z3Solver $ getSmtScript f
+               return $ isSatisfiable result
 
 isFalseIO :: Formula -> IO Bool
-isFalseIO (Formula fv f) = isTrueIO (Formula fv $ Not f)
+isFalseIO f@(Formula fvs _) = isTrueIO (Formula fvs $ Not f)
 
 solveIO :: Formula -> IO (Maybe Bool)
 solveIO f = do
