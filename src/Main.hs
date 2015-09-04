@@ -1,4 +1,4 @@
 import NLambda
 
 
-main = print $ result4
+main = print $ (result1,result2,result3,result4,result5)

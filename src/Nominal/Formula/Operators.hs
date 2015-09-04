@@ -8,53 +8,55 @@ import Nominal.Variable (Variable, isQuantificationVariable, quantificationVaria
 import Prelude hiding (and, filter, foldr, map, not, null, or)
 
 ----------------------------------------------------------------------------------------------------
+-- Simplification of constraints with the same variables
+----------------------------------------------------------------------------------------------------
+
+isConstraint :: Formula -> Bool
+isConstraint (Formula _ (Constraint _ _ _)) = True
+isConstraint _ = False
+
+sameVarsInConstraints :: FormulaStructure -> FormulaStructure -> Bool
+sameVarsInConstraints (Constraint _ x1 x2) (Constraint _ y1 y2) = (x1, x2) == (y1, y2)
+sameVarsInConstraints _ _ = False
+
+checkSize :: (Set Formula -> FormulaStructure) -> Set Variable -> Formula -> Set Formula -> Formula
+checkSize creator freeVars defVal fs
+    | null fs = defVal
+    | size fs == 1 = findMin fs
+    | size fs > 1 = Formula freeVars (creator fs)
+
+checkConstraints :: (Set Formula -> FormulaStructure) -> Set Variable -> Formula
+    -> (Maybe Relation -> Maybe Relation -> Maybe Relation) -> Set Formula -> Formula
+checkConstraints creator freeVars defVal relFun fs =
+    if member defVal cs
+        then defVal
+        else checkSize creator freeVars defVal (union cs fs2)
+    where (fs1, fs2) = partition isConstraint fs
+          relLists = MM.assocs $ foldr (\(Constraint r x1 x2) -> MM.insert (x1,x2) (Just r)) MM.empty (map formula fs1)
+          rels = fmap (fmap $ foldr1 relFun) relLists
+          cs = fromList $ fmap (\((x1,x2),rel) -> maybe defVal (\r -> (constraint r x1 x2)) rel) rels
+
+----------------------------------------------------------------------------------------------------
 -- And
 ----------------------------------------------------------------------------------------------------
 
--- checking constraints
-
---andRelations :: Maybe Relation -> Maybe Relation -> Maybe Relation
---andRelations r1 r2
---    | r1 == r2 = r1
---    | r1 > r2 = andRelations r2 r1
---andRelations (Just LessThan)      (Just LessEquals)    = Just LessThan
---andRelations (Just LessThan)      (Just NotEquals)     = Just LessThan
---andRelations (Just LessEquals)    (Just NotEquals)     = Just LessThan
---andRelations (Just LessEquals)    (Just Equals)        = Just Equals
---andRelations (Just Equals)        (Just GreaterEquals) = Just Equals
---andRelations (Just LessEquals)    (Just GreaterEquals) = Just Equals
---andRelations (Just NotEquals)     (Just GreaterEquals) = Just GreaterThan
---andRelations (Just NotEquals)     (Just GreaterThan)   = Just GreaterThan
---andRelations (Just GreaterEquals) (Just GreaterThan)   = Just GreaterThan
---andRelations _                    _                    = Nothing
---
---isConstraint :: FormulaStructure -> Bool
---isConstraint (Constraint _ _ _) = True
---isConstraint _ = False
---
---sameVarsInConstraints :: FormulaStructure -> FormulaStructure -> Bool
---sameVarsInConstraints (Constraint _ x1 x2) (Constraint _ y1 y2) = (x1, x2) == (y1, y2)
---sameVarsInConstraints _ _ = False
---
---checkSize :: (Set FormulaStructure -> FormulaStructure) -> FormulaStructure -> Set FormulaStructure -> FormulaStructure
---checkSize creator def fs
---    | null fs = def
---    | size fs == 1 = findMin fs
---    | size fs > 1 = creator fs
---
----- TODO update free variables
---checkConstraints :: (Set FormulaStructure -> FormulaStructure) -> FormulaStructure
---    -> (Maybe Relation -> Maybe Relation -> Maybe Relation) -> Set Variable -> Set FormulaStructure -> Formula
---checkConstraints creator def relFun fv fs =
---    if member def cs
---        then Formula empty def
---        else Formula fv (checkSize creator def $ union cs fs2)
---    where (fs1, fs2) = partition isConstraint fs
---          relLists = MM.assocs $ foldr (\(Constraint r x1 x2) -> MM.insert (x1,x2) (Just r)) MM.empty fs1
---          cs = fromList $ fmap (\((x1,x2),rs) -> maybe def (\r -> Constraint r x1 x2) (foldr1 relFun rs)) relLists
+-- merging constraints
+andRelations :: Maybe Relation -> Maybe Relation -> Maybe Relation
+andRelations r1 r2
+    | r1 == r2 = r1
+    | r1 > r2 = andRelations r2 r1
+andRelations (Just LessThan)      (Just LessEquals)    = Just LessThan
+andRelations (Just LessThan)      (Just NotEquals)     = Just LessThan
+andRelations (Just LessEquals)    (Just NotEquals)     = Just LessThan
+andRelations (Just LessEquals)    (Just Equals)        = Just Equals
+andRelations (Just Equals)        (Just GreaterEquals) = Just Equals
+andRelations (Just LessEquals)    (Just GreaterEquals) = Just Equals
+andRelations (Just NotEquals)     (Just GreaterEquals) = Just GreaterThan
+andRelations (Just NotEquals)     (Just GreaterThan)   = Just GreaterThan
+andRelations (Just GreaterEquals) (Just GreaterThan)   = Just GreaterThan
+andRelations _                    _                    = Nothing
 
 -- create and formula
-
 createAndSet :: Formula -> Formula -> Set Formula
 createAndSet (Formula _ (And fs1)) (Formula _ (And fs2)) = union fs1 fs2
 createAndSet (Formula _ (And fs)) f = insert f fs
@@ -66,8 +68,7 @@ Formula _ F /\ _ = false
 _ /\ Formula _ F = false
 Formula _ T /\ f = f
 f /\ Formula _ T = f
-f1@(Formula fvs1 _) /\ f2@(Formula fvs2 _) = --checkConstraints And F andRelations
-    Formula (union fvs1 fvs2) $ And (createAndSet f1 f2)
+f1@(Formula fvs1 _) /\ f2@(Formula fvs2 _) = checkConstraints And (union fvs1 fvs2) false andRelations (createAndSet f1 f2)
 
 and :: [Formula] -> Formula
 and [] = true
@@ -77,6 +78,23 @@ and fs = foldr1 (/\) fs
 -- Or
 ----------------------------------------------------------------------------------------------------
 
+-- merging constraints
+orRelations :: Maybe Relation -> Maybe Relation -> Maybe Relation
+orRelations r1 r2
+    | r1 == r2 = r1
+    | r1 > r2 = orRelations r2 r1
+orRelations (Just LessThan)      (Just LessEquals)    = Just LessEquals
+orRelations (Just LessThan)      (Just Equals)        = Just LessEquals
+orRelations (Just LessEquals)    (Just Equals)        = Just LessEquals
+orRelations (Just LessThan)      (Just NotEquals)     = Just NotEquals
+orRelations (Just LessThan)      (Just GreaterThan)   = Just NotEquals
+orRelations (Just NotEquals)     (Just GreaterThan)   = Just NotEquals
+orRelations (Just Equals)        (Just GreaterEquals) = Just GreaterEquals
+orRelations (Just Equals)        (Just GreaterThan)   = Just GreaterEquals
+orRelations (Just GreaterEquals) (Just GreaterThan)   = Just GreaterEquals
+orRelations _                    _                    = Nothing
+
+-- create or formula
 createOrSet :: Formula -> Formula -> Set Formula
 createOrSet (Formula _ (Or fs1)) (Formula _ (Or fs2)) = (union fs1 fs2)
 createOrSet (Formula _ (Or fs)) f = insert f fs
@@ -88,7 +106,7 @@ Formula _ T \/ _ = true
 _ \/ Formula _ T = true
 Formula _ F \/ f = f
 f \/ Formula _ F = f
-f1@(Formula fvs1 _) \/ f2@(Formula fvs2 _) = Formula (union fvs1 fvs2) $ Or (createOrSet f1 f2)
+f1@(Formula fvs1 _) \/ f2@(Formula fvs2 _) = checkConstraints Or (union fvs1 fvs2) true orRelations (createOrSet f1 f2)
 
 or :: [Formula] -> Formula
 or [] = false

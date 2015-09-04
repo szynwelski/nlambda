@@ -12,12 +12,10 @@
 -- przenieść ifFormula i dodać simplify i solve,
 -- ew. przeniesc upraszczanie formul do oddzielnego modułu
 -- poprawić nawiasowanie przy kwantyfikatorach
--- w formule trzymać zbiór zmiennych wolnych
--- upraszczanie: 
 -- ustawić infixl dla operatorów,
+-- upraszczanie: 
 --- (a /\ b) \/ (a /\ not b) -> a, 
 --- (a \/ b) /\ (a \/ not b) -> a /\ not b
---- a /\ b /\ a -> a /\ b (pewnie ory i and będą na zbiorach), itp.
 
 - Nominal:
 -- zastanowić się jaki ma być "strict",
@@ -25,7 +23,6 @@
 -- pomyśleć nad odpowiednikami operacji z ' na koncu, ktore czesciej rozwiazuja formuly (ewentualnie za pomoca makra #define),
 -- sprawdzic czy potrzebne sa wewnetrzne optymalne funkcje: isSubsetOf, intersection, difference.
 -- zaimplementować pairs i podobne,
--- dodać typ liniowy i klasę z funkcjami: le, lt, ge, gt.
 -- pomyśleć nad problemem rozwiązywania konfliktu nazw zmiennych iteracyjnych - czy istnieje rozwiązanie "strict"?
 -- pomyśleć nad problemem obliczania wsparcia dla zbioru: insert a atomSet - może przy "insert" trzeba sprawdzić "contains", czyli rozwiązać formułę
 -- rozwiązywanie konfliktów zmiennych - poziomy zgodnie z zagnieżdzeniem, a nie: {{{(a₁,c₁,b₁) : for b₁ ∊ 𝔸} : for c₁ ∊ 𝔸} : for a₁ ∊ 𝔸}
@@ -51,3 +48,8 @@ Algorytmy:
 - automaty:
 -- minimalizacja,
 -- rownowaznosc.
+
+
+rozważyć eliminację zmiennych nie występujących w iteracji i wartości
+
+!!! pomyslec o stosach formula przy uruchamianiu solverow - moze warianty i zbiory powinny miec specyficzne implementacje ite'
