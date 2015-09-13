@@ -41,7 +41,10 @@ constraintStruct r x1 x2
     | otherwise = Constraint r x1 x2
 
 constraint :: Relation -> Variable -> Variable -> Formula
-constraint r x1 x2 = let c = constraintStruct r x1 x2 in Formula (getFreeVariables c) c
+constraint r x1 x2 = let f = constraintStruct r x1 x2
+                         fvs = case f of (Constraint _ _ _) -> fromList [x1,x2]
+                                         otherwise          -> empty
+                     in Formula fvs f
 
 equals :: Variable -> Variable -> Formula
 equals = constraint Equals
@@ -58,41 +61,3 @@ greaterThan = constraint GreaterThan
 greaterEquals :: Variable -> Variable -> Formula
 greaterEquals = constraint GreaterEquals
 
-----------------------------------------------------------------------------------------------------
--- Variables functions
-----------------------------------------------------------------------------------------------------
-
-getFreeVariables :: FormulaStructure -> Set Variable
-getFreeVariables T = empty
-getFreeVariables F = empty
-getFreeVariables (Constraint r x1 x2) = fromList [x1,x2]
-getFreeVariables (And fs) = unions $ fmap freeVariables $ elems fs
-getFreeVariables (Or fs) = unions $ fmap freeVariables $ elems fs
-getFreeVariables (Not f) = freeVariables f
-getFreeVariables (Exists x f) = delete x $ freeVariables f
-getFreeVariables (ForAll x f) = delete x $ freeVariables f
-
-foldFormulaVariables :: (Variable -> a -> a) -> a -> Formula -> a
-foldFormulaVariables fun acc (Formula _ f) = doFold fun acc f
-    where doFold _ acc T = acc
-          doFold _ acc F = acc
-          doFold fun acc (Constraint _ x1 x2) = fun x2 $ fun x1 acc
-          doFold fun acc (And fs) = foldl (foldFormulaVariables fun) acc fs
-          doFold fun acc (Or fs) = foldl (foldFormulaVariables fun) acc fs
-          doFold fun acc (Not f) = foldFormulaVariables fun acc f
-          doFold fun acc (Exists x f) = foldFormulaVariables fun (fun x acc) f
-          doFold fun acc (ForAll x f) = foldFormulaVariables fun (fun x acc) f
-
-mapFormulaVariables :: (Variable -> Variable) -> Formula -> Formula
-mapFormulaVariables fun (Formula fs f) = Formula (map fun fs) (doMap fun f)
-    where doMap _ T = T
-          doMap _ F = F
-          doMap fun (Constraint r x1 x2) = constraintStruct r (fun x1) (fun x2)
-          doMap fun (And fs) = And $ map (mapFormulaVariables fun) fs
-          doMap fun (Or fs) = Or $ map (mapFormulaVariables fun) fs
-          doMap fun (Not f) = Not $ mapFormulaVariables fun f
-          doMap fun (Exists x f) = Exists (fun x) (mapFormulaVariables fun f)
-          doMap fun (ForAll x f) = ForAll (fun x) (mapFormulaVariables fun f)
-
-replaceFormulaVariable :: Variable -> Variable -> Formula -> Formula
-replaceFormulaVariable oldVar newVar = mapFormulaVariables (\var -> if oldVar == var then newVar else var)

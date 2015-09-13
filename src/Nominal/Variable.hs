@@ -8,7 +8,7 @@ import Data.Maybe (isNothing)
 ----------------------------------------------------------------------------------------------------
 
 type Identifier = Int
-data Variable = Var String | QuantificationVariable Int | IterationVariable Int Int (Maybe Identifier) deriving (Eq, Ord)
+data Variable = Var String | IterationVariable Int Int (Maybe Identifier) deriving (Eq, Ord)
 
 ---------------------------------------------------------------------------------------------------
 -- Variable name
@@ -26,7 +26,6 @@ variableNameAsciiWithIndex charIndex varIndex = toEnum charIndex : '_' : show va
 
 createVariableName :: (Int -> Int -> String) -> Variable -> String
 createVariableName _ (Var name) = name
-createVariableName indexName (QuantificationVariable index) = indexName 120 index
 createVariableName indexName (IterationVariable level index _) = indexName (97 + level) index
 
 variableName :: Variable -> String
@@ -45,13 +44,6 @@ instance Show Variable where
 variable :: String -> Variable
 variable = Var
 
-quantificationVariable :: Int -> Variable
-quantificationVariable = QuantificationVariable
-
-isQuantificationVariable :: Variable -> Bool
-isQuantificationVariable (QuantificationVariable _) = True
-isQuantificationVariable _ = False
-
 iterationVariable :: Int -> Int -> Variable
 iterationVariable level index = IterationVariable level index Nothing
 
@@ -64,7 +56,6 @@ iterationVariablesList level size = fmap (iterationVariable level) [1..size]
 
 onlyForIteration :: a -> (Int -> Int -> Maybe Identifier -> a) -> Variable -> a
 onlyForIteration result _ (Var _) = result
-onlyForIteration result _ (QuantificationVariable _) = result
 onlyForIteration _ f (IterationVariable level index id) = f level index id
 
 setIdentifier :: Identifier -> Variable -> Variable

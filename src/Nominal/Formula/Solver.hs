@@ -38,8 +38,6 @@ getFormulaRelations (Formula _ f) = getRelations f
           getRelations (And fs) = unions $ fmap getFormulaRelations $ elems fs
           getRelations (Or fs) = unions $ fmap getFormulaRelations $ elems fs
           getRelations (Not f) = getFormulaRelations f
-          getRelations (ForAll _ f) = getFormulaRelations f
-          getRelations (Exists _ f) = getFormulaRelations f
 
 getSmtLogic :: Formula -> SmtLogic
 getSmtLogic f = if member lra $ map getSmtLogicForRelation $ getFormulaRelations f then lra else lia
@@ -96,8 +94,6 @@ getSmtAssert l (Formula _ f) = getAssert l f
           getAssert l (And fs) = getSmtAssertOp l "and" $ elems fs
           getAssert l (Or fs) = getSmtAssertOp l "or" $ elems fs
           getAssert l (Not f) = getSmtAssertOp l "not" [f]
-          getAssert l (ForAll x f) = "(forall ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
-          getAssert l (Exists x f) = "(exists ((" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")) " ++ (getSmtAssert l f) ++ ")"
 
 getSmtAssertForAllFree :: SmtLogic -> Formula -> String
 getSmtAssertForAllFree l f@(Formula fvs _) =

@@ -41,5 +41,6 @@ module Nominal.Formula (
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
 import Nominal.Formula.Operators
+import Nominal.Formula.Quantification
 import Nominal.Formula.Solver
 import Prelude hiding (and, not, or)

@@ -35,28 +35,24 @@ data FormulaStructure
     | Constraint Relation Variable Variable
     | And (Set Formula)
     | Or (Set Formula)
-    | Not Formula
-    | Exists Variable Formula
-    | ForAll Variable Formula deriving (Eq, Ord)
+    | Not Formula deriving (Eq, Ord)
 
 ----------------------------------------------------------------------------------------------------
 -- Show
 ----------------------------------------------------------------------------------------------------
 
-showFormula :: FormulaStructure -> String
-showFormula f@(And fs) = "(" ++ show f ++ ")"
-showFormula f@(Or fs) = "(" ++ show f ++ ")"
-showFormula f = show f
+showSubformula :: FormulaStructure -> String
+showSubformula f@(And fs) = "(" ++ show f ++ ")"
+showSubformula f@(Or fs) = "(" ++ show f ++ ")"
+showSubformula f = show f
 
 instance Show FormulaStructure where
     show T = "true"
     show F = "false"
     show (Constraint r x1 x2) = show x1 ++ " " ++ show r ++ " " ++ show x2
-    show (And fs) = join " ∧ " $ fmap (showFormula . formula) $ elems fs
-    show (Or fs) = join " ∨ " $ fmap (showFormula . formula) $ elems fs
+    show (And fs) = join " ∧ " $ fmap (showSubformula . formula) $ elems fs
+    show (Or fs) = join " ∨ " $ fmap (showSubformula . formula) $ elems fs
     show (Not f) = "¬(" ++ show f ++ ")"
-    show (Exists x f) = "∃" ++ show x ++ " " ++ showFormula (formula f)
-    show (ForAll x f) = "∀" ++ show x ++ " " ++ showFormula (formula f)
 
 ----------------------------------------------------------------------------------------------------
 -- Formula
