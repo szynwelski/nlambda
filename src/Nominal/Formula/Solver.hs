@@ -60,9 +60,9 @@ smtResult "sat" = Sat
 smtResult "unsat" = Unsat
 smtResult "unknown" = Unknown
 
-isSatisfiable :: SmtResult -> Bool
-isSatisfiable Sat = True
-isSatisfiable _ = False
+isNotSatisfiable :: SmtResult -> Bool
+isNotSatisfiable Unsat = True
+isNotSatisfiable _ = False
 
 runSolver :: SmtSolver -> SmtScript -> IO SmtResult
 runSolver solver script = do
@@ -99,15 +99,14 @@ getSmtAssertForAllFree :: SmtLogic -> Formula -> String
 getSmtAssertForAllFree l f@(Formula fvs _) =
     if null fvs
     then (getSmtAssert l f)
-    else "(forall ("
-         ++ (concat $ fmap (\x -> "(" ++ (variableNameAscii x) ++ " " ++ sort l ++ ")") $ elems fvs)
-         ++")"
+    else (concat $ fmap (\x -> "(declare-const " ++ (variableNameAscii x) ++ " " ++ sort l ++ ")") $ elems fvs)
+         ++ "(assert "
          ++ (getSmtAssert l f)
          ++ ")"
 
 getSmtScript :: Formula -> SmtScript
 getSmtScript f = let l = getSmtLogic f
-                 in "(set-logic " ++ logic l ++ ")(assert " ++ (getSmtAssertForAllFree l f) ++ ")(check-sat)"
+                 in "(set-logic " ++ logic l ++ ")" ++ (getSmtAssertForAllFree l f) ++ "(check-sat)"
 
 ----------------------------------------------------------------------------------------------------
 -- Formula solving
@@ -116,11 +115,13 @@ getSmtScript f = let l = getSmtLogic f
 isTrueIO :: Formula -> IO Bool
 isTrueIO (Formula _ T) = return True
 isTrueIO (Formula _ F) = return False
-isTrueIO f = do
-               result <- runSolver z3Solver $ getSmtScript f
-               return $ isSatisfiable result
+isTrueIO f@(Formula fvs _) = do
+                              result <- runSolver z3Solver $ getSmtScript (Formula fvs $ Not f)
+                              return $ isNotSatisfiable result
 
 isFalseIO :: Formula -> IO Bool
+isFalseIO (Formula _ T) = return False
+isFalseIO (Formula _ F) = return True
 isFalseIO f@(Formula fvs _) = isTrueIO (Formula fvs $ Not f)
 
 solveIO :: Formula -> IO (Maybe Bool)
