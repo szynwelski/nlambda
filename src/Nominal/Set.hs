@@ -60,18 +60,18 @@ filterNotFalse = Map.filter ((/= false) . snd)
 ----------------------------------------------------------------------------------------------------
 
 checkIdentifiers :: (NominalType a, NominalType b) => Identifier -> (a, (b, SetElementCondition)) -> (a, (b, SetElementCondition))
-checkIdentifiers t (oldV, (newV, cond)) =
-    let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierNotEquals t var then getIterationLevel var else Nothing) newV
-        iterVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierEquals t var then getIterationLevel var else Nothing) newV
+checkIdentifiers id (oldV, (newV, cond)) =
+    let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierNotEquals id var then getIterationLevel var else Nothing) newV
+        iterVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierEquals id var then getIterationLevel var else Nothing) (newV, cond)
         newIterVarsLevels = [0..] Data.List.\\ otherVarsLevels
         changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
-    in mapVariablesIf (hasIdentifierEquals t) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
+    in mapVariablesIf (hasIdentifierEquals id) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
 
 applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
 applyWithIdentifiers f (v, cond) =
-    let t = unsafePerformIO randomIO
-        (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setIdentifier t) (v, cond)
-    in fmap (\(v'', c) -> checkIdentifiers t (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
+    let id = unsafePerformIO randomIO
+        (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setIdentifier id) (v, cond)
+    in fmap (\(v'', c) -> checkIdentifiers id (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
 
 ----------------------------------------------------------------------------------------------------
 -- Set

@@ -26,16 +26,12 @@
 -- pomyśleć nad problemem rozwiązywania konfliktu nazw zmiennych iteracyjnych - czy istnieje rozwiązanie "strict"?
 -- pomyśleć nad problemem obliczania wsparcia dla zbioru: insert a atomSet - może przy "insert" trzeba sprawdzić "contains", czyli rozwiązać formułę
 -- rozwiązywanie konfliktów zmiennych - poziomy zgodnie z zagnieżdzeniem, a nie: {{{(a₁,c₁,b₁) : for b₁ ∊ 𝔸} : for c₁ ∊ 𝔸} : for a₁ ∊ 𝔸}
+- zrównoleglić wyszukiwanie zmiennych z równym i różnym id w funkcji checkIdentifiers
 
 -- rozmiar zbioru, fold - krata, obliczanie maxa dla funkcji Atom -> Int
 -- automatyczne wyliczanie formuł
 -- upraszczanie formuł (moze za pomocą Z3)
 -- programy: spojność w grafie, minimalizacji automatu
-
-SPRAWDZIĆ:
-- eq atomSet atomSet
-- filter (contains $ delete a sa) sa
-- iF cond [] [a]
 
 Algorytmy:
 - zbiory:
@@ -51,5 +47,4 @@ Algorytmy:
 
 
 rozważyć eliminację zmiennych nie występujących w iteracji i wartości
-
 !!! pomyslec o stosach formula przy uruchamianiu solverow - moze warianty i zbiory powinny miec specyficzne implementacje ite'
