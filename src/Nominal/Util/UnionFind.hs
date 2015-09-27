@@ -29,8 +29,6 @@ union e1 e2 uf@(UnionFind ps rs)
           r1 = Map.findWithDefault 0 repr1 rs'
           r2 = Map.findWithDefault 0 repr2 rs'
 
-
 assocs :: Ord a => UnionFind a -> [(a, a)]
 assocs uf@(UnionFind ps rs) = snd $ foldl (\(uf', res) e -> let (repr, uf'') = find e uf'
                                                             in (uf'', (e, repr) : res)) (uf, []) (Map.keys ps)
-

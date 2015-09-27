@@ -33,8 +33,8 @@ isJust = satisfying Maybe.isJust
 isNothing :: NominalMaybe a -> Formula
 isNothing = satisfying Maybe.isNothing
 
-when :: Ord a => Formula -> a -> NominalMaybe a
-when c v = ite c (just v) nothing
+maybeIf :: Ord a => Formula -> a -> NominalMaybe a
+maybeIf c v = ite c (just v) nothing
 
-when' :: Ord a => Formula -> a -> NominalMaybe a
-when' c v = ite' c (just v) nothing
+maybeIf' :: Ord a => Formula -> a -> NominalMaybe a
+maybeIf' c v = ite' c (just v) nothing

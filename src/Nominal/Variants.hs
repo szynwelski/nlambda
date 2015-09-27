@@ -4,6 +4,7 @@ import Data.List.Utils (join)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Nominal.Conditional
+import Nominal.Contextual
 import Nominal.Formula
 import Prelude hiding (or, not)
 
@@ -25,6 +26,9 @@ instance Ord a => Conditional (Variants a) where
       where filterWith c vs = Map.map (/\ c) vs
             unionVariants c vs1 vs2 = Map.unionWith (\/) (filterWith c vs1) (filterWith (not c) vs2)
 
+instance (Contextual a, Ord a) => Contextual (Variants a) where
+    when ctx = fromList . fmap (\(v,c) -> (when (ctx /\ c) v, when ctx c)) . toList
+
 iteVariants :: Ord a => Formula -> a -> a -> Variants a
 iteVariants c x1 x2 = ite c (variant x1) (variant x2)
 
@@ -35,7 +39,7 @@ toList :: Variants a -> [(a, Formula)]
 toList (Variants vs) = Map.assocs vs
 
 fromList :: Ord a => [(a, Formula)] -> Variants a
-fromList = Variants . Map.fromList
+fromList = Variants . Map.filter (/= false) . Map.fromListWith (\/)
 
 values :: Variants a -> [a]
 values (Variants vs) = Map.keys vs

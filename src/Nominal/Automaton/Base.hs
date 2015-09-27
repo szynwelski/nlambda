@@ -1,6 +1,7 @@
 module Nominal.Automaton.Base where
 
 import Nominal.Conditional
+import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Graph
 import Nominal.Maybe
@@ -18,7 +19,7 @@ data Automaton q a = Automaton {states :: Set (Maybe q), alphabet :: Set a, delt
 automaton :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a
 automaton q a d i f = onlyReachable $ Automaton q' a (union d1 d2) i' f'
     where q' = insert Nothing $ map Just q
-          d1 = mapFilter (\(s1,l,s2) -> when (contains q s1 /\ contains q s2) (Just s1,l,Just s2)) d
+          d1 = mapFilter (\(s1,l,s2) -> maybeIf (contains q s1 /\ contains q s2) (Just s1,l,Just s2)) d
           d2 = map (\(s1,l) -> (s1,l,Nothing)) ((pairs q' a) \\ (map (\(s,l,_)-> (s,l)) d1  ))
           i' = map Just (intersection q i)
           f' = map Just (intersection q f)
@@ -31,20 +32,22 @@ instance (Conditional q, NominalType q, NominalType a) => Conditional (Automaton
     ite c (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) =
         Automaton (ite c q1 q2) (ite c a1 a2) (ite c d1 d2) (ite c i1 i2) (ite c f1 f2)
 
+instance (Contextual q, Contextual a, Ord q, Ord a) => Contextual (Automaton q a) where
+    when ctx (Automaton q a d i f) = Automaton (when ctx q) (when ctx a) (when ctx d) (when ctx i) (when ctx f)
+
 instance (NominalType q, NominalType a) => NominalType (Automaton q a) where
     eq (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) = eq q1 q2 /\ eq a1 a2 /\ eq d1 d2 /\ eq i1 i2 /\ eq f1 f2
     mapVariables fun (Automaton q a d i f) = Automaton (mapVariables fun q) (mapVariables fun a) (mapVariables fun d)
                                                        (mapVariables fun i) (mapVariables fun f)
     foldVariables fun acc (Automaton q a d i f) =
         foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun acc q) a) d) i) f
-    simplify (Automaton q a d i f) = Automaton (simplify q) (simplify a) (simplify d) (simplify i) (simplify f)
 
 ----------------------------------------------------------------------------------------------------
 -- Automaton functions
 ----------------------------------------------------------------------------------------------------
 
 transitFromStates :: (NominalType q, NominalType a) => Automaton q a -> (Maybe q -> Formula) -> a -> Set (Maybe q)
-transitFromStates aut cf l = mapFilter (\(s1, l', s2) -> when (cf s1 /\ eq l l') s2) (delta aut)
+transitFromStates aut cf l = mapFilter (\(s1, l', s2) -> maybeIf (cf s1 /\ eq l l') s2) (delta aut)
 
 transit :: (NominalType q, NominalType a) => Automaton q a -> Maybe q -> a -> Set (Maybe q)
 transit aut s = transitFromStates aut (eq s)
@@ -61,7 +64,7 @@ transitionGraph aut = graph (states aut) (map (\(s1, _, s2) -> (s1, s2)) $ delta
 onlyReachable :: (NominalType q, NominalType a) => Automaton q a -> Automaton q a
 onlyReachable aut@(Automaton q a d i f) = Automaton q' a d' i (intersection q' f)
     where q' = reachableFromSet (transitionGraph aut) (initialStates aut)
-          d' = mapFilter (\(s1,l,s2) -> when (contains q' s1) (s1,l,s2)) d
+          d' = mapFilter (\(s1,l,s2) -> maybeIf (contains q' s1) (s1,l,s2)) d
 
 isNotEmptyAutomaton :: (NominalType q, NominalType a) => Automaton q a -> Formula
 isNotEmptyAutomaton = isNotEmpty . finalStates . onlyReachable
@@ -70,7 +73,7 @@ isEmptyAutomaton :: (NominalType q, NominalType a) => Automaton q a -> Formula
 isEmptyAutomaton = not . isNotEmptyAutomaton
 
 pairsDelta :: (NominalType q1, NominalType q2, NominalType a) => Set (q1,a,q1) -> Set (q2,a,q2) -> Set ((q1,q2),a,(q1,q2))
-pairsDelta d1 d2 = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> when (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
+pairsDelta d1 d2 = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
 
 -- TODO check alphabet ? union ?
 unionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (Either q1 q2) a
@@ -87,7 +90,7 @@ intersectionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Aut
     where intersectionPair x1 x2 = case (x1,x2) of (Just y1,Just y2) -> Just (y1,y2)
                                                    otherwise         -> Nothing
           q = pairsWith intersectionPair q1 q2
-          d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> when (eq l l') (intersectionPair s1 s1',l,intersectionPair s2 s2')) d1 d2
+          d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') (intersectionPair s1 s1',l,intersectionPair s2 s2')) d1 d2
           i = pairsWith intersectionPair i1 i2
           f = pairsWith intersectionPair f1 f2
 
@@ -104,4 +107,3 @@ minimize aut@(Automaton q a d i f) = {-Automaton-} q' {-a d' i' f'-}
 --          d' =
 --          i' =
 --          f' =
-

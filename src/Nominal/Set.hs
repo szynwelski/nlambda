@@ -8,6 +8,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Nominal.Atom (Atom, atom)
 import Nominal.Conditional
+import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Maybe
 import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, neq, replaceVariables)
@@ -92,11 +93,16 @@ instance Show a => Show (Set a) where
 instance NominalType a => Conditional (Set a) where
     ite c s1 s2 = union (filter (const c) s1) (filter (const $ not c) s2)
 
+instance (Contextual a, Ord a) => Contextual (Set a) where
+    when ctx (Set es) = Set $ filterNotFalse
+                            $ Map.fromListWith sumCondition
+                            $ fmap (\(v,(vs, c)) -> (when (ctx /\ c) v, when ctx (vs, c)))
+                            $ Map.assocs es
+
 instance NominalType a => NominalType (Set a) where
     eq s1 s2 = (isSubsetOf s1 s2) /\ (isSubsetOf s2 s1)
     mapVariables f (Set es) = Set $ Map.fromListWith sumCondition $ mapVariables f $ Map.assocs es
     foldVariables fun acc (Set es) = foldVariables fun acc $ Map.assocs es
-    simplify (Set es) = Set $ filterNotFalse $ Map.fromListWith sumCondition $ simplify $ Map.assocs es
 
 ----------------------------------------------------------------------------------------------------
 -- Similar instances
@@ -106,13 +112,11 @@ instance NominalType a => NominalType (Set.Set a) where
     eq s1 s2 = eq (fromList $ Set.elems s1) (fromList $ Set.elems s2)
     mapVariables f = Set.map (mapVariables f)
     foldVariables fun acc = foldVariables fun acc . Set.elems
-    simplify = Set.map simplify
 
 instance (NominalType k, NominalType a) => NominalType (Map k a) where
     eq m1 m2 = eq (fromList $ Map.assocs m1) (fromList $ Map.assocs m2)
     mapVariables f = Map.fromList . mapVariables f . Map.assocs
     foldVariables fun acc = foldVariables fun acc . Map.assocs
-    simplify = Map.fromList . simplify . Map.assocs
 
 ----------------------------------------------------------------------------------------------------
 -- Operations on set

@@ -3,6 +3,7 @@ module Nominal.Graph where
 import Data.Tuple (swap)
 import Nominal.Atom
 import Nominal.Conditional
+import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Maybe
 import Nominal.Set
@@ -19,11 +20,13 @@ data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)} deriving (Eq, Ord, 
 instance NominalType a => Conditional (Graph a) where
     ite c (Graph vs1 es1) (Graph vs2 es2) = Graph (ite c vs1 vs2) (ite c es1 es2)
 
+instance (Contextual a, Ord a) => Contextual (Graph a) where
+    when ctx (Graph vs es) = Graph (when ctx vs) (when ctx es)
+
 instance NominalType a => NominalType (Graph a) where
     eq (Graph vs1 es1) (Graph vs2 es2) = eq vs1 vs2 /\ eq es1 es2
     mapVariables f (Graph vs es) = Graph (mapVariables f vs) (mapVariables f es)
     foldVariables f acc (Graph vs es) = foldVariables f (foldVariables f acc vs) es
-    simplify (Graph vs es) = Graph (simplify vs) (simplify es)
 
 ----------------------------------------------------------------------------------------------------
 -- Forest
@@ -93,7 +96,7 @@ undirected (Graph vs es) = Graph vs $ union es (map swap es)
 subgraph :: NominalType a => Graph a -> Set a -> Graph a
 subgraph (Graph vs es) vs' =
     Graph (vs' `intersection` vs)
-          (mapFilter (\(v1, v2) -> when (contains vs' v1 /\ contains vs' v2) (v1, v2)) es)
+          (mapFilter (\(v1, v2) -> maybeIf (contains vs' v1 /\ contains vs' v2) (v1, v2)) es)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph algorithms
@@ -109,7 +112,7 @@ containsEdge :: NominalType a => Graph a -> (a, a) -> Formula
 containsEdge (Graph vs es) e = contains es e
 
 predsFunction :: NominalType a => Graph a -> (a -> Formula) -> Set a
-predsFunction g cf = mapFilter (\(a, b) -> when (cf b) a) (edges g)
+predsFunction g cf = mapFilter (\(a, b) -> maybeIf (cf b) a) (edges g)
 
 preds :: NominalType a => Graph a -> a -> Set a
 preds g v = predsFunction g (eq v)
@@ -118,7 +121,7 @@ predsFromSet :: NominalType a => Graph a -> Set a -> Set a
 predsFromSet g s = predsFunction g (contains s)
 
 succsFunction :: NominalType a => Graph a -> (a -> Formula) -> Set a
-succsFunction g cf = mapFilter (\(a, b) -> when (cf a) b) (edges g)
+succsFunction g cf = mapFilter (\(a, b) -> maybeIf (cf a) b) (edges g)
 
 succs :: NominalType a => Graph a -> a -> Set a
 succs g v = succsFunction g (eq v)
@@ -131,7 +134,7 @@ neighbors g v = union (succs g v) (preds g v)
 
 transitiveClosure :: NominalType a => Graph a -> Graph a
 transitiveClosure (Graph vs es) = Graph vs (edgesClosure es)
-    where edgesClosure es = let es' = union es $ pairsWithFilter (\(a, b) (c, d) -> when (eq b c) (a, d)) es es
+    where edgesClosure es = let es' = union es $ pairsWithFilter (\(a, b) (c, d) -> maybeIf (eq b c) (a, d)) es es
                             in ite' (eq es es') es (edgesClosure es')
 
 existsPath :: NominalType a => Graph a -> a -> a -> Formula

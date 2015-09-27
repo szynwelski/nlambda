@@ -26,7 +26,7 @@ atomsDA q d i f = da q atoms d i f
 unionDA :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (Maybe q1, Maybe q2) a
 unionDA (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = automaton q a d i f
     where q = pairs q1 q2
-          d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> when (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
+          d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
           i = pairs i1 i2
           f = union (pairs f1 q2) (pairs q1 f2)
 

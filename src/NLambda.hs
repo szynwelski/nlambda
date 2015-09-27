@@ -5,6 +5,7 @@ import Nominal.Automaton.Base
 import Nominal.Automaton.Deterministic
 import Nominal.Automaton.Nondeterministic
 import Nominal.Conditional
+import Nominal.Contextual
 import Nominal.Either
 import Nominal.Formula
 import Nominal.Graph
@@ -86,7 +87,7 @@ result = simplify $ accepts (atomsDA (fromList [a,b,c]) (\x y -> ite (eq x y) a 
 result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b) -- -> false
 
 createToMinAuto n = atomsDA (replicateAtomsUntil n) (flip (:)) [] (filter (\(a:l) -> or $ fmap (eq a) l) $ replicateAtoms n)
-toMinAuto = createToMinAuto 2
+toMinAuto = createToMinAuto 4
 parityAuto = atomsDA (fromList [0,1]) (\q _ -> mod (succ q) 2) 0 (singleton 0) :: Automaton Int Atom
 
 result2 = simplify $ equivalentDA (differenceDA toMinAuto parityAuto) toMinAuto

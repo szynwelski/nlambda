@@ -21,8 +21,6 @@ class Ord a => NominalType a where
     mapVariables = const id
     foldVariables :: (Variable -> b -> b) -> b -> a -> b
     foldVariables _ acc _ = acc
-    simplify :: a -> a
-    simplify = id
 
 neq :: NominalType a => a -> a -> Formula
 neq x1 x2 = not $ eq x1 x2
@@ -49,7 +47,6 @@ instance NominalType Formula where
     eq = iff
     mapVariables = mapFormulaVariables
     foldVariables = foldFormulaVariables
-    simplify f = ite' f true false
 
 instance NominalType Bool
 
@@ -69,7 +66,6 @@ instance NominalType a => NominalType [a] where
     eq l1 l2 = if length l1 == length l2 then and $ zipWith eq l1 l2 else false
     mapVariables f = fmap $ mapVariables f
     foldVariables f = foldl $ foldVariables f
-    simplify = fmap simplify
 
 instance NominalType ()
 
@@ -77,20 +73,17 @@ instance (NominalType a, NominalType b) => NominalType (a, b) where
     eq (a1, b1) (a2, b2) = (eq a1 a2) /\ (eq b1 b2)
     mapVariables f (a, b) = (mapVariables f a, mapVariables f b)
     foldVariables f acc (a, b) = foldVariables f (foldVariables f acc a) b
-    simplify (a, b) = (simplify a, simplify b)
 
 instance (NominalType a, NominalType b, NominalType c) => NominalType (a, b, c) where
     eq (a1, b1, c1) (a2, b2, c2) = (eq a1 a2) /\ (eq b1 b2) /\ (eq c1 c2)
     mapVariables f (a, b, c) = (mapVariables f a, mapVariables f b, mapVariables f c)
     foldVariables f acc (a, b, c) = foldVariables f (foldVariables f (foldVariables f acc a) b) c
-    simplify (a, b, c) = (simplify a, simplify b, simplify c)
 
 instance NominalType a => NominalType (Variants a) where
     eq = variantsRelation eq
     variants = map variant
     mapVariables f = fromList . mapVariables f . toList
     foldVariables f acc = foldl (foldVariables f) acc . toList
-    simplify = fromList . simplify . toList
 
 instance NominalType a => NominalType (Maybe a) where
     eq Nothing Nothing = true
@@ -99,7 +92,6 @@ instance NominalType a => NominalType (Maybe a) where
     mapVariables f = fmap $ mapVariables f
     foldVariables _ acc Nothing = acc
     foldVariables f acc (Just v) = foldVariables f acc v
-    simplify = fmap simplify
 
 instance (NominalType a, NominalType b) => NominalType (Either a b) where
     eq (Left v1) (Left v2) = eq v1 v2
@@ -109,5 +101,3 @@ instance (NominalType a, NominalType b) => NominalType (Either a b) where
     mapVariables f (Right v) = Right (mapVariables f v)
     foldVariables f acc (Left v) = foldVariables f acc v
     foldVariables f acc (Right v) = foldVariables f acc v
-    simplify (Left v) = Left $ simplify v
-    simplify (Right v) = Right $ simplify v

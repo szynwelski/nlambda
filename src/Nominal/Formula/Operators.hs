@@ -28,13 +28,14 @@ checkSize creator freeVars defVal fs
 checkConstraints :: (Set Formula -> FormulaStructure) -> Set Variable -> Formula
     -> (Maybe Relation -> Maybe Relation -> Maybe Relation) -> Set Formula -> Formula
 checkConstraints creator freeVars defVal relFun fs =
-    if member defVal cs
-        then defVal
+    if member nDefVal cs
+        then nDefVal
         else checkSize creator freeVars defVal (union cs fs2)
-    where (fs1, fs2) = partition isConstraint fs
+    where nDefVal = not defVal
+          (fs1, fs2) = partition isConstraint fs
           relLists = MM.assocs $ foldr (\(Constraint r x1 x2) -> MM.insert (x1,x2) (Just r)) MM.empty (map formula fs1)
           rels = fmap (fmap $ foldr1 relFun) relLists
-          cs = fromList $ fmap (\((x1,x2),rel) -> maybe (not defVal) (\r -> (constraint r x1 x2)) rel) rels
+          cs = fromList $ fmap (\((x1,x2),rel) -> maybe nDefVal (\r -> (constraint r x1 x2)) rel) rels
 
 ----------------------------------------------------------------------------------------------------
 -- And
