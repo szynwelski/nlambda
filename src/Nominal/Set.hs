@@ -278,4 +278,3 @@ hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)
 
 size :: NominalType a => Set a -> Variants Int
 size s = findSize s 1 where findSize s n = ite' (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
-

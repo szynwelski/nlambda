@@ -178,13 +178,13 @@ foldFormulaVariables fun acc (Formula _ f) = doFold fun acc f
           doFold fun acc (Not f) = foldFormulaVariables fun acc f
 
 mapFormulaVariables :: (Variable -> Variable) -> Formula -> Formula
-mapFormulaVariables fun (Formula fvs f) = Formula (map fun fvs) (doMap fun f)
-    where doMap _ T = T
-          doMap _ F = F
-          doMap fun (Constraint r x1 x2) = constraintStruct r (fun x1) (fun x2)
-          doMap fun (And fs) = And $ map (mapFormulaVariables fun) fs
-          doMap fun (Or fs) = Or $ map (mapFormulaVariables fun) fs
-          doMap fun (Not f) = Not $ mapFormulaVariables fun f
+mapFormulaVariables fun (Formula fvs f) = doMap fun f
+    where doMap _ T = true
+          doMap _ F = false
+          doMap fun (Constraint r x1 x2) = constraint r (fun x1) (fun x2)
+          doMap fun (And fs) = andFromSet $ map (mapFormulaVariables fun) fs
+          doMap fun (Or fs) = orFromSet $ map (mapFormulaVariables fun) fs
+          doMap fun (Not f) = not $ mapFormulaVariables fun f
 
 replaceFormulaVariable :: Variable -> Variable -> Formula -> Formula
 replaceFormulaVariable oldVar newVar = mapFormulaVariables (\var -> if oldVar == var then newVar else var)

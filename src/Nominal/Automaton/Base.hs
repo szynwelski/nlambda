@@ -12,8 +12,16 @@ import Prelude hiding (map, not)
 -- Definition of automaton
 ----------------------------------------------------------------------------------------------------
 
-data Automaton q a = Automaton {states :: Set q, alphabet :: Set a, delta :: Set (q, a, q),
-                                initialStates :: Set q, finalStates :: Set q} deriving (Eq, Ord, Show)
+data Automaton q a = Automaton {states :: Set (Maybe q), alphabet :: Set a, delta :: Set (Maybe q, a, Maybe q),
+                                initialStates :: Set (Maybe q), finalStates :: Set (Maybe q)} deriving (Eq, Ord, Show)
+
+automaton :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a
+automaton q a d i f = onlyReachable $ Automaton q' a (union d1 d2) i' f'
+    where q' = insert Nothing $ map Just q
+          d1 = mapFilter (\(s1,l,s2) -> when (contains q s1 /\ contains q s2) (Just s1,l,Just s2)) d
+          d2 = map (\(s1,l) -> (s1,l,Nothing)) ((pairs q' a) \\ (map (\(s,l,_)-> (s,l)) d1  ))
+          i' = map Just (intersection q i)
+          f' = map Just (intersection q f)
 
 ----------------------------------------------------------------------------------------------------
 -- Instances
@@ -35,23 +43,28 @@ instance (NominalType q, NominalType a) => NominalType (Automaton q a) where
 -- Automaton functions
 ----------------------------------------------------------------------------------------------------
 
-transitFromStates :: (NominalType q, NominalType a) => Automaton q a -> (q -> Formula) -> a -> Set q
+transitFromStates :: (NominalType q, NominalType a) => Automaton q a -> (Maybe q -> Formula) -> a -> Set (Maybe q)
 transitFromStates aut cf l = mapFilter (\(s1, l', s2) -> when (cf s1 /\ eq l l') s2) (delta aut)
 
-transit :: (NominalType q, NominalType a) => Automaton q a -> q -> a -> Set q
+transit :: (NominalType q, NominalType a) => Automaton q a -> Maybe q -> a -> Set (Maybe q)
 transit aut s = transitFromStates aut (eq s)
 
-transitSet :: (NominalType q, NominalType a) => Automaton q a -> Set q -> a -> Set q
+transitSet :: (NominalType q, NominalType a) => Automaton q a -> Set (Maybe q) -> a -> Set (Maybe q)
 transitSet aut ss = transitFromStates aut (contains ss)
 
 accepts :: (NominalType q, NominalType a) => Automaton q a -> [a] -> Formula
 accepts aut = intersect (finalStates aut) . foldl (transitSet aut) (initialStates aut)
 
-transitionGraph :: (NominalType q, NominalType a) => Automaton q a -> Graph q
+transitionGraph :: (NominalType q, NominalType a) => Automaton q a -> Graph (Maybe q)
 transitionGraph aut = graph (states aut) (map (\(s1, _, s2) -> (s1, s2)) $ delta aut)
 
+onlyReachable :: (NominalType q, NominalType a) => Automaton q a -> Automaton q a
+onlyReachable aut@(Automaton q a d i f) = Automaton q' a d' i (intersection q' f)
+    where q' = reachableFromSet (transitionGraph aut) (initialStates aut)
+          d' = mapFilter (\(s1,l,s2) -> when (contains q' s1) (s1,l,s2)) d
+
 isNotEmptyAutomaton :: (NominalType q, NominalType a) => Automaton q a -> Formula
-isNotEmptyAutomaton aut = intersect (reachableFromSet (transitionGraph aut) (initialStates aut)) (finalStates aut)
+isNotEmptyAutomaton = isNotEmpty . finalStates . onlyReachable
 
 isEmptyAutomaton :: (NominalType q, NominalType a) => Automaton q a -> Formula
 isEmptyAutomaton = not . isNotEmptyAutomaton
@@ -59,30 +72,36 @@ isEmptyAutomaton = not . isNotEmptyAutomaton
 pairsDelta :: (NominalType q1, NominalType q2, NominalType a) => Set (q1,a,q1) -> Set (q2,a,q2) -> Set ((q1,q2),a,(q1,q2))
 pairsDelta d1 d2 = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> when (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
 
-pairsAutomaton :: (NominalType q1, NominalType q2, NominalType a) =>
-    Automaton q1 a -> Automaton q2 a -> Set a -> Set (q1, q2) -> Automaton (q1, q2) a
-pairsAutomaton (Automaton q1 _ d1 i1 _) (Automaton q2 _ d2 i2 _) a f =
-    Automaton (pairs q1 q2) a (pairsDelta d1 d2) (pairs i1 i2) f
+-- TODO check alphabet ? union ?
+unionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (Either q1 q2) a
+unionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Automaton q a d i f)
+    where eitherUnion s1 s2 = union (map (fmap Left) s1) (map (fmap Right) s2)
+          q = eitherUnion q1 q2
+          d = union (map (\(s1,l,s2)->(fmap Left s1,l,fmap Left s2)) d1) (map (\(s1,l,s2)->(fmap Right s1,l,fmap Right s2)) d2)
+          i = eitherUnion i1 i2
+          f = eitherUnion f1 f2
 
--- FIXME nie działa dla delta(q) nie należącego do stanów
-unionAutomaton :: (NominalType q1, NominalType q2, NominalType a) =>
-    Automaton q1 a -> Automaton q2 a -> Automaton (q1, q2) a
-unionAutomaton aut1 aut2 = pairsAutomaton aut1 aut2 (union (alphabet aut1) (alphabet aut2))
-                           (union (pairs (states aut1) (finalStates aut2)) (pairs (finalStates aut1) (states aut2)))
-
-intersectionAutomaton :: (NominalType q1, NominalType q2, NominalType a) =>
-    Automaton q1 a -> Automaton q2 a -> Automaton (q1, q2) a
-intersectionAutomaton aut1 aut2 = pairsAutomaton aut1 aut2 (intersection (alphabet aut1) (alphabet aut2))
-                           (pairs (finalStates aut1) (finalStates aut2))
+-- TODO check alphabet ? intersection ?
+intersectionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (q1, q2) a
+intersectionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Automaton q a d i f)
+    where intersectionPair x1 x2 = case (x1,x2) of (Just y1,Just y2) -> Just (y1,y2)
+                                                   otherwise         -> Nothing
+          q = pairsWith intersectionPair q1 q2
+          d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> when (eq l l') (intersectionPair s1 s1',l,intersectionPair s2 s2')) d1 d2
+          i = pairsWith intersectionPair i1 i2
+          f = pairsWith intersectionPair f1 f2
 
 ----------------------------------------------------------------------------------------------------
 -- Automaton minimization
 ----------------------------------------------------------------------------------------------------
 
 --minimize :: Automaton q a -> Automaton (Set q) a
-minimize aut@(Automaton q a d i f) = q'
+minimize aut@(Automaton q a d i f) = {-Automaton-} q' {-a d' i' f'-}
     where relGraph = graph (square q) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta d d)
           nf = q \\ f
           equiv = square q \\ reachableFromSet (reverseEdges relGraph) (union (pairs nf f) (pairs f nf))
           q' = map vertices (stronglyConnectedComponents $ graph q equiv)
+--          d' =
+--          i' =
+--          f' =
 

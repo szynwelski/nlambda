@@ -18,15 +18,15 @@ digits :: Integral x => x -> [x]
 digits 0 = []
 digits x = digits (x `div` 10) ++ [x `mod` 10]
 
-variableNameWithIndex :: Int -> Int -> String
-variableNameWithIndex charIndex varIndex = toEnum charIndex : fmap (toEnum . (+ 8320)) (digits varIndex)
+variableNameWithIndex :: Int -> Int -> Maybe Identifier -> String
+variableNameWithIndex charIndex varIndex _ = toEnum charIndex : fmap (toEnum . (+ 8320)) (digits varIndex)
 
-variableNameAsciiWithIndex :: Int -> Int -> String
-variableNameAsciiWithIndex charIndex varIndex = toEnum charIndex : '_' : show varIndex
+variableNameAsciiWithIndex :: Int -> Int -> Maybe Identifier -> String
+variableNameAsciiWithIndex charIndex varIndex id = toEnum charIndex : '_' : show varIndex ++ maybe "" (("_" ++) . show) id
 
-createVariableName :: (Int -> Int -> String) -> Variable -> String
+createVariableName :: (Int -> Int -> Maybe Identifier -> String) -> Variable -> String
 createVariableName _ (Var name) = name
-createVariableName indexName (IterationVariable level index _) = indexName (97 + level) index
+createVariableName indexName (IterationVariable level index id) = indexName (97 + level) index id
 
 variableName :: Variable -> String
 variableName = createVariableName variableNameWithIndex
@@ -59,13 +59,13 @@ onlyForIteration result _ (Var _) = result
 onlyForIteration _ f (IterationVariable level index id) = f level index id
 
 setIdentifier :: Identifier -> Variable -> Variable
-setIdentifier t v = onlyForIteration v (\l i _ -> IterationVariable l i (Just t)) v
+setIdentifier id v = onlyForIteration v (\l i _ -> IterationVariable l i (Just id)) v
 
 hasIdentifierEquals :: Identifier -> Variable -> Bool
-hasIdentifierEquals t = onlyForIteration False (\_ _ vt -> maybe False (== t) vt)
+hasIdentifierEquals t = onlyForIteration False (\_ _ id -> maybe False (== t) id)
 
 hasIdentifierNotEquals :: Identifier -> Variable -> Bool
-hasIdentifierNotEquals t = onlyForIteration False (\_ _ vt -> maybe True (/= t) vt)
+hasIdentifierNotEquals t = onlyForIteration False (\_ _ id -> maybe True (/= t) id)
 
 clearIdentifier :: Variable -> Variable
 clearIdentifier v = onlyForIteration v (\l i _ -> iterationVariable l i) v
@@ -74,4 +74,4 @@ getIterationLevel :: Variable -> Maybe Int
 getIterationLevel = onlyForIteration Nothing (\l _ _ -> Just l)
 
 changeIterationLevel :: Map Int Int -> Variable -> Variable
-changeIterationLevel m v = onlyForIteration v (\l i t -> IterationVariable (findWithDefault l l m) i t) v
+changeIterationLevel m v = onlyForIteration v (\l i id -> IterationVariable (findWithDefault l l m) i id) v

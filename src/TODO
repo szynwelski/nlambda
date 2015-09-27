@@ -47,4 +47,5 @@ Algorytmy:
 
 
 rozważyć eliminację zmiennych nie występujących w iteracji i wartości
+!!! wykorzystać variants w wariantach, a nie tylko w zbiorach
 !!! pomyslec o stosach formula przy uruchamianiu solverow - moze warianty i zbiory powinny miec specyficzne implementacje ite'

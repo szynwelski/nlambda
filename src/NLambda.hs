@@ -86,11 +86,11 @@ result = simplify $ accepts (atomsDA (fromList [a,b,c]) (\x y -> ite (eq x y) a 
 result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b) -- -> false
 
 createToMinAuto n = atomsDA (replicateAtomsUntil n) (flip (:)) [] (filter (\(a:l) -> or $ fmap (eq a) l) $ replicateAtoms n)
-toMinAuto = createToMinAuto 6
+toMinAuto = createToMinAuto 2
 parityAuto = atomsDA (fromList [0,1]) (\q _ -> mod (succ q) 2) 0 (singleton 0) :: Automaton Int Atom
 
 result2 = simplify $ equivalentDA (differenceDA toMinAuto parityAuto) toMinAuto
 result3 = simplify $ equivalentDA (differenceDA parityAuto toMinAuto) parityAuto
-result4 = simplify $ minimize toMinAuto
-result5 = simplify $ accepts toMinAuto [a,b,c]
+result4 = simplify $ equivalentDA parityAuto (unionDA parityAuto toMinAuto)
+result5 = simplify $ minimize toMinAuto
 gg = graph (square (states toMinAuto)) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta (delta toMinAuto) (delta toMinAuto))

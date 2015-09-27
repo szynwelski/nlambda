@@ -75,8 +75,8 @@ runSolver solver script = do
                                                 (concat (smtOptions solver) ++ script)
                           return (case exit of
                             ExitSuccess -> smtResult $ head $ lines out
-                            ExitFailure code -> error $ unlines ["SMT Solver " ++ (command solver)
-                                ++ " exits with code: " ++ show code, out, err]))
+                            ExitFailure code -> error $ unlines ["SMT Solver " ++ (command solver) ++ " exits with code: "
+                               ++ show code, "input: " ++ script, "output: " ++ out, "error: " ++ err]))
 
 ----------------------------------------------------------------------------------------------------
 -- SMT-LIB script
