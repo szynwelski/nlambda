@@ -21,12 +21,12 @@ getConstraintsForVariable x (Formula _ f) = get f
           get (Constraint _ _ _) = (empty, empty, empty)
           get (And fs) = getFromSet $ map formula fs
           get (Or fs) = getFromSet $ map formula fs
-          getFromConstraint LessThan y = (singleton y, empty, empty)
-          getFromConstraint LessEquals y = (singleton y, singleton y, empty)
+          getFromConstraint LessThan y = (empty, empty, singleton y)
+          getFromConstraint LessEquals y = (empty, singleton y, singleton y)
           getFromConstraint Equals y = (empty, singleton y, empty)
           getFromConstraint NotEquals y = (singleton y, empty, singleton y)
-          getFromConstraint GreaterEquals y = (empty, singleton y, singleton y)
-          getFromConstraint GreaterThan y = (empty, empty, singleton y)
+          getFromConstraint GreaterEquals y = (singleton y, singleton y, empty)
+          getFromConstraint GreaterThan y = (singleton y, empty, empty)
           getFromSet fs = (\(s1, s2, s3) -> (unions s1, unions s2, unions s3)) $ unzip3 $ elems $ map get fs
 
 replaceConstraintsInFormula :: Variable -> (Relation -> Variable -> Formula) -> Formula -> Formula
