@@ -51,10 +51,10 @@ sa = atoms
 del = delete a sa
 ts = triples sa sa sa
 
-a1 = variant $ iterationVariable 0 1
-a2 = variant $ iterationVariable 0 2
-b1 = variant $ iterationVariable 1 1
-b2 = variant $ iterationVariable 1 2
+a1 = {-variant $-} iterationVariable 0 1
+a2 = {-variant $-} iterationVariable 0 2
+b1 = {-variant $-} iterationVariable 1 1
+b2 = {-variant $-} iterationVariable 1 2
 
 -- example program
 
@@ -87,7 +87,7 @@ result = simplify $ accepts (atomsDA (fromList [a,b,c]) (\x y -> ite (eq x y) a 
 result1 = eq b c /\ (neq a b \/ neq a c) /\ (neq b c \/ eq a b) -- -> false
 
 createToMinAuto n = atomsDA (replicateAtomsUntil n) (flip (:)) [] (filter (\(a:l) -> or $ fmap (eq a) l) $ replicateAtoms n)
-toMinAuto = createToMinAuto 4
+toMinAuto = createToMinAuto 2
 parityAuto = atomsDA (fromList [0,1]) (\q _ -> mod (succ q) 2) 0 (singleton 0) :: Automaton Int Atom
 
 result2 = simplify $ equivalentDA (differenceDA toMinAuto parityAuto) toMinAuto
@@ -95,3 +95,28 @@ result3 = simplify $ equivalentDA (differenceDA parityAuto toMinAuto) parityAuto
 result4 = simplify $ equivalentDA parityAuto (unionDA parityAuto toMinAuto)
 result5 = simplify $ minimize toMinAuto
 gg = graph (square (states toMinAuto)) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta (delta toMinAuto) (delta toMinAuto))
+
+--data State a = Init | One a | Two a a | Final | NotFinal deriving (Eq, Ord, Show)
+--instance NominalType a => NominalType (State a) where
+--    eq Init Init = true
+--    eq (One a) (One b) = eq a b
+--    eq (Two a1 a2) (Two b1 b2) = eq (a1,a2) (b1,b2)
+--    eq Final Final = true
+--    eq NotFinal NotFinal = true
+--    eq _ _ = false
+--    mapVariables f Init = Init
+--    mapVariables f Final = Final
+--    mapVariables f NotFinal = NotFinal
+--    mapVariables f (One a) = One (mapVariables f a)
+--    mapVariables f (Two a b) = Two (mapVariables f a) (mapVariables f b)
+--    foldVariables f acc (One a) = foldVariables f acc a
+--    foldVariables f acc (Two a b) = foldVariables f acc (a, b)
+--    foldVariables _ acc _  = acc
+--
+--qs = unions [singleton Init, map One atoms, pairsWith Two atoms atoms, singleton Final]
+--tr :: State Atom -> Atom -> State Atom
+--tr Init a = One a
+--tr (One a) b = Two a b
+--tr (Two a b) c = ite (eq a c \/ eq b c) Final NotFinal
+--
+--testMinAut = atomsDA qs tr
