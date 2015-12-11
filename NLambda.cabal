@@ -1,0 +1,40 @@
+name:		   NLambda
+version:	   0.0.0
+build-type:        Simple
+cabal-version:     >= 1.2
+
+Library
+  build-depends:   
+    base,
+    containers,
+    MissingH,
+    multimap,
+    directory,
+    process,
+    random,
+    mtl
+  hs-source-dirs:  src
+  exposed-modules: NLambda
+  other-modules:
+    Nominal.Atom,
+    Nominal.Automaton.Base,
+    Nominal.Automaton.Deterministic,
+    Nominal.Automaton.Nondeterministic,
+    Nominal.Conditional,
+    Nominal.Contextual,
+    Nominal.Either,
+    Nominal.Formula,
+    Nominal.Formula.Definition
+    Nominal.Formula.Constructors
+    Nominal.Formula.Operators
+    Nominal.Formula.Quantification
+    Nominal.Formula.Solver
+    Nominal.Graph,
+    Nominal.Maybe,
+    Nominal.Set,
+    Nominal.Type,
+    Nominal.Util.InsertionSet,
+    Nominal.Util.UnionFind,
+    Nominal.Variable,
+    Nominal.VariablesSpace,
+    Nominal.Variants

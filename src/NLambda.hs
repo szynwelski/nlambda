@@ -1,5 +1,22 @@
-module NLambda where
-
+module NLambda
+(
+module Nominal.Atom,
+module Nominal.Automaton.Base,
+module Nominal.Automaton.Deterministic,
+module Nominal.Automaton.Nondeterministic,
+module Nominal.Conditional,
+module Nominal.Contextual,
+module Nominal.Either,
+module Nominal.Formula,
+module Nominal.Graph,
+module Nominal.Maybe,
+module Nominal.Set,
+module Nominal.Type,
+module Nominal.Variable,
+module Nominal.VariablesSpace,
+module Nominal.Variants
+)
+where
 import Nominal.Atom
 import Nominal.Automaton.Base
 import Nominal.Automaton.Deterministic
