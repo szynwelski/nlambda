@@ -17,6 +17,7 @@ module Nominal.VariablesSpace,
 module Nominal.Variants
 )
 where
+
 import Nominal.Atom
 import Nominal.Automaton.Base
 import Nominal.Automaton.Deterministic
@@ -28,10 +29,10 @@ import Nominal.Formula
 import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Set
-import Nominal.Type
-import Nominal.Variable
+import Nominal.Type (NominalType(eq), neq)
+import Nominal.Variable (Variable, variable, variableName)
 import Nominal.VariablesSpace
-import Nominal.Variants hiding (filter, fromList, map)
+import Nominal.Variants (Variants, iteV, iteV')
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 
 ----------------------------------------------------------------------------------------------------
@@ -67,11 +68,6 @@ set3 = fromList [a, b, c]
 sa = atoms
 del = delete a sa
 ts = triples sa sa sa
-
-a1 = {-variant $-} iterationVariable 0 1
-a2 = {-variant $-} iterationVariable 0 2
-b1 = {-variant $-} iterationVariable 1 1
-b2 = {-variant $-} iterationVariable 1 2
 
 -- example program
 

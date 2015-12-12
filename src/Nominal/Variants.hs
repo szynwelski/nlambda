@@ -1,4 +1,14 @@
-module Nominal.Variants where
+module Nominal.Variants (
+Variants,
+variant,
+iteV,
+iteV',
+toList,
+fromList,
+satisfying,
+Nominal.Variants.map,
+fromVariant,
+variantsRelation) where
 
 import Data.List.Utils (join)
 import Data.Map (Map)
@@ -29,11 +39,11 @@ instance Ord a => Conditional (Variants a) where
 instance (Contextual a, Ord a) => Contextual (Variants a) where
     when ctx = fromList . fmap (\(v,c) -> (when (ctx /\ c) v, when ctx c)) . toList
 
-iteVariants :: Ord a => Formula -> a -> a -> Variants a
-iteVariants c x1 x2 = ite c (variant x1) (variant x2)
+iteV :: Ord a => Formula -> a -> a -> Variants a
+iteV c x1 x2 = ite c (variant x1) (variant x2)
 
-iteVariants' :: Ord a => Formula -> a -> a -> Variants a
-iteVariants' c x1 x2 = ite' c (variant x1) (variant x2)
+iteV' :: Ord a => Formula -> a -> a -> Variants a
+iteV' c x1 x2 = ite' c (variant x1) (variant x2)
 
 toList :: Variants a -> [(a, Formula)]
 toList (Variants vs) = Map.assocs vs

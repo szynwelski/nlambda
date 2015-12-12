@@ -1,4 +1,17 @@
-module Nominal.Variable where
+module Nominal.Variable (
+Identifier,
+Variable,
+variableName,
+variableNameAscii,
+variable,
+iterationVariable,
+iterationVariablesList,
+setIdentifier,
+hasIdentifierEquals,
+hasIdentifierNotEquals,
+clearIdentifier,
+getIterationLevel,
+changeIterationLevel) where
 
 import Data.Map (Map, findWithDefault)
 import Data.Maybe (isNothing)

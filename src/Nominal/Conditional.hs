@@ -1,4 +1,4 @@
-module Nominal.Conditional where
+module Nominal.Conditional (Conditional(ite), ite') where
 
 import Nominal.Formula
 import Prelude hiding (not)
