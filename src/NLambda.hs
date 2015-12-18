@@ -14,7 +14,8 @@ module Nominal.Set,
 module Nominal.Type,
 module Nominal.Variable,
 module Nominal.VariablesSpace,
-module Nominal.Variants
+module Nominal.Variants,
+a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z
 )
 where
 
@@ -38,36 +39,32 @@ import Prelude hiding (or, and, not, sum, map, filter, maybe)
 ----------------------------------------------------------------------------------------------------
 -- Examples
 ----------------------------------------------------------------------------------------------------
-w = variable "w"
-x = variable "x"
-y = variable "y"
-z = variable "z"
-cc = eq x y
-ncc = not cc
-ce = (eq x y) /\ (eq y z) /\ (eq z x)
-nce =  (eq x y) /\ (eq y z) /\ not (eq z x)
-ice = (eq x y) /\ (eq y z) ==> (eq z x)
-af = (∀) y cc
-ef = (∃) y cc
-aef = (∀) x $ (∃) y cc
-naef = not aef
-eaf = (∃) x $ (∀) y cc
-aaf = (∀) x $ (∀) y cc
-eef = (∃) x $ (∃) y cc
-
 a = atom "a"
 b = atom "b"
 c = atom "c"
 d = atom "d"
 e = atom "e"
-cond = eq a b
-at = ite cond a b
-set1 = singleton at
-set2 = fromList [a, b]
-set3 = fromList [a, b, c]
-sa = atoms
-del = delete a sa
-ts = triples sa sa sa
+f = atom "f"
+g = atom "g"
+h = atom "h"
+i = atom "i"
+j = atom "j"
+k = atom "k"
+l = atom "l"
+m = atom "m"
+n = atom "n"
+o = atom "o"
+p = atom "p"
+q = atom "q"
+r = atom "r"
+s = atom "s"
+t = atom "t"
+u = atom "u"
+v = atom "v"
+w = atom "w"
+x = atom "x"
+y = atom "y"
+z = atom "z"
 
 -- example program
 
@@ -80,7 +77,7 @@ nlProgram = do
 
 -- graph
 
-g = atomsGraph $ filter (\(x,y) -> eq x a \/ eq y a) atomsPairs
+gr = atomsGraph $ filter (\(x,y) -> eq x a \/ eq y a) atomsPairs
 gIn = atomsGraph $ filter (eq a . snd) atomsPairs
 gOut = atomsGraph $ filter (eq a . fst) atomsPairs
 gAB = addEdge (a,b) emptyGraph

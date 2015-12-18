@@ -15,6 +15,7 @@ changeIterationLevel) where
 
 import Data.Map (Map, findWithDefault)
 import Data.Maybe (isNothing)
+import Numeric (showIntAtBase)
 
 ----------------------------------------------------------------------------------------------------
 -- Variable
@@ -31,15 +32,18 @@ digits :: Integral x => x -> [x]
 digits 0 = []
 digits x = digits (x `div` 10) ++ [x `mod` 10]
 
+variableNameBeforeIndex :: Int -> String
+variableNameBeforeIndex charIndex = showIntAtBase 25 (toEnum . (+97)) charIndex ""
+
 variableNameWithIndex :: Int -> Int -> Maybe Identifier -> String
-variableNameWithIndex charIndex varIndex _ = toEnum charIndex : fmap (toEnum . (+ 8320)) (digits varIndex)
+variableNameWithIndex charIndex varIndex _ = variableNameBeforeIndex charIndex ++ fmap (toEnum . (+ 8320)) (digits varIndex)
 
 variableNameAsciiWithIndex :: Int -> Int -> Maybe Identifier -> String
-variableNameAsciiWithIndex charIndex varIndex id = toEnum charIndex : '_' : show varIndex ++ maybe "" (("_" ++) . show) id
+variableNameAsciiWithIndex charIndex varIndex id = variableNameBeforeIndex charIndex ++ '_' : show varIndex ++ maybe "" (("_" ++) . show) id
 
 createVariableName :: (Int -> Int -> Maybe Identifier -> String) -> Variable -> String
 createVariableName _ (Var name) = name
-createVariableName indexName (IterationVariable level index id) = indexName (97 + level) index id
+createVariableName indexName (IterationVariable level index id) = indexName level index id
 
 variableName :: Variable -> String
 variableName = createVariableName variableNameWithIndex
