@@ -70,6 +70,7 @@ import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Random (randomIO)
 
+
 ----------------------------------------------------------------------------------------------------
 -- Set elements
 ----------------------------------------------------------------------------------------------------
@@ -118,9 +119,12 @@ checkIdentifiers id (oldV, (newV, cond)) =
         changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
     in mapVariablesIf (hasIdentifierEquals id) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
 
+getVariableId :: NominalType a => a -> IO Int
+getVariableId v = do {r <- randomIO; return $ (length $ toList $ variants v) + r}
+
 applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
 applyWithIdentifiers f (v, cond) =
-    let id = unsafePerformIO randomIO
+    let id = unsafePerformIO $ getVariableId v
         (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setIdentifier id) (v, cond)
     in fmap (\(v'', c) -> checkIdentifiers id (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
 
