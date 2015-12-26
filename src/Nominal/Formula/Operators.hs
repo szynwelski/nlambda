@@ -160,7 +160,7 @@ implies = (==>)
 
 infix 8 <==>
 (<==>) :: Formula -> Formula -> Formula
-f1 <==> f2 = (f1 ==> f2) /\ (f1 <== f2)
+f1 <==> f2 = (f1 /\ f2) \/ (not f1 /\ not f2)
 
 iff :: Formula -> Formula -> Formula
 iff = (<==>)
