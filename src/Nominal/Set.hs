@@ -48,7 +48,8 @@ replicateAtoms,
 replicateAtomsUntil,
 hasSizeLessThan,
 hasSize,
-size) where
+size,
+isSingleton) where
 
 import Data.List ((\\))
 import Data.List.Utils (join)
@@ -61,7 +62,7 @@ import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Maybe
-import Nominal.Type (NominalType(..), collectWith, mapVariablesIf, neq, replaceVariables)
+import Nominal.Type (FoldVarFun, MapVarFun, NominalType(..), Scope(..), collectWith, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, getIterationLevel, hasIdentifierEquals,
                          hasIdentifierNotEquals, iterationVariablesList, iterationVariable, setIdentifier, variableName)
@@ -85,8 +86,8 @@ sumCondition (vs1, c1) (vs2, c2) = (Set.union vs1 vs2, c1 \/ c2)
 
 checkVariablesInElement :: NominalType a => (a, SetElementCondition) -> (a, SetElementCondition)
 checkVariablesInElement (v, (vs, c)) =
-    let iterVars = foldVariables (\var -> if Set.member var vs then ISet.insert var else id) ISet.empty v
-        formulaVars = foldVariables Set.insert Set.empty c
+    let iterVars = foldVariables (All, \var -> if Set.member var vs then ISet.insert var else id) ISet.empty v
+        formulaVars = getAllVariables c
         c' = getCondition (Set.intersection formulaVars (vs Set.\\ ISet.toSet iterVars), c)
     in if ISet.null iterVars
        then (v, (Set.empty, c'))
@@ -153,10 +154,24 @@ instance (Contextual a, Ord a) => Contextual (Set a) where
                             $ fmap (\(v,(vs, c)) -> (when (ctx /\ c) v, when ctx (vs, c)))
                             $ Map.assocs es
 
+mapWithout :: Set.Set Variable -> (Variable -> Variable) -> Variable -> Variable
+mapWithout vs f x = if Set.member x vs then x else f x
+
+mapSetVariables :: NominalType a => MapVarFun -> (a, SetElementCondition) -> (a, SetElementCondition)
+mapSetVariables (All, f) se = mapVariables (All, f) se
+mapSetVariables (Free, f) (v, (vs, c)) = mapVariables (Free, (mapWithout vs f)) (v, (vs, c))
+
+foldWithout :: Set.Set Variable -> (Variable -> b -> b) -> Variable -> b -> b
+foldWithout vs f x = if Set.member x vs then id else f x
+
+foldSetVariables :: NominalType a => FoldVarFun b -> b -> (a, SetElementCondition) -> b
+foldSetVariables (All, f) acc se = foldVariables (All, f) acc se
+foldSetVariables (Free, f) acc (v, (vs, c)) = foldVariables (Free, (foldWithout vs f)) acc (v, (vs, c))
+
 instance NominalType a => NominalType (Set a) where
     eq s1 s2 = (isSubsetOf s1 s2) /\ (isSubsetOf s2 s1)
-    mapVariables f (Set es) = Set $ Map.fromListWith sumCondition $ mapVariables f $ Map.assocs es
-    foldVariables fun acc (Set es) = foldVariables fun acc $ Map.assocs es
+    mapVariables f (Set es) = Set $ Map.fromListWith sumCondition $ fmap (mapSetVariables f) (Map.assocs es)
+    foldVariables f acc (Set es) = foldl (foldSetVariables f) acc (Map.assocs es)
 
 ----------------------------------------------------------------------------------------------------
 -- Similar instances
@@ -165,12 +180,12 @@ instance NominalType a => NominalType (Set a) where
 instance NominalType a => NominalType (Set.Set a) where
     eq s1 s2 = eq (fromList $ Set.elems s1) (fromList $ Set.elems s2)
     mapVariables f = Set.map (mapVariables f)
-    foldVariables fun acc = foldVariables fun acc . Set.elems
+    foldVariables f acc = foldVariables f acc . Set.elems
 
 instance (NominalType k, NominalType a) => NominalType (Map k a) where
     eq m1 m2 = eq (fromList $ Map.assocs m1) (fromList $ Map.assocs m2)
     mapVariables f = Map.fromList . mapVariables f . Map.assocs
-    foldVariables fun acc = foldVariables fun acc . Map.assocs
+    foldVariables f acc = foldVariables f acc . Map.assocs
 
 ----------------------------------------------------------------------------------------------------
 -- Operations on set
@@ -336,3 +351,6 @@ hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)
 
 size :: NominalType a => Set a -> Variants Int
 size s = findSize s 1 where findSize s n = ite' (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
+
+isSingleton :: NominalType a => Set a -> Formula
+isSingleton s = hasSize s 1

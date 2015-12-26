@@ -1,38 +1,51 @@
 module Nominal.Type where
 
 import Data.Map (Map, findWithDefault)
-import Data.Set (Set, empty, insert)
+import Data.Set (Set, elems, empty, insert)
+import Nominal.Atom (Atom)
 import Nominal.Conditional
 import Nominal.Formula
 import Nominal.Variable (Variable)
-import Nominal.Variants (Variants, fromList, map, toList, variant, variantsRelation)
+import Nominal.Variants (Variants, fromList, fromVariant, map, toList, variant, variantsRelation)
 import Prelude hiding (and, map, not, or)
 
 ----------------------------------------------------------------------------------------------------
 -- NominalType
 ----------------------------------------------------------------------------------------------------
 
+data Scope = All | Free
+
+type MapVarFun = (Scope, Variable -> Variable)
+type FoldVarFun b = (Scope, Variable -> b -> b)
+
 class Ord a => NominalType a where
     eq :: a -> a -> Formula
     eq x y = fromBool (x == y)
     variants :: a -> Variants a
     variants = variant
-    mapVariables :: (Variable -> Variable) -> a -> a
-    mapVariables = const id
-    foldVariables :: (Variable -> b -> b) -> b -> a -> b
+    mapVariables :: MapVarFun -> a -> a
+    mapVariables _ = id
+    foldVariables :: FoldVarFun b -> b -> a -> b
     foldVariables _ acc _ = acc
 
 neq :: NominalType a => a -> a -> Formula
 neq x1 x2 = not $ eq x1 x2
 
+----------------------------------------------------------------------------------------------------
+-- Operations on all variables
+----------------------------------------------------------------------------------------------------
+
 collectWith :: (NominalType a, Ord b) => (Variable -> Maybe b) -> a -> Set b
-collectWith cf = foldVariables (maybe id insert . cf) empty
+collectWith cf = foldVariables (All, maybe id insert . cf) empty
+
+getAllVariables :: (NominalType a) => a -> Set Variable
+getAllVariables = foldVariables (All, insert) empty
 
 mapVariablesIf :: NominalType a => (Variable -> Bool) -> (Variable -> Variable) -> a -> a
-mapVariablesIf cf mf = mapVariables (\v -> if cf v then mf v else v)
+mapVariablesIf cf mf = mapVariables (All, \v -> if cf v then mf v else v)
 
 replaceVariables :: NominalType a => Map Variable Variable -> a -> a
-replaceVariables varsMap = mapVariables (\var -> findWithDefault var var varsMap)
+replaceVariables varsMap = mapVariables (All, \var -> findWithDefault var var varsMap)
 
 ----------------------------------------------------------------------------------------------------
 -- Instances
@@ -40,13 +53,13 @@ replaceVariables varsMap = mapVariables (\var -> findWithDefault var var varsMap
 
 instance NominalType Variable where
     eq = equals
-    mapVariables = ($)
-    foldVariables f acc v = f v acc
+    mapVariables (_, f) = (f $)
+    foldVariables (_, f) acc v = f v acc
 
 instance NominalType Formula where
     eq = iff
-    mapVariables = mapFormulaVariables
-    foldVariables = foldFormulaVariables
+    mapVariables (_, f) = mapFormulaVariables f
+    foldVariables (_, f) = foldFormulaVariables f
 
 instance NominalType Bool
 
