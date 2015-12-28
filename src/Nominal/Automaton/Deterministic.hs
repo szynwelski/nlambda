@@ -17,7 +17,7 @@ da :: (NominalType q, NominalType a) => Set q -> Set a -> (q -> a -> q) -> q -> 
 da q a d i f = automaton q a (pairsWith (\s l -> (s,l,d s l)) q a) (singleton i) f
 
 isDeterministic :: (NominalType q, NominalType a) => Automaton q a -> Formula
-isDeterministic aut = forall (`hasSizeLessThan` 2) (pairsWith (\s l -> transit aut s l) (states aut) (alphabet aut))
+isDeterministic aut = forAll (`hasSizeLessThan` 2) (pairsWith (\s l -> transit aut s l) (states aut) (alphabet aut))
 
 atomsDA  :: NominalType q => Set q -> (q -> Atom -> q) -> q -> Set q -> Automaton q Atom
 atomsDA q d i f = da q atoms d i f

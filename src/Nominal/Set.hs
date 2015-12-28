@@ -16,7 +16,7 @@ fromList,
 mapFilter,
 deleteAll,
 exists,
-forall,
+forAll,
 union,
 unions,
 contains,
@@ -70,7 +70,6 @@ import Nominal.Variants (Variants, fromVariant, toList, variant)
 import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Random (randomIO)
-
 
 ----------------------------------------------------------------------------------------------------
 -- Set elements
@@ -253,8 +252,8 @@ deleteAll es s = foldl (flip delete) s es
 exists :: NominalType a => (a -> Formula) -> Set a -> Formula
 exists f = isNotEmpty . (filter f)
 
-forall :: NominalType a => (a -> Formula) -> Set a -> Formula
-forall f = isEmpty . (filter $ \x -> not (f x))
+forAll :: NominalType a => (a -> Formula) -> Set a -> Formula
+forAll f = isEmpty . (filter $ \x -> not (f x))
 
 union :: NominalType a => Set a -> Set a -> Set a
 union s1 s2 = sum (insert s1 (singleton s2))
@@ -275,7 +274,7 @@ notMember :: NominalType a => a -> Set a -> Formula
 notMember = flip notContains
 
 isSubsetOf :: NominalType a => Set a -> Set a -> Formula
-isSubsetOf s1 s2 = forall (contains s2) s1
+isSubsetOf s1 s2 = forAll (contains s2) s1
 
 isNotSubsetOf :: NominalType a => Set a -> Set a -> Formula
 isNotSubsetOf s = not . isSubsetOf s
@@ -344,7 +343,7 @@ replicateAtomsUntil :: Int -> Set [Atom]
 replicateAtomsUntil n = replicateSetUntil n atoms
 
 hasSizeLessThan :: NominalType a => Set a -> Int -> Formula
-hasSizeLessThan s n = forall id $ mapList (\xs -> let l = length xs in or [eq (xs!!i) (xs!!j) | i <- [0..l-1], j <- [0..l-1], i<j]) (replicate n s)
+hasSizeLessThan s n = forAll id $ mapList (\xs -> let l = length xs in or [eq (xs!!i) (xs!!j) | i <- [0..l-1], j <- [0..l-1], i<j]) (replicate n s)
 
 hasSize :: NominalType a => Set a -> Int -> Formula
 hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)

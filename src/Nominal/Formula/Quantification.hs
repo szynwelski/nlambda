@@ -1,4 +1,4 @@
-module Nominal.Formula.Quantification where
+module Nominal.Formula.Quantification (existsVar, forAllVars) where
 
 import Control.Monad (liftM2)
 import Data.Set
@@ -75,7 +75,6 @@ replaceByUpperBounds x ys f = map (\y -> replaceConstraintsInFormula x (replace 
           replace y GreaterEquals z = greaterThan y z
           replace y GreaterThan z = greaterThan y z
 
-
 quantifiersEliminationFromExists :: Variable -> Formula -> Formula
 quantifiersEliminationFromExists x f = orFromSet $ union (replaceByVariables x e f) $ insert infinity bounds
     where (l, e, u) = getConstraintsForVariable x f
@@ -111,11 +110,8 @@ createExists x (Formula _ (And fs)) | size fs2 > 0 = and $ (createExists x $ and
 createExists x (Formula _ (Or fs)) = orFromSet $ map (createExists x) fs
 createExists x f = quantifiersEliminationFromExists x f
 
-(∃) :: Variable -> Formula -> Formula
-(∃) x f = createExists x (reduceVariable x f)
-
 existsVar :: Variable -> Formula -> Formula
-existsVar = (∃)
+existsVar x f = createExists x (reduceVariable x f)
 
 ----------------------------------------------------------------------------------------------------
 -- For all
@@ -131,8 +127,5 @@ createForAll x (Formula _ (Or fs)) | size fs2 > 0 = or $ (createForAll x $ or $ 
     where (fs1, fs2) = partition (\(Formula fvs _) -> member x fvs) fs
 createForAll x f = not $ quantifiersEliminationFromExists x (not f)
 
-(∀) :: Variable -> Formula -> Formula
-(∀) x f = createForAll x (reduceVariable x f)
-
 forAllVars :: Variable -> Formula -> Formula
-forAllVars = (∀)
+forAllVars x f = createForAll x (reduceVariable x f)

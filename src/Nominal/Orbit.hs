@@ -3,6 +3,7 @@ module Nominal.Orbit where
 import Data.List (elemIndex, delete)
 import Data.Set (elems, empty, insert)
 import Nominal.Atom (Atom)
+import Nominal.Atoms.Relations (relations)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
 import Nominal.Set (Set, filter, fromList, isSingleton, map, replicateAtoms, size)
 import Nominal.Type (NominalType, Scope(..), eq, foldVariables, mapVariables)
@@ -38,15 +39,14 @@ isEquivariant = fromBool . null . leastSupport
 groupAction :: NominalType a => (Atom -> Atom) -> a -> a
 groupAction action = mapVariables (Free, fromVariant . action . variant)
 
--- TODO not only for eq
 orbit :: NominalType a => [Atom] -> a -> Set a
-orbit supp elem =
-    let elSupp = support elem
+orbit supp elem = map mapFun $ filter filterFun $ replicateAtoms elSuppSize
+  where elSupp = support elem
         elSuppSize = length elSupp
-    in map (\list -> groupAction (\x -> maybe x (list !!) (elemIndex x elSupp)) elem)
-    $ filter (\list -> and [eq (list!!pred i) (list!!pred j) <==> eq (elSupp!!pred i) (elSupp!!pred j) | i<-[1..elSuppSize], j<-[1..elSuppSize], i/=j]
-                    /\ and [eq (list!!pred i) (supp!!pred j) <==> eq (elSupp!!pred i) (supp!!pred j) | i<-[1..elSuppSize], j<-[1..length supp]])
-    (replicateAtoms elSuppSize)
+        mapFun list = groupAction (\x -> maybe x (list !!) (elemIndex x elSupp)) elem
+        relFun list rel = and [rel (list!!pred i) (list!!pred j) <==> rel (elSupp!!pred i) (elSupp!!pred j) | i<-[1..elSuppSize], j<-[1..elSuppSize], i/=j]
+                       /\ and [rel (list!!pred i) (supp!!pred j) <==> rel (elSupp!!pred i) (supp!!pred j) | i<-[1..elSuppSize], j<-[1..length supp]]
+        filterFun list = and $ fmap (relFun list) relations
 
 setOrbit :: NominalType a => Set a -> a -> Set a
 setOrbit s = orbit $ leastSupport s

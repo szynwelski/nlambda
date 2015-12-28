@@ -1,4 +1,4 @@
-module Nominal.Formula.Solver (isTrueIO, isFalseIO, solveIO, isTrue, isFalse, solve) where
+module Nominal.Formula.Solver (isTrue, isFalse, lia, lra) where
 
 import Data.Set (Set, elems, empty, map, member, null, singleton, unions)
 import Nominal.Formula.Constructors
@@ -21,26 +21,6 @@ lia = SmtLogic "Int" "LIA"
 
 lra :: SmtLogic
 lra = SmtLogic "Real" "LRA"
-
-getSmtLogicForRelation :: Relation -> SmtLogic
-getSmtLogicForRelation LessThan = lra
-getSmtLogicForRelation LessEquals = lra
-getSmtLogicForRelation Equals = lia
-getSmtLogicForRelation NotEquals = lia
-getSmtLogicForRelation GreaterThan = lra
-getSmtLogicForRelation GreaterEquals = lra
-
-getFormulaRelations :: Formula -> Set Relation
-getFormulaRelations (Formula _ f) = getRelations f
-    where getRelations T = empty
-          getRelations F = empty
-          getRelations (Constraint r _ _) = singleton r
-          getRelations (And fs) = unions $ fmap getFormulaRelations $ elems fs
-          getRelations (Or fs) = unions $ fmap getFormulaRelations $ elems fs
-          getRelations (Not f) = getFormulaRelations f
-
-getSmtLogic :: Formula -> SmtLogic
-getSmtLogic f = if member lra $ map getSmtLogicForRelation $ getFormulaRelations f then lra else lia
 
 ----------------------------------------------------------------------------------------------------
 -- SMT Solver
@@ -104,49 +84,31 @@ getSmtAssertForAllFree l f@(Formula fvs _) =
          ++ (getSmtAssert l f)
          ++ ")"
 
-getSmtScript :: Formula -> SmtScript
-getSmtScript f = let l = getSmtLogic f
-                 in "(set-logic " ++ logic l ++ ")" ++ (getSmtAssertForAllFree l f) ++ "(check-sat)"
+getSmtScript :: SmtLogic -> Formula -> SmtScript
+getSmtScript l f = "(set-logic " ++ logic l ++ ")" ++ (getSmtAssertForAllFree l f) ++ "(check-sat)"
 
 ----------------------------------------------------------------------------------------------------
 -- Formula solving
 ----------------------------------------------------------------------------------------------------
 
-isTrueIO :: Formula -> IO Bool
-isTrueIO (Formula _ T) = return True
-isTrueIO (Formula _ F) = return False
-isTrueIO f@(Formula fvs _) = do
-                              result <- runSolver z3Solver $ getSmtScript (Formula fvs $ Not f)
-                              return $ isNotSatisfiable result
+isTrueIO :: SmtLogic -> Formula -> IO Bool
+isTrueIO l (Formula _ T) = return True
+isTrueIO l (Formula _ F) = return False
+isTrueIO l f@(Formula fvs _) = do
+                                 result <- runSolver z3Solver $ getSmtScript l (Formula fvs $ Not f)
+                                 return $ isNotSatisfiable result
 
-isFalseIO :: Formula -> IO Bool
-isFalseIO (Formula _ T) = return False
-isFalseIO (Formula _ F) = return True
-isFalseIO f@(Formula fvs _) = isTrueIO (Formula fvs $ Not f)
-
-solveIO :: Formula -> IO (Maybe Bool)
-solveIO f = do
-        true <- isTrueIO f
-        if true
-            then return (Just True)
-            else do
-                 false <- isFalseIO f
-                 if false
-                    then return (Just False)
-                    else return Nothing
+isFalseIO :: SmtLogic -> Formula -> IO Bool
+isFalseIO _ (Formula _ T) = return False
+isFalseIO _ (Formula _ F) = return True
+isFalseIO l f@(Formula fvs _) = isTrueIO l (Formula fvs $ Not f)
 
 ----------------------------------------------------------------------------------------------------
 -- Formula unsafe solving
 ----------------------------------------------------------------------------------------------------
 
-isTrue :: Formula -> Bool
-isTrue = unsafePerformIO . isTrueIO
+isTrue :: SmtLogic -> Formula -> Bool
+isTrue l = unsafePerformIO . isTrueIO l
 
-isFalse :: Formula -> Bool
-isFalse = unsafePerformIO . isFalseIO
-
-solve :: Formula -> Maybe Bool
-solve f
-    | isTrue f  = Just True
-    | isFalse f = Just False
-    | otherwise = Nothing
+isFalse :: SmtLogic -> Formula -> Bool
+isFalse l = unsafePerformIO . isFalseIO l

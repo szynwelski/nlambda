@@ -38,9 +38,21 @@ module Nominal.Formula (
     isTrue,
     solve) where
 
+import Nominal.Atoms.Type (existsVar, forAllVars, isFalse, isTrue)
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
 import Nominal.Formula.Operators
-import Nominal.Formula.Quantification
-import Nominal.Formula.Solver
+import Nominal.Variable (Variable)
 import Prelude hiding (and, not, or)
+
+(∃) :: Variable -> Formula -> Formula
+(∃) = existsVar
+
+(∀) :: Variable -> Formula -> Formula
+(∀) = forAllVars
+
+solve :: Formula -> Maybe Bool
+solve f
+    | isTrue f  = Just True
+    | isFalse f = Just False
+    | otherwise = Nothing
