@@ -53,7 +53,7 @@ replaceVariables varsMap = mapVariables (All, \var -> findWithDefault var var va
 
 instance NominalType Variable where
     eq = equals
-    mapVariables (_, f) = (f $)
+    mapVariables (_, f) = f
     foldVariables (_, f) acc v = f v acc
 
 instance NominalType Formula where

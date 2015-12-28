@@ -17,6 +17,7 @@ Library
   exposed-modules: NLambda
   other-modules:
     Nominal.Atom,
+    Nominal.Atoms.Type,
     Nominal.Automaton.Base,
     Nominal.Automaton.Deterministic,
     Nominal.Automaton.Nondeterministic,
@@ -31,6 +32,7 @@ Library
     Nominal.Formula.Solver
     Nominal.Graph,
     Nominal.Maybe,
+    Nominal.Orbit,
     Nominal.Set,
     Nominal.Type,
     Nominal.Util.InsertionSet,
