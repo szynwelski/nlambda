@@ -10,12 +10,17 @@ import Prelude hiding (map, not)
 -- Contextual
 ----------------------------------------------------------------------------------------------------
 
+-- | Class of types of expressions to evaluating with a given context.
 class Contextual a where
+    -- | Evaluates an expression in the context of a given formula.
     when :: Formula -> a -> a
     when = const id
 
+-- | Evaluates an expression in the context of a 'true' formula. In practice all formulas in expressions are solved.
+--
+-- > simplify = when true
 simplify :: Contextual a => a -> a
-simplify x = when true x
+simplify = when true
 
 ----------------------------------------------------------------------------------------------------
 -- Instances

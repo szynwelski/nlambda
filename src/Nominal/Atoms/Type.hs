@@ -38,15 +38,19 @@ relationsInAtomsType AtomsWithTotalOrder = [equals, lessThan]
 
 _DEFAULT_ATOMS_TYPE_ = AtomsWithTotalOrder
 
+-- | Creates a formula representing ∃x.f
 existsVar :: Variable -> Formula -> Formula
 existsVar = existsVarInAtomsType _DEFAULT_ATOMS_TYPE_
 
+-- | Creates a formula representing ∀x.f
 forAllVars :: Variable -> Formula -> Formula
 forAllVars = forAllVarsInAtomsType _DEFAULT_ATOMS_TYPE_
 
+-- | Checks whether the formula is a tautology.
 isTrue :: Formula -> Bool
 isTrue = isTrueInAtomsType _DEFAULT_ATOMS_TYPE_
 
+-- | Checks whether the formula is a contradiction.
 isFalse :: Formula -> Bool
 isFalse = isFalseInAtomsType _DEFAULT_ATOMS_TYPE_
 

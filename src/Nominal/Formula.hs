@@ -1,7 +1,7 @@
 module Nominal.Formula (
     Formula,
 
-    -- constructors
+    -- ** Constructors
     true,
     false,
     fromBool,
@@ -11,7 +11,7 @@ module Nominal.Formula (
     greaterThan,
     greaterEquals,
 
-    -- connectives
+    -- ** Connectives
     (/\),
     and,
     (\/),
@@ -23,19 +23,19 @@ module Nominal.Formula (
     (<==>),
     iff,
 
-    -- quantifiers
-    (∃),
+    -- ** Quantifiers
     existsVar,
-    (∀),
+    (∃),
     forAllVars,
+    (∀),
 
     -- variable functions
     foldFormulaVariables,
     mapFormulaVariables,
 
-    -- solving
-    isFalse,
+    -- ** Formula solving
     isTrue,
+    isFalse,
     solve) where
 
 import Nominal.Atoms.Type (existsVar, forAllVars, isFalse, isTrue)
@@ -45,12 +45,19 @@ import Nominal.Formula.Operators
 import Nominal.Variable (Variable)
 import Prelude hiding (and, not, or)
 
+-- | Equivalent to 'existsVar'.
 (∃) :: Variable -> Formula -> Formula
 (∃) = existsVar
 
+-- | Equivalent to 'forAllVars'.
 (∀) :: Variable -> Formula -> Formula
 (∀) = forAllVars
 
+-- | Returns:
+--
+-- * 'Just' 'True' if formula is a tautology,
+-- * 'Just' 'False' if formula is a contradiction,
+-- * 'Nothing' otherwise.
 solve :: Formula -> Maybe Bool
 solve f
     | isTrue f  = Just True

@@ -17,6 +17,7 @@ Library
   exposed-modules: NLambda
   other-modules:
     Nominal.Atom,
+    Nominal.AtomsSpace,
     Nominal.Atoms.Type,
     Nominal.Automaton.Base,
     Nominal.Automaton.Deterministic,
@@ -38,5 +39,4 @@ Library
     Nominal.Util.InsertionSet,
     Nominal.Util.UnionFind,
     Nominal.Variable,
-    Nominal.VariablesSpace,
     Nominal.Variants

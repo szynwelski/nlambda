@@ -1,41 +1,65 @@
+{-# OPTIONS_HADDOCK prune #-}
+{-|
+Module:         NLambda
+Description:    Module for computations over infinite structures.
+
+Module supports computations over infinite structures using logical formulas and SMT solving.
+-}
 module NLambda
 (
-module Nominal.Atom,
-module Nominal.Automaton.Base,
-module Nominal.Automaton.Deterministic,
-module Nominal.Automaton.Nondeterministic,
-module Nominal.Conditional,
-module Nominal.Contextual,
-module Nominal.Either,
-module Nominal.Formula,
-module Nominal.Graph,
-module Nominal.Maybe,
-module Nominal.Orbit,
-module Nominal.Set,
-module Nominal.Type,
+-- * Formula
+-- ** Variable
 module Nominal.Variable,
-module Nominal.VariablesSpace,
+-- ** Type
+module Nominal.Formula,
+-- * Nominal type
+NominalType(eq), neq,
+-- * Conditional
+module Nominal.Conditional,
+-- * Contextual
+module Nominal.Contextual,
+-- * Variants
 module Nominal.Variants,
+-- ** Atom
+module Nominal.Atom,
+module Nominal.AtomsSpace,
+-- ** Either
+module Nominal.Either,
+-- ** Maybe
+module Nominal.Maybe,
+-- * Nominal set
+module Nominal.Set,
+-- * Group action, support and orbits
+module Nominal.Orbit,
+-- * Graph
+module Nominal.Graph,
+-- * Automaton
+module Nominal.Automaton.Base,
+-- ** Deterministic automaton
+module Nominal.Automaton.Deterministic,
+-- ** Nondeterministic automaton
+module Nominal.Automaton.Nondeterministic,
+-- Example atoms
 a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z
 )
 where
 
 import Nominal.Atom
+import Nominal.AtomsSpace
 import Nominal.Automaton.Base
 import Nominal.Automaton.Deterministic
 import Nominal.Automaton.Nondeterministic
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Either
-import Nominal.Formula
+import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables)
 import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Orbit
 import Nominal.Set
 import Nominal.Type (NominalType(eq), neq)
 import Nominal.Variable (Variable, variable, variableName)
-import Nominal.VariablesSpace
-import Nominal.Variants (Variants, fromVariant, iteV, iteV', variant)
+import Nominal.Variants (Variants, variant, fromVariant, iteV, iteV')
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 
 ----------------------------------------------------------------------------------------------------

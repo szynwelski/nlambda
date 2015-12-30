@@ -13,9 +13,11 @@ import Prelude hiding (map, not)
 -- Definition of automaton
 ----------------------------------------------------------------------------------------------------
 
+-- | An automaton with a set of state with type __q__ accepting\/rejecting words from an alphabet with type __a__.
 data Automaton q a = Automaton {states :: Set (Maybe q), alphabet :: Set a, delta :: Set (Maybe q, a, Maybe q),
                                 initialStates :: Set (Maybe q), finalStates :: Set (Maybe q)} deriving (Eq, Ord, Show)
 
+-- | An automaton constructor.
 automaton :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a
 automaton q a d i f = onlyReachable $ Automaton q' a (union d1 d2) i' f'
     where q' = insert Nothing $ map Just q
@@ -55,6 +57,7 @@ transit aut s = transitFromStates aut (eq s)
 transitSet :: (NominalType q, NominalType a) => Automaton q a -> Set (Maybe q) -> a -> Set (Maybe q)
 transitSet aut ss = transitFromStates aut (contains ss)
 
+-- | Checks whether an automaton accepts a word.
 accepts :: (NominalType q, NominalType a) => Automaton q a -> [a] -> Formula
 accepts aut = intersect (finalStates aut) . foldl (transitSet aut) (initialStates aut)
 
@@ -66,16 +69,18 @@ onlyReachable aut@(Automaton q a d i f) = Automaton q' a d' i (intersection q' f
     where q' = reachableFromSet (transitionGraph aut) (initialStates aut)
           d' = mapFilter (\(s1,l,s2) -> maybeIf (contains q' s1) (s1,l,s2)) d
 
+-- | Checks whether an automaton accepts any word.
 isNotEmptyAutomaton :: (NominalType q, NominalType a) => Automaton q a -> Formula
 isNotEmptyAutomaton = isNotEmpty . finalStates . onlyReachable
 
+-- | Checks whether an automaton rejects all words.
 isEmptyAutomaton :: (NominalType q, NominalType a) => Automaton q a -> Formula
 isEmptyAutomaton = not . isNotEmptyAutomaton
 
 pairsDelta :: (NominalType q1, NominalType q2, NominalType a) => Set (q1,a,q1) -> Set (q2,a,q2) -> Set ((q1,q2),a,(q1,q2))
 pairsDelta d1 d2 = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
 
--- TODO check alphabet ? union ?
+-- | Returns an automaton that accepts the union of languages accepted by two automata.
 unionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (Either q1 q2) a
 unionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Automaton q a d i f)
     where eitherUnion s1 s2 = union (map (fmap Left) s1) (map (fmap Right) s2)
@@ -84,7 +89,7 @@ unionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Automaton 
           i = eitherUnion i1 i2
           f = eitherUnion f1 f2
 
--- TODO check alphabet ? intersection ?
+-- | Returns an automaton that accepts the intersection of languages accepted by two automata.
 intersectionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (q1, q2) a
 intersectionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Automaton q a d i f)
     where intersectionPair x1 x2 = case (x1,x2) of (Just y1,Just y2) -> Just (y1,y2)
@@ -99,6 +104,7 @@ intersectionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Aut
 ----------------------------------------------------------------------------------------------------
 
 --minimize :: Automaton q a -> Automaton (Set q) a
+-- | Returns a minimal automaton accepting the same language as a given automaton.
 minimize aut@(Automaton q a d i f) = {-Automaton-} q' {-a d' i' f'-}
     where relGraph = graph (square q) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta d d)
           nf = q \\ f

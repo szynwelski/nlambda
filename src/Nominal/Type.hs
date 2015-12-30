@@ -18,7 +18,9 @@ data Scope = All | Free
 type MapVarFun = (Scope, Variable -> Variable)
 type FoldVarFun b = (Scope, Variable -> b -> b)
 
+-- | Basic type in 'NLambda' required by most of functions in the module.
 class Ord a => NominalType a where
+    -- | Checks equivalence of two given elements.
     eq :: a -> a -> Formula
     eq x y = fromBool (x == y)
     variants :: a -> Variants a
@@ -28,6 +30,7 @@ class Ord a => NominalType a where
     foldVariables :: FoldVarFun b -> b -> a -> b
     foldVariables _ acc _ = acc
 
+-- | Checks whether two elements are not equivalent.
 neq :: NominalType a => a -> a -> Formula
 neq x1 x2 = not $ eq x1 x2
 

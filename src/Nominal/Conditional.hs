@@ -7,7 +7,9 @@ import Prelude hiding (not)
 -- Conditional
 ----------------------------------------------------------------------------------------------------
 
+-- | Class of types implementing conditional expression.
 class Conditional a where
+    -- | /if ... then ... else .../
     ite :: Formula -> a -> a -> a
 
 instance Conditional Formula where
@@ -40,5 +42,6 @@ ifSolve c x1 x2 x3 = case solve c of
                        Just False -> x2
                        Nothing -> x3
 
+-- | /if ... then ... else/ ... with formula solving.
 ite' :: Conditional a => Formula -> a -> a -> a
 ite' c x1 x2 = ifSolve c x1 x2 (ite c x1 x2)

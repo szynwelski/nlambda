@@ -58,6 +58,7 @@ instance Show FormulaStructure where
 -- Formula
 ----------------------------------------------------------------------------------------------------
 
+-- | First order formula with free variables and relations between variables.
 data Formula = Formula {freeVariables :: Set Variable, formula :: FormulaStructure}
 
 instance Eq Formula where

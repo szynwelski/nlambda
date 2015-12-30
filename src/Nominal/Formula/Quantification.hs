@@ -110,6 +110,7 @@ createExists x (Formula _ (And fs)) | size fs2 > 0 = and $ (createExists x $ and
 createExists x (Formula _ (Or fs)) = orFromSet $ map (createExists x) fs
 createExists x f = quantifiersEliminationFromExists x f
 
+-- | Creates a formula representing ∃x.f
 existsVar :: Variable -> Formula -> Formula
 existsVar x f = createExists x (reduceVariable x f)
 
@@ -127,5 +128,6 @@ createForAll x (Formula _ (Or fs)) | size fs2 > 0 = or $ (createForAll x $ or $ 
     where (fs1, fs2) = partition (\(Formula fvs _) -> member x fvs) fs
 createForAll x f = not $ quantifiersEliminationFromExists x (not f)
 
+-- | Creates a formula representing ∀x.f
 forAllVars :: Variable -> Formula -> Formula
 forAllVars x f = createForAll x (reduceVariable x f)

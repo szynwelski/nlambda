@@ -22,6 +22,8 @@ import Numeric (showIntAtBase)
 ----------------------------------------------------------------------------------------------------
 
 type Identifier = Int
+
+-- | Free variable in a 'Nominal.Formula' or iteration variable in a 'Nominal.Set'.
 data Variable = Var String | IterationVariable Int Int (Maybe Identifier) deriving (Eq, Ord)
 
 ---------------------------------------------------------------------------------------------------
@@ -45,6 +47,7 @@ createVariableName :: (Int -> Int -> Maybe Identifier -> String) -> Variable -> 
 createVariableName _ (Var name) = name
 createVariableName indexName (IterationVariable level index id) = indexName level index id
 
+-- | Returns the name of the variable.
 variableName :: Variable -> String
 variableName = createVariableName variableNameWithIndex
 
@@ -58,6 +61,7 @@ instance Show Variable where
 -- Variable constructors
 ----------------------------------------------------------------------------------------------------
 
+-- | Creates a variable with a given name.
 variable :: String -> Variable
 variable = Var
 

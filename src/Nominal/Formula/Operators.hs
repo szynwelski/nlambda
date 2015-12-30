@@ -68,6 +68,12 @@ andFromSet fs = if member false fs
                   then false
                   else checkConstraints And (unions $ elems $ map freeVariables fs) true andRelations (createAndSet fs)
 
+-- | Creates a logical conjunction of two given formulas, e.g.
+--
+-- > f /\ false == false
+-- > f /\ true  == f
+-- > f /\ g     == g /\ f
+infixr 3 /\
 (/\) :: Formula -> Formula -> Formula
 Formula _ F /\ _ = false
 _ /\ Formula _ F = false
@@ -75,6 +81,7 @@ Formula _ T /\ f = f
 f /\ Formula _ T = f
 f1 /\ f2 = andFromSet (fromList [f1,f2])
 
+-- | Creates a logical conjunction of a given list of formulas. For the result to be 'true' the list must be finite.
 and :: [Formula] -> Formula
 and = andFromSet . fromList
 
@@ -109,6 +116,12 @@ orFromSet fs = if member true fs
                   then true
                   else checkConstraints Or (unions $ elems $ map freeVariables fs) false orRelations (createOrSet fs)
 
+-- | Creates a logical disjunction of two given formulas, e.g.
+--
+-- > f \/ true  == true
+-- > f \/ false == f
+-- > f \/ g     == g \/ f
+infixr 2 \/
 (\/) :: Formula -> Formula -> Formula
 Formula _ T \/ _ = true
 _ \/ Formula _ T = true
@@ -116,6 +129,7 @@ Formula _ F \/ f = f
 f \/ Formula _ F = f
 f1 \/ f2 = orFromSet (fromList [f1,f2])
 
+-- | Creates a logical disjunction of a given list of formulas. For the result to be 'false' the list must be finite.
 or :: [Formula] -> Formula
 or = orFromSet . fromList
 
@@ -136,6 +150,11 @@ createNot (And fs) = Or $ map not fs
 createNot (Or fs) = And $ map not fs
 createNot (Not (Formula _ f)) = f
 
+-- | Creates a negation of a given formula, e.g.
+--
+-- > not true    == false
+-- > not false   == true
+-- > not (not f) == f
 not :: Formula -> Formula
 not (Formula fv f) = Formula fv (createNot f)
 
@@ -143,14 +162,25 @@ not (Formula fv f) = Formula fv (createNot f)
 -- Imply
 ----------------------------------------------------------------------------------------------------
 
+-- | Creates an implication of given formulas, e.g.
+--
+-- > false ==> f    == true
+-- > f     ==> true == true
+-- > f     ==> g    == g <== f
 infix 8 ==>
 (==>) :: Formula -> Formula -> Formula
 f1 ==> f2 = not f1 \/ f2
 
+-- | Creates an implication of given formulas, e.g.
+--
+-- > f    <== false == true
+-- > true <== f     == true
+-- > f    <== g     == g ==> f
 infix 8 <==
 (<==) :: Formula -> Formula -> Formula
 f1 <== f2 = f1 \/ not f2
 
+-- | Creates a implication of given formulas, equivalent to '==>'.
 implies :: Formula -> Formula -> Formula
 implies = (==>)
 
@@ -158,10 +188,16 @@ implies = (==>)
 -- Equivalent
 ----------------------------------------------------------------------------------------------------
 
+-- | Creates a formula representing "if and only if" relation between given formulas, e.g.
+--
+-- > f <==> f     == true
+-- > f <==> not f == false
+-- > f <==> g     == (f /\ g \/ not f /\ not g)
 infix 8 <==>
 (<==>) :: Formula -> Formula -> Formula
 f1 <==> f2 = (f1 /\ f2) \/ (not f1 /\ not f2)
 
+-- | Equivalent to '<==>'.
 iff :: Formula -> Formula -> Formula
 iff = (<==>)
 

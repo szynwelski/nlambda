@@ -14,21 +14,22 @@ import Prelude hiding (and, filter, map)
 -- Support
 ----------------------------------------------------------------------------------------------------
 
+-- | Returns all free atoms of an element. The result list is also support of an element, but not always the least one.
 support :: NominalType a => a -> [Atom]
 support = fmap variant . elems . foldVariables (Free, insert) empty
 
+-- | Returns the least support of an element. From the result of 'support' function it removes atoms and check if it is still support.
 leastSupport :: NominalType a => a -> [Atom]
 leastSupport e = go e (support e) (support e)
     where go e supp [] = supp
           go e supp as = let lessSupp = delete (head as) supp
                          in if isTrue $ supports lessSupp e then go e lessSupp lessSupp else go e supp (tail as)
 
-leastSupportSize :: NominalType a => a -> Variants Int
-leastSupportSize = size . fromList . leastSupport
-
+-- | Checks whether a list of atoms supports an element.
 supports :: NominalType a => [Atom] -> a -> Formula
 supports supp = isSingleton . orbit supp
 
+-- | Checks whether an element is equivariant, i.e. it has empty support.
 isEquivariant :: NominalType a => a -> Formula
 isEquivariant = fromBool . null . leastSupport
 
@@ -36,9 +37,11 @@ isEquivariant = fromBool . null . leastSupport
 -- Orbits
 ----------------------------------------------------------------------------------------------------
 
+-- | Applies permutations of atoms to all atoms in an element.
 groupAction :: NominalType a => (Atom -> Atom) -> a -> a
 groupAction action = mapVariables (Free, fromVariant . action . variant)
 
+-- | Returns an orbit of an element with a given support.
 orbit :: NominalType a => [Atom] -> a -> Set a
 orbit supp elem = map mapFun $ filter filterFun $ replicateAtoms elSuppSize
   where elSupp = support elem
@@ -48,17 +51,23 @@ orbit supp elem = map mapFun $ filter filterFun $ replicateAtoms elSuppSize
                        /\ and [rel (list!!pred i) (supp!!pred j) <==> rel (elSupp!!pred i) (supp!!pred j) | i<-[1..elSuppSize], j<-[1..length supp]]
         filterFun list = and $ fmap (relFun list) $ fmap variantsRelation relations
 
+-- | Returns an orbit of an element in a set.
 setOrbit :: NominalType a => Set a -> a -> Set a
 setOrbit s = orbit $ leastSupport s
 
+-- | Returns all orbits of a set.
 setOrbits :: NominalType a => Set a -> Set (Set a)
 setOrbits s = map (setOrbit s) s
 
+-- | Returns a number of orbits of a set.
+-- It uses 'size' function which is inefficient for large sets and will not return the answer for the infinite sets.
 setOrbitsNumber :: NominalType a => Set a -> Variants Int
 setOrbitsNumber = size . setOrbits
 
+-- | Checks whether two elements are in the same orbit with a given support.
 inTheSameOrbit :: NominalType a => [Atom] -> a -> a -> Formula
 inTheSameOrbit supp e1 e2 = eq (orbit supp e1) (orbit supp e2)
 
+-- | Checks whether two elements are in the same orbit of a set.
 inTheSameSetOrbit :: NominalType a => Set a -> a -> a -> Formula
 inTheSameSetOrbit s e1 e2 = eq (setOrbit s e1) (setOrbit s e2)
