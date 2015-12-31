@@ -26,11 +26,26 @@ instance (Conditional a) => Conditional [a] where
 instance Conditional () where
     ite c _ _ = ()
 
-instance (Conditional a, Conditional b) => Conditional (a, b) where
-    ite c (a1, b1) (a2, b2) = ((ite c a1 a2), (ite c b1 b2))
+instance (Conditional a, Conditional b) => Conditional (a,b) where
+    ite c (a1,b1) (a2,b2) = ((ite c a1 a2), (ite c b1 b2))
 
-instance (Conditional a, Conditional b, Conditional c) => Conditional (a, b, c) where
-    ite c (a1, b1, c1) (a2, b2, c2) = ((ite c a1 a2), (ite c b1 b2), (ite c c1 c2))
+instance (Conditional a, Conditional b, Conditional c) => Conditional (a,b,c) where
+    ite c (a1,b1,c1) (a2,b2,c2) = ((ite c a1 a2), (ite c b1 b2), (ite c c1 c2))
+
+instance (Conditional a, Conditional b, Conditional c, Conditional d) => Conditional (a,b,c,d) where
+    ite c (a1,b1,c1,d1) (a2,b2,c2,d2) = ((ite c a1 a2), (ite c b1 b2), (ite c c1 c2), (ite c d1 d2))
+
+instance (Conditional a, Conditional b, Conditional c, Conditional d, Conditional e) => Conditional (a,b,c,d,e) where
+    ite c (a1,b1,c1,d1,e1) (a2,b2,c2,d2,e2) = ((ite c a1 a2), (ite c b1 b2), (ite c c1 c2), (ite c d1 d2), (ite c e1 e2))
+
+instance (Conditional a, Conditional b, Conditional c, Conditional d, Conditional e, Conditional f) => Conditional (a,b,c,d,e,f) where
+    ite c (a1,b1,c1,d1,e1,f1) (a2,b2,c2,d2,e2,f2) = ((ite c a1 a2), (ite c b1 b2), (ite c c1 c2), (ite c d1 d2), (ite c e1 e2), (ite c f1 f2))
+
+instance (Conditional a, Conditional b, Conditional c, Conditional d, Conditional e, Conditional f, Conditional g) => Conditional (a,b,c,d,e,f,g) where
+    ite c (a1,b1,c1,d1,e1,f1,g1) (a2,b2,c2,d2,e2,f2,g2) = ((ite c a1 a2), (ite c b1 b2), (ite c c1 c2), (ite c d1 d2), (ite c e1 e2), (ite c f1 f2), (ite c g1 g2))
+
+instance (Conditional a, Conditional b, Conditional c, Conditional d, Conditional e, Conditional f, Conditional g, Conditional h) => Conditional (a,b,c,d,e,f,g,h) where
+    ite c (a1,b1,c1,d1,e1,f1,g1,h1) (a2,b2,c2,d2,e2,f2,g2,h2) = ((ite c a1 a2), (ite c b1 b2), (ite c c1 c2), (ite c d1 d2), (ite c e1 e2), (ite c f1 f2), (ite c g1 g2), (ite c h1 h2))
 
 ----------------------------------------------------------------------------------------------------
 -- if then else with solving formula

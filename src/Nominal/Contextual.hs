@@ -56,11 +56,26 @@ instance Contextual a => Contextual [a] where
 
 instance Contextual ()
 
-instance (Contextual a, Contextual b) => Contextual (a, b) where
-    when ctx (a, b) = (when ctx a, when ctx b)
+instance (Contextual a, Contextual b) => Contextual (a,b) where
+    when ctx (a,b) = (when ctx a, when ctx b)
 
-instance (Contextual a, Contextual b, Contextual c) => Contextual (a, b, c) where
-    when ctx (a, b, c) = (when ctx a, when ctx b, when ctx c)
+instance (Contextual a, Contextual b, Contextual c) => Contextual (a,b,c) where
+    when ctx (a,b,c) = (when ctx a, when ctx b, when ctx c)
+
+instance (Contextual a, Contextual b, Contextual c, Contextual d) => Contextual (a,b,c,d) where
+    when ctx (a,b,c,d) = (when ctx a, when ctx b, when ctx c, when ctx d)
+
+instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e) => Contextual (a,b,c,d,e) where
+    when ctx (a,b,c,d,e) = (when ctx a, when ctx b, when ctx c, when ctx d, when ctx e)
+
+instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e, Contextual f) => Contextual (a,b,c,d,e,f) where
+    when ctx (a,b,c,d,e,f) = (when ctx a, when ctx b, when ctx c, when ctx d, when ctx e, when ctx f)
+
+instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e, Contextual f, Contextual g) => Contextual (a,b,c,d,e,f,g) where
+    when ctx (a,b,c,d,e,f,g) = (when ctx a, when ctx b, when ctx c, when ctx d, when ctx e, when ctx f, when ctx g)
+
+instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e, Contextual f, Contextual g, Contextual h) => Contextual (a,b,c,d,e,f,g,h) where
+    when ctx (a,b,c,d,e,f,g,h) = (when ctx a, when ctx b, when ctx c, when ctx d, when ctx e, when ctx f, when ctx g, when ctx h)
 
 instance Contextual a => Contextual (Maybe a) where
     when ctx = fmap (when ctx)

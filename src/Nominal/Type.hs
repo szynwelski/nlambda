@@ -85,15 +85,40 @@ instance NominalType a => NominalType [a] where
 
 instance NominalType ()
 
-instance (NominalType a, NominalType b) => NominalType (a, b) where
-    eq (a1, b1) (a2, b2) = (eq a1 a2) /\ (eq b1 b2)
-    mapVariables f (a, b) = (mapVariables f a, mapVariables f b)
-    foldVariables f acc (a, b) = foldVariables f (foldVariables f acc a) b
+instance (NominalType a, NominalType b) => NominalType (a,b) where
+    eq (a1,b1) (a2,b2) = eq a1 a2 /\ eq b1 b2
+    mapVariables f (a,b) = (mapVariables f a, mapVariables f b)
+    foldVariables f acc (a,b) = foldVariables f (foldVariables f acc a) b
 
-instance (NominalType a, NominalType b, NominalType c) => NominalType (a, b, c) where
-    eq (a1, b1, c1) (a2, b2, c2) = (eq a1 a2) /\ (eq b1 b2) /\ (eq c1 c2)
-    mapVariables f (a, b, c) = (mapVariables f a, mapVariables f b, mapVariables f c)
-    foldVariables f acc (a, b, c) = foldVariables f (foldVariables f (foldVariables f acc a) b) c
+instance (NominalType a, NominalType b, NominalType c) => NominalType (a,b,c) where
+    eq (a1,b1,c1) (a2,b2,c2) = eq a1 a2 /\ eq b1 b2 /\ eq c1 c2
+    mapVariables f (a,b,c) = (mapVariables f a, mapVariables f b, mapVariables f c)
+    foldVariables f acc (a,b,c) = foldVariables f (foldVariables f (foldVariables f acc a) b) c
+
+instance (NominalType a, NominalType b, NominalType c, NominalType d) => NominalType (a,b,c,d) where
+    eq (a1,b1,c1,d1) (a2,b2,c2,d2) = eq a1 a2 /\ eq b1 b2 /\ eq c1 c2 /\ eq d1 d2
+    mapVariables f (a,b,c,d) = (mapVariables f a, mapVariables f b, mapVariables f c, mapVariables f d)
+    foldVariables f acc (a,b,c,d) = foldVariables f (foldVariables f (foldVariables f (foldVariables f acc a) b) c) d
+
+instance (NominalType a, NominalType b, NominalType c, NominalType d, NominalType e) => NominalType (a,b,c,d,e) where
+    eq (a1,b1,c1,d1,e1) (a2,b2,c2,d2,e2) = eq a1 a2 /\ eq b1 b2 /\ eq c1 c2 /\ eq d1 d2 /\ eq e1 e2
+    mapVariables f (a,b,c,d,e) = (mapVariables f a, mapVariables f b, mapVariables f c, mapVariables f d, mapVariables f e)
+    foldVariables f acc (a,b,c,d,e) = foldVariables f (foldVariables f (foldVariables f (foldVariables f (foldVariables f acc a) b) c) d) e
+
+instance (NominalType a, NominalType b, NominalType c, NominalType d, NominalType e, NominalType f) => NominalType (a,b,c,d,e,f) where
+    eq (a1,b1,c1,d1,e1,f1) (a2,b2,c2,d2,e2,f2) = eq a1 a2 /\ eq b1 b2 /\ eq c1 c2 /\ eq d1 d2 /\ eq e1 e2 /\ eq f1 f2
+    mapVariables fun (a,b,c,d,e,f) = (mapVariables fun a, mapVariables fun b, mapVariables fun c, mapVariables fun d, mapVariables fun e, mapVariables fun f)
+    foldVariables fun acc (a,b,c,d,e,f) = foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun acc a) b) c) d) e) f
+
+instance (NominalType a, NominalType b, NominalType c, NominalType d, NominalType e, NominalType f, NominalType g) => NominalType (a,b,c,d,e,f,g) where
+    eq (a1,b1,c1,d1,e1,f1,g1) (a2,b2,c2,d2,e2,f2,g2) = eq a1 a2 /\ eq b1 b2 /\ eq c1 c2 /\ eq d1 d2 /\ eq e1 e2 /\ eq f1 f2 /\ eq g1 g2
+    mapVariables fun (a,b,c,d,e,f,g) = (mapVariables fun a, mapVariables fun b, mapVariables fun c, mapVariables fun d, mapVariables fun e, mapVariables fun f, mapVariables fun g)
+    foldVariables fun acc (a,b,c,d,e,f,g) = foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun acc a) b) c) d) e) f) g
+
+instance (NominalType a, NominalType b, NominalType c, NominalType d, NominalType e, NominalType f, NominalType g, NominalType h) => NominalType (a,b,c,d,e,f,g,h) where
+    eq (a1,b1,c1,d1,e1,f1,g1,h1) (a2,b2,c2,d2,e2,f2,g2,h2) = eq a1 a2 /\ eq b1 b2 /\ eq c1 c2 /\ eq d1 d2 /\ eq e1 e2 /\ eq f1 f2 /\ eq g1 g2 /\ eq h1 h2
+    mapVariables fun (a,b,c,d,e,f,g,h) = (mapVariables fun a, mapVariables fun b, mapVariables fun c, mapVariables fun d, mapVariables fun e, mapVariables fun f, mapVariables fun g, mapVariables fun h)
+    foldVariables fun acc (a,b,c,d,e,f,g,h) = foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun acc a) b) c) d) e) f) g) h
 
 instance NominalType a => NominalType (Variants a) where
     eq = variantsRelation eq
