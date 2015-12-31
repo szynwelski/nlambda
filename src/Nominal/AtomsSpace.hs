@@ -1,4 +1,3 @@
-{-# OPTIONS_HADDOCK prune #-}
 module Nominal.AtomsSpace where
 
 import Control.Monad (replicateM)

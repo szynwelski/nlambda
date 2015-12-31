@@ -3,7 +3,7 @@ module Nominal.Orbit where
 import Data.List (elemIndex, delete)
 import Data.Set (elems, empty, insert)
 import Nominal.Atom (Atom)
-import Nominal.Atoms.Type (relations)
+import Nominal.AtomsType (relations)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
 import Nominal.Set (Set, filter, fromList, isSingleton, map, replicateAtoms, size)
 import Nominal.Type (NominalType, Scope(..), eq, foldVariables, mapVariables)

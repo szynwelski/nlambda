@@ -1,4 +1,5 @@
-module Nominal.Atoms.Type (AtomsType(..), _DEFAULT_ATOMS_TYPE_, existsVar, forAllVars, isTrue, isFalse, relations) where
+{-# LANGUAGE CPP #-}
+module Nominal.AtomsType (existsVar, forAllVars, isTrue, isFalse, relations) where
 
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors (equals, lessThan)
@@ -33,26 +34,31 @@ relationsInAtomsType AtomsWithEquality = [equals]
 relationsInAtomsType AtomsWithTotalOrder = [equals, lessThan]
 
 ----------------------------------------------------------------------------------------------------
--- Default atoms type
+-- Current atoms type
 ----------------------------------------------------------------------------------------------------
 
-_DEFAULT_ATOMS_TYPE_ = AtomsWithTotalOrder
+currentAtomsType :: AtomsType
+#if TOTAL_ORDER
+currentAtomsType = AtomsWithTotalOrder
+#else
+currentAtomsType = AtomsWithEquality
+#endif
 
 -- | Creates a formula representing ∃x.f
 existsVar :: Variable -> Formula -> Formula
-existsVar = existsVarInAtomsType _DEFAULT_ATOMS_TYPE_
+existsVar = existsVarInAtomsType currentAtomsType
 
 -- | Creates a formula representing ∀x.f
 forAllVars :: Variable -> Formula -> Formula
-forAllVars = forAllVarsInAtomsType _DEFAULT_ATOMS_TYPE_
+forAllVars = forAllVarsInAtomsType currentAtomsType
 
 -- | Checks whether the formula is a tautology.
 isTrue :: Formula -> Bool
-isTrue = isTrueInAtomsType _DEFAULT_ATOMS_TYPE_
+isTrue = isTrueInAtomsType currentAtomsType
 
 -- | Checks whether the formula is a contradiction.
 isFalse :: Formula -> Bool
-isFalse = isFalseInAtomsType _DEFAULT_ATOMS_TYPE_
+isFalse = isFalseInAtomsType currentAtomsType
 
 relations :: [Variable -> Variable -> Formula]
-relations = relationsInAtomsType _DEFAULT_ATOMS_TYPE_
+relations = relationsInAtomsType currentAtomsType

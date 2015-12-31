@@ -3,6 +3,10 @@ version:	   0.0.0
 build-type:        Simple
 cabal-version:     >= 1.2
 
+Flag TOTAL_ORDER
+  description: Set atoms type with total order
+  default:     False
+
 Library
   build-depends:   
     base,
@@ -15,10 +19,12 @@ Library
     mtl
   hs-source-dirs:  src
   exposed-modules: NLambda
+  if flag(TOTAL_ORDER)
+    cpp-options: -DTOTAL_ORDER
   other-modules:
     Nominal.Atom,
     Nominal.AtomsSpace,
-    Nominal.Atoms.Type,
+    Nominal.AtomsType,
     Nominal.Automaton.Base,
     Nominal.Automaton.Deterministic,
     Nominal.Automaton.Nondeterministic,

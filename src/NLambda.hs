@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# OPTIONS_HADDOCK prune #-}
 {-|
 Module:         NLambda
@@ -44,7 +45,11 @@ a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z
 )
 where
 
+#if TOTAL_ORDER
 import Nominal.Atom
+#else
+import Nominal.Atom hiding (lt, le, gt, ge)
+#endif
 import Nominal.AtomsSpace
 import Nominal.Automaton.Base
 import Nominal.Automaton.Deterministic
@@ -52,8 +57,16 @@ import Nominal.Automaton.Nondeterministic
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Either
+#if TOTAL_ORDER
 import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables)
+#else
+import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables, lessThan, lessEquals, greaterThan, greaterEquals)
+#endif
+#if TOTAL_ORDER
 import Nominal.Graph
+#else
+import Nominal.Graph hiding (monotonicGraph)
+#endif
 import Nominal.Maybe
 import Nominal.Orbit
 import Nominal.Set

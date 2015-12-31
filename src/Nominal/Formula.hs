@@ -38,7 +38,7 @@ module Nominal.Formula (
     isFalse,
     solve) where
 
-import Nominal.Atoms.Type (existsVar, forAllVars, isFalse, isTrue)
+import Nominal.AtomsType (existsVar, forAllVars, isFalse, isTrue)
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
 import Nominal.Formula.Operators
