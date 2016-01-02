@@ -36,7 +36,7 @@ unions,
 intersection,
 intersect,
 difference,
-(Nominal.Set.\\),
+(\\),
 -- ** Pairs and triples
 pairs,
 pairsWith,
@@ -57,15 +57,30 @@ replicateAtomsUntil,
 hasSizeLessThan,
 hasSize,
 size,
-isSingleton) where
+isSingleton,
+-- ** Set of atoms properties
+range,
+openRange,
+isLowerBound,
+hasLowerBound,
+isUpperBound,
+hasUpperBound,
+isMinimum,
+hasMinimum,
+isMaximum,
+hasMaximum,
+isConnected,
+isOpen,
+isClosed,
+isCompact) where
 
-import Data.List ((\\))
+import qualified Data.List as List ((\\))
 import Data.List.Utils (join)
 import qualified Data.Maybe as Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Nominal.Atom (Atom, atom)
+import Nominal.Atom
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
@@ -123,7 +138,7 @@ checkIdentifiers :: (NominalType a, NominalType b) => Identifier -> (a, (b, SetE
 checkIdentifiers id (oldV, (newV, cond)) =
     let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierNotEquals id var then getIterationLevel var else Nothing) newV
         iterVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierEquals id var then getIterationLevel var else Nothing) (newV, cond)
-        newIterVarsLevels = [0..] Data.List.\\ otherVarsLevels
+        newIterVarsLevels = [0..] List.\\ otherVarsLevels
         changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
     in mapVariablesIf (hasIdentifierEquals id) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
 
@@ -429,3 +444,49 @@ size s = findSize s 1 where findSize s n = ite' (hasSizeLessThan s n) (variant $
 -- | Returns a formula describing condition that a set has exacly one element.
 isSingleton :: NominalType a => Set a -> Formula
 isSingleton s = hasSize s 1
+
+----------------------------------------------------------------------------------------------------
+-- Set of atoms properties
+----------------------------------------------------------------------------------------------------
+
+range :: Atom -> Atom -> Set Atom
+range l u = filter (\a -> ge a l /\ le a u) atoms
+
+openRange :: Atom -> Atom -> Set Atom
+openRange l u = filter (\a -> gt a l /\ lt a u) atoms
+
+isLowerBound :: Atom -> Set Atom -> Formula
+isLowerBound a s = forAll (le a) s
+
+hasLowerBound :: Set Atom -> Formula
+hasLowerBound s = exists (`isLowerBound` s) atoms
+
+isUpperBound :: Atom -> Set Atom -> Formula
+isUpperBound a s = forAll (ge a) s
+
+hasUpperBound :: Set Atom -> Formula
+hasUpperBound s = exists (`isUpperBound` s) atoms
+
+isMinimum :: Atom -> Set Atom -> Formula
+isMinimum a s = member a s /\ isLowerBound a s
+
+hasMinimum :: Set Atom -> Formula
+hasMinimum s = exists (`isLowerBound` s) s
+
+isMaximum :: Atom -> Set Atom -> Formula
+isMaximum a s = member a s /\ isUpperBound a s
+
+hasMaximum :: Set Atom -> Formula
+hasMaximum s = exists (`isUpperBound` s) s
+
+isConnected :: Set Atom -> Formula
+isConnected s = forAll (\a -> isUpperBound a s \/ isLowerBound a s) $ atoms \\ s
+
+isOpen :: Set Atom -> Formula
+isOpen s = forAll (\a -> exists (\(b,c) -> lt b a /\ lt a c /\ isSubsetOf (range b c) s) atomsPairs) s
+
+isClosed :: Set Atom -> Formula
+isClosed s = isOpen $ atoms \\ s
+
+isCompact :: Set Atom -> Formula
+isCompact s = isClosed s /\ hasUpperBound s /\ hasLowerBound s
