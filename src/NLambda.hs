@@ -69,7 +69,11 @@ import Nominal.Graph hiding (monotonicGraph)
 #endif
 import Nominal.Maybe
 import Nominal.Orbit
+#if TOTAL_ORDER
 import Nominal.Set
+#else
+import Nominal.Set hiding (range, openRange, isLowerBound, hasLowerBound, isUpperBound, hasUpperBound, isMinimum, hasMinimum, isMaximum, hasMaximum, isInfimum, isSupremum, isConnected, isOpen, isClosed, isCompact)
+#endif
 import Nominal.Type (NominalType(eq), neq)
 import Nominal.Variable (Variable, variable, variableName)
 import Nominal.Variants (Variants, variant, fromVariant, iteV, iteV')

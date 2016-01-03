@@ -69,6 +69,8 @@ isMinimum,
 hasMinimum,
 isMaximum,
 hasMaximum,
+isInfimum,
+isSupremum,
 isConnected,
 isOpen,
 isClosed,
@@ -478,6 +480,12 @@ isMaximum a s = member a s /\ isUpperBound a s
 
 hasMaximum :: Set Atom -> Formula
 hasMaximum s = exists (`isUpperBound` s) s
+
+isInfimum :: Atom -> Set Atom -> Formula
+isInfimum a s = isMaximum a $ filter (`isLowerBound` s) atoms
+
+isSupremum :: Atom -> Set Atom -> Formula
+isSupremum a s = isMinimum a $ filter (`isUpperBound` s) atoms
 
 isConnected :: Set Atom -> Formula
 isConnected s = forAll (\a -> isUpperBound a s \/ isLowerBound a s) $ atoms \\ s
