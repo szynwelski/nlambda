@@ -5,7 +5,7 @@ import Data.Set (elems, empty, insert)
 import Nominal.Atom (Atom)
 import Nominal.AtomsType (relations)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
-import Nominal.Set (Set, filter, fromList, isSingleton, map, replicateAtoms, size)
+import Nominal.Set (Set, filter, fromList, isSingleton, map, maxSize, replicateAtoms, replicateSetUntil, size, unions)
 import Nominal.Type (NominalType, Scope(..), eq, foldVariables, mapVariables)
 import Nominal.Variants (Variants, fromVariant, variant, variantsRelation)
 import Prelude hiding (and, filter, map)
@@ -71,3 +71,8 @@ inTheSameOrbit supp e1 e2 = eq (orbit supp e1) (orbit supp e2)
 -- | Checks whether two elements are in the same orbit of a set.
 inTheSameSetOrbit :: NominalType a => Set a -> a -> a -> Formula
 inTheSameSetOrbit s e1 e2 = eq (setOrbit s e1) (setOrbit s e2)
+
+-- | Returns a set of all equivariant subsets of a given set
+equivariantSubsets :: NominalType a => Set a -> Set (Set a)
+equivariantSubsets s = map (unions . fmap (setOrbit s)) $ replicateSetUntil (maxSize $ setOrbits s) s
+

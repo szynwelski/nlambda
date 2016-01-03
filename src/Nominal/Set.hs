@@ -43,6 +43,7 @@ pairsWith,
 pairsWithFilter,
 square,
 atomsPairs,
+differentAtomsPairs,
 triples,
 triplesWith,
 triplesWithFilter,
@@ -57,6 +58,7 @@ replicateAtomsUntil,
 hasSizeLessThan,
 hasSize,
 size,
+maxSize,
 isSingleton,
 -- ** Set of atoms properties
 range,
@@ -379,6 +381,10 @@ square s = pairs s s
 atomsPairs :: Set (Atom, Atom)
 atomsPairs  = square atoms
 
+-- | Creates a set of all pairs of different atoms.
+differentAtomsPairs :: Set (Atom, Atom)
+differentAtomsPairs = filter (uncurry neq) atomsPairs
+
 -- | Creates a set of triples of elements from three sets.
 triples :: (NominalType a, NominalType b, NominalType c) => Set a -> Set b -> Set c -> Set (a, b, c)
 triples = triplesWith (,,)
@@ -443,6 +449,11 @@ hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)
 size :: NominalType a => Set a -> Variants Int
 size s = findSize s 1 where findSize s n = ite' (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
 
+-- | Returns the maximum size of a set for all free atoms constraints.
+-- It is an inefficient function for large sets and will not return the answer for the infinite sets.
+maxSize :: NominalType a => Set a -> Int
+maxSize s = findSize s 1 where findSize s n = if isTrue (hasSizeLessThan s n) then pred n else findSize s (succ n)
+
 -- | Returns a formula describing condition that a set has exacly one element.
 isSingleton :: NominalType a => Set a -> Formula
 isSingleton s = hasSize s 1
@@ -451,50 +462,66 @@ isSingleton s = hasSize s 1
 -- Set of atoms properties
 ----------------------------------------------------------------------------------------------------
 
+-- | The closed interval of atoms with given minimum and maximum.
 range :: Atom -> Atom -> Set Atom
 range l u = filter (\a -> ge a l /\ le a u) atoms
 
+-- | The open interval of atoms with given infimum and suprememum.
 openRange :: Atom -> Atom -> Set Atom
 openRange l u = filter (\a -> gt a l /\ lt a u) atoms
 
+-- | Checks whether a given atom is the lower bound of a set.
 isLowerBound :: Atom -> Set Atom -> Formula
 isLowerBound a s = forAll (le a) s
 
+-- | Checks whether a set has the lower bound.
 hasLowerBound :: Set Atom -> Formula
 hasLowerBound s = exists (`isLowerBound` s) atoms
 
+-- | Checks whether a given atom is the upper bound of a set.
 isUpperBound :: Atom -> Set Atom -> Formula
 isUpperBound a s = forAll (ge a) s
 
+-- | Checks whether a set has the upper bound.
 hasUpperBound :: Set Atom -> Formula
 hasUpperBound s = exists (`isUpperBound` s) atoms
 
+-- | Checks whether an atom is the minimum of a set.
 isMinimum :: Atom -> Set Atom -> Formula
 isMinimum a s = member a s /\ isLowerBound a s
 
+-- | Checks whether a set has the minimum.
 hasMinimum :: Set Atom -> Formula
 hasMinimum s = exists (`isLowerBound` s) s
 
+-- | Checks whether an atom is the maximum of a set.
 isMaximum :: Atom -> Set Atom -> Formula
 isMaximum a s = member a s /\ isUpperBound a s
 
+-- | Checks whether a set has the maximum.
 hasMaximum :: Set Atom -> Formula
 hasMaximum s = exists (`isUpperBound` s) s
 
+-- | Checks whether an atom is the infumum of a set.
 isInfimum :: Atom -> Set Atom -> Formula
 isInfimum a s = isMaximum a $ filter (`isLowerBound` s) atoms
 
+-- | Checks whether an atom is the supremum of a set.
 isSupremum :: Atom -> Set Atom -> Formula
 isSupremum a s = isMinimum a $ filter (`isUpperBound` s) atoms
 
+-- | Checks whether a set is connected.
 isConnected :: Set Atom -> Formula
 isConnected s = forAll (\a -> isUpperBound a s \/ isLowerBound a s) $ atoms \\ s
 
+-- | Checks whether a set is open.
 isOpen :: Set Atom -> Formula
 isOpen s = forAll (\a -> exists (\(b,c) -> lt b a /\ lt a c /\ isSubsetOf (range b c) s) atomsPairs) s
 
+-- | Checks whether a set is closed.
 isClosed :: Set Atom -> Formula
 isClosed s = isOpen $ atoms \\ s
 
+-- | Checks whether a set is compact.
 isCompact :: Set Atom -> Formula
 isCompact s = isClosed s /\ hasUpperBound s /\ hasLowerBound s

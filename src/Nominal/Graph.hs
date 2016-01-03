@@ -6,10 +6,11 @@ import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Maybe
+import Nominal.Orbit
 import Nominal.Set
 import Nominal.Type
 import Nominal.Variants hiding (filter, map)
-import Prelude hiding (filter, map, not, sum)
+import Prelude hiding (filter, map, not, or, sum)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph
@@ -197,3 +198,21 @@ stronglyConnectedComponent g v = subgraph g $ intersection (reachable g v) (reac
 -- | Returns all strongly connected components of a graph.
 stronglyConnectedComponents :: NominalType a => Graph a -> Set (Graph a)
 stronglyConnectedComponents g = map (stronglyConnectedComponent g) (vertices g)
+
+-- | Checks whether a given function is the proper coloring of a graph.
+isColoringOf :: (NominalType a, NominalType b) => (a -> b) -> Graph a -> Formula
+isColoringOf c g = forAll (\(v1,v2) -> c v1 `neq` c v2) $ filter (uncurry neq) (edges g)
+
+-- | Checks whether a graph has a k-coloring.
+hasColoring :: NominalType a => Graph a -> Int -> Formula
+hasColoring g k = exists id $ map (\l -> or $ fmap (`isColoringOf` g) [coloring l p | p <- partitions n k]) (replicateSet n os)
+    where os = setOrbits (vertices g)
+          n = maxSize os
+          -- k-size partitions of n-size set (Int -> Int -> [[Int]])
+          partitions n 1 = [replicate n 0]
+          partitions n k | k < 1 || n < k = []
+          partitions n k | n == k = [[0..n-1]]
+          partitions n k = [k-1:t | t <- partitions (n-1) (k-1)] ++ [h:t|h <- [0..k-1], t <- partitions (n-1) k]
+          -- for a given list of orbits and assigned numbers returns number assigned for the orbit containing element
+          coloring [] [] _ = variant 0
+          coloring (o:os) (p:ps) a = ite' (member a o) (variant p) (coloring os ps a)
