@@ -35,6 +35,7 @@ union,
 unions,
 intersection,
 intersect,
+disjoint,
 difference,
 (\\),
 -- ** Pairs and triples
@@ -348,9 +349,13 @@ isNotProperSubsetOf s = not . isProperSubsetOf s
 intersection :: NominalType a => Set a -> Set a -> Set a
 intersection s1 s2 = filter (contains s1) s2
 
--- | Returns a formula describing that two sets intersect.
+-- | Checks whether two sets intersect.
 intersect :: NominalType a => Set a -> Set a -> Formula
 intersect s1 s2 = isNotEmpty $ intersection s1 s2
+
+-- | Checks whether two sets are disjoint.
+disjoint :: NominalType a => Set a -> Set a -> Formula
+disjoint s1 s2 = not (intersect s1 s2)
 
 -- | Returns a difference of two sets.
 difference :: NominalType a => Set a -> Set a -> Set a

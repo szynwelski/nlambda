@@ -9,7 +9,7 @@ import Nominal.Maybe
 import Nominal.Orbit
 import Nominal.Set
 import Nominal.Type
-import Nominal.Variants hiding (filter, map)
+import Nominal.Variants hiding (filter, fromList, map)
 import Prelude hiding (filter, map, not, or, sum)
 
 ----------------------------------------------------------------------------------------------------
@@ -102,6 +102,14 @@ removeLoops (Graph vs es) = Graph vs $ filter (uncurry neq) es
 reverseEdges :: NominalType a => Graph a -> Graph a
 reverseEdges (Graph vs es) = Graph vs $ map swap es
 
+-- | Produces a set of edges containing edges that are obtained by composition of edges in a given set.
+composeEdges :: NominalType a => Set (a,a) -> Set (a,a) -> Set (a,a)
+composeEdges es1 es2 = pairsWithFilter (\(a, b) (c, d) -> maybeIf (eq b c) (a, d)) es1 es2
+
+-- | Produces a graph with edges that are obtained by composition of edges in a given graph.
+compose :: NominalType a => Graph a -> Graph a -> Graph a
+compose (Graph vs1 es1) (Graph vs2 es2) = Graph (union vs1 vs2) (composeEdges es1 es2)
+
 -- | Adds all reverse edges to existing edges in a graph.
 undirected :: NominalType a => Graph a -> Graph a
 undirected (Graph vs es) = Graph vs $ union es (map swap es)
@@ -155,7 +163,7 @@ neighbors g v = union (succs g v) (preds g v)
 -- | Returns a transitive closure of a graph.
 transitiveClosure :: NominalType a => Graph a -> Graph a
 transitiveClosure (Graph vs es) = Graph vs (edgesClosure es)
-    where edgesClosure es = let es' = union es $ pairsWithFilter (\(a, b) (c, d) -> maybeIf (eq b c) (a, d)) es es
+    where edgesClosure es = let es' = union es (composeEdges es es)
                             in ite' (eq es es') es (edgesClosure es')
 
 -- | Checks whether there is a path from one vertex to the second one in a graph.
@@ -173,6 +181,18 @@ isWeaklyConnected = isStronglyConnected . undirected
 -- | Checks whether a graph has a cycle.
 hasCycle :: NominalType a => Graph a -> Formula
 hasCycle = hasLoop . transitiveClosure
+
+-- | Checks whether a graph has a even-length cycle.
+hasEvenLengthCycle :: NominalType a => Graph a -> Formula
+hasEvenLengthCycle g = hasCycle (compose g g)
+
+-- | Checks whether a graph has a odd-length cycle.
+hasOddLengthCycle :: NominalType a => Graph a -> Formula
+hasOddLengthCycle g = intersect (edges $ reverseEdges g) (edges $ transitiveClosure $ compose g g)
+
+-- | Checks whether a graph is bipartite (treating the input graph as undirected)
+isBipartite :: NominalType a => Graph a -> Formula
+isBipartite = not . hasOddLengthCycle . undirected
 
 -- | Returns all vertices reachable from a vertex in a graph.
 reachable :: NominalType a => Graph a -> a -> Set a
@@ -201,18 +221,18 @@ stronglyConnectedComponents g = map (stronglyConnectedComponent g) (vertices g)
 
 -- | Checks whether a given function is the proper coloring of a graph.
 isColoringOf :: (NominalType a, NominalType b) => (a -> b) -> Graph a -> Formula
-isColoringOf c g = forAll (\(v1,v2) -> c v1 `neq` c v2) $ filter (uncurry neq) (edges g)
+isColoringOf c g = forAll (\(v1,v2) -> c v1 `neq` c v2) (edges g)
 
--- | Checks whether a graph has a k-coloring.
-hasColoring :: NominalType a => Graph a -> Int -> Formula
-hasColoring g k = exists id $ map (\l -> or $ fmap (`isColoringOf` g) [coloring l p | p <- partitions n k]) (replicateSet n os)
-    where os = setOrbits (vertices g)
-          n = maxSize os
-          -- k-size partitions of n-size set (Int -> Int -> [[Int]])
-          partitions n 1 = [replicate n 0]
-          partitions n k | k < 1 || n < k = []
-          partitions n k | n == k = [[0..n-1]]
-          partitions n k = [k-1:t | t <- partitions (n-1) (k-1)] ++ [h:t|h <- [0..k-1], t <- partitions (n-1) k]
+-- | Checks whether a graph has an equivariant k-coloring.
+hasEquivariantColoring :: NominalType a => Graph a -> Int -> Formula
+hasEquivariantColoring g k = member true (pairsWith (\os ps -> (coloring os ps) `isColoringOf` g) (replicateSet n orbits) (partitions n k))
+    where orbits = setOrbits (vertices g)
+          n = maxSize orbits
+          -- k-size partitions of n-size set (Int -> Int -> Set [Int])
+          partitions n 1 = singleton (replicate n 0)
+          partitions n k | k < 1 || n < k = empty
+          partitions n k | n == k = singleton [0..n-1]
+          partitions n k = union (map (k-1:) $ partitions (n-1) (k-1)) (pairsWith (:) (fromList [0..k-1]) (partitions (n-1) k))
           -- for a given list of orbits and assigned numbers returns number assigned for the orbit containing element
           coloring [] [] _ = variant 0
           coloring (o:os) (p:ps) a = ite' (member a o) (variant p) (coloring os ps a)
