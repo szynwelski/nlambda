@@ -20,7 +20,7 @@ import Prelude hiding (filter, map, not, or, sum)
 data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)} deriving (Eq, Ord, Show)
 
 instance NominalType a => Conditional (Graph a) where
-    ite c (Graph vs1 es1) (Graph vs2 es2) = Graph (ite c vs1 vs2) (ite c es1 es2)
+    ifUnsolved c (Graph vs1 es1) (Graph vs2 es2) = Graph (ifUnsolved c vs1 vs2) (ifUnsolved c es1 es2)
 
 instance (Contextual a, Ord a) => Contextual (Graph a) where
     when ctx (Graph vs es) = Graph (when ctx vs) (when ctx es)
@@ -164,7 +164,7 @@ neighbors g v = union (succs g v) (preds g v)
 transitiveClosure :: NominalType a => Graph a -> Graph a
 transitiveClosure (Graph vs es) = Graph vs (edgesClosure es)
     where edgesClosure es = let es' = union es (composeEdges es es)
-                            in ite' (eq es es') es (edgesClosure es')
+                            in ite (eq es es') es (edgesClosure es')
 
 -- | Checks whether there is a path from one vertex to the second one in a graph.
 existsPath :: NominalType a => Graph a -> a -> a -> Formula
@@ -190,7 +190,7 @@ hasEvenLengthCycle g = hasCycle (compose g g)
 hasOddLengthCycle :: NominalType a => Graph a -> Formula
 hasOddLengthCycle g = intersect (edges $ reverseEdges g) (edges $ transitiveClosure $ compose g g)
 
--- | Checks whether a graph is bipartite (treating the input graph as undirected)
+-- | Checks whether a graph (treated as undirected) is bipartite in the sense that it does not have odd-length cycle
 isBipartite :: NominalType a => Graph a -> Formula
 isBipartite = not . hasOddLengthCycle . undirected
 
@@ -201,7 +201,7 @@ reachable g v = reachableFromSet g (singleton v)
 -- | Returns all vertices reachable from a set of vertices in a graph.
 reachableFromSet :: NominalType a => Graph a -> Set a -> Set a
 reachableFromSet g s = let s' = union s $ succsFromSet g s
-                       in ite' (eq s s') s (reachableFromSet g s')
+                       in ite (eq s s') s (reachableFromSet g s')
 
 -- | Returns a weakly connected component of a graph containing a vertex.
 weaklyConnectedComponent :: NominalType a => Graph a -> a -> Graph a
@@ -235,4 +235,4 @@ hasEquivariantColoring g k = member true (pairsWith (\os ps -> (coloring os ps) 
           partitions n k = union (map (k-1:) $ partitions (n-1) (k-1)) (pairsWith (:) (fromList [0..k-1]) (partitions (n-1) k))
           -- for a given list of orbits and assigned numbers returns number assigned for the orbit containing element
           coloring [] [] _ = variant 0
-          coloring (o:os) (p:ps) a = ite' (member a o) (variant p) (coloring os ps a)
+          coloring (o:os) (p:ps) a = ite (member a o) (variant p) (coloring os ps a)

@@ -44,7 +44,3 @@ isNothing = satisfying Maybe.isNothing
 -- | If a given condition is satisfied returns 'Just' value otherwise returns 'Nothing'.
 maybeIf :: Ord a => Formula -> a -> NominalMaybe a
 maybeIf c v = ite c (just v) nothing
-
--- | Like 'maybeIf' but with formula solving.
-maybeIf' :: Ord a => Formula -> a -> NominalMaybe a
-maybeIf' c v = ite' c (just v) nothing

@@ -174,7 +174,7 @@ instance Show a => Show (Set a) where
               in show v ++ (if null condition then "" else " :" ++ condition)
 
 instance NominalType a => Conditional (Set a) where
-    ite c s1 s2 = union (filter (const c) s1) (filter (const $ not c) s2)
+    ifUnsolved c s1 s2 = union (filter (const c) s1) (filter (const $ not c) s2)
 
 instance (Contextual a, Ord a) => Contextual (Set a) where
     when ctx (Set es) = Set $ filterNotFalse
@@ -452,7 +452,7 @@ hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)
 -- | Returns a variants of numbers of the size of a set.
 -- It is an inefficient function for large sets and will not return the answer for the infinite sets.
 size :: NominalType a => Set a -> Variants Int
-size s = findSize s 1 where findSize s n = ite' (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
+size s = findSize s 1 where findSize s n = ite (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
 
 -- | Returns the maximum size of a set for all free atoms constraints.
 -- It is an inefficient function for large sets and will not return the answer for the infinite sets.

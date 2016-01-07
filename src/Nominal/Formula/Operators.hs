@@ -81,7 +81,7 @@ Formula _ T /\ f = f
 f /\ Formula _ T = f
 f1 /\ f2 = andFromSet (fromList [f1,f2])
 
--- | Creates a logical conjunction of a given list of formulas. For the result to be 'true' the list must be finite.
+-- | Creates a logical conjunction of a given list of formulas.
 and :: [Formula] -> Formula
 and = andFromSet . fromList
 
@@ -129,7 +129,7 @@ Formula _ F \/ f = f
 f \/ Formula _ F = f
 f1 \/ f2 = orFromSet (fromList [f1,f2])
 
--- | Creates a logical disjunction of a given list of formulas. For the result to be 'false' the list must be finite.
+-- | Creates a logical disjunction of a given list of formulas.
 or :: [Formula] -> Formula
 or = orFromSet . fromList
 

@@ -76,7 +76,7 @@ import Nominal.Set hiding (range, openRange, isLowerBound, hasLowerBound, isUppe
 #endif
 import Nominal.Type (NominalType(eq), neq)
 import Nominal.Variable (Variable, variable, variableName)
-import Nominal.Variants (Variants, variant, fromVariant, iteV, iteV')
+import Nominal.Variants (Variants, variant, fromVariant, iteV)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 
 ----------------------------------------------------------------------------------------------------
@@ -109,10 +109,5 @@ x = atom "x"
 y = atom "y"
 z = atom "z"
 
--- example program
-
-nlProgram = do
-    a <- newAtom
-    b <- newAtom
-    return $ let set = delete a atoms
-             in delete b set
+gg :: Graph (Atom, Atom)
+gg = Graph differentAtomsPairs (map (\(a,b) -> ((a,b),(b,a))) differentAtomsPairs)

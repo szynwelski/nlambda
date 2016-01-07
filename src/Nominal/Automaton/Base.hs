@@ -7,7 +7,7 @@ import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Set
 import Nominal.Type
-import Prelude hiding (map, not)
+import Prelude hiding (filter, map, not)
 
 ----------------------------------------------------------------------------------------------------
 -- Definition of automaton
@@ -31,8 +31,8 @@ automaton q a d i f = onlyReachable $ Automaton q' a (union d1 d2) i' f'
 ----------------------------------------------------------------------------------------------------
 
 instance (Conditional q, NominalType q, NominalType a) => Conditional (Automaton q a) where
-    ite c (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) =
-        Automaton (ite c q1 q2) (ite c a1 a2) (ite c d1 d2) (ite c i1 i2) (ite c f1 f2)
+    ifUnsolved c (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) =
+        Automaton (ifUnsolved c q1 q2) (ifUnsolved c a1 a2) (ifUnsolved c d1 d2) (ifUnsolved c i1 i2) (ifUnsolved c f1 f2)
 
 instance (Contextual q, Contextual a, Ord q, Ord a) => Contextual (Automaton q a) where
     when ctx (Automaton q a d i f) = Automaton (when ctx q) (when ctx a) (when ctx d) (when ctx i) (when ctx f)
@@ -103,13 +103,13 @@ intersectionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Aut
 -- Automaton minimization
 ----------------------------------------------------------------------------------------------------
 
---minimize :: Automaton q a -> Automaton (Set q) a
 -- | Returns a minimal automaton accepting the same language as a given automaton.
-minimize aut@(Automaton q a d i f) = {-Automaton-} q' {-a d' i' f'-}
+minimize :: (NominalType q, NominalType a) => Automaton q a -> Automaton (Set (Maybe q)) a
+minimize aut@(Automaton q a d i f) = automaton q' a d' i' f'
     where relGraph = graph (square q) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta d d)
           nf = q \\ f
           equiv = square q \\ reachableFromSet (reverseEdges relGraph) (union (pairs nf f) (pairs f nf))
           q' = map vertices (stronglyConnectedComponents $ graph q equiv)
---          d' =
---          i' =
---          f' =
+          d' = empty -- TODO
+          i' = filter (intersect i) q'
+          f' = filter (intersect f) q'

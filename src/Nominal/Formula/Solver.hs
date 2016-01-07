@@ -29,7 +29,7 @@ lra = SmtLogic "Real" "LRA"
 data SmtSolver = SmtSolver {command :: String, options :: [String], smtOptions :: [String]}
 
 z3Solver :: SmtSolver
-z3Solver = SmtSolver {command = "z3", options = ["-smt2", "-in"],
+z3Solver = SmtSolver {command = "z3", options = ["-smt2", "-in", "-nw"],
                       smtOptions = ["(set-option :smt.auto-config false)",
                                     "(set-option :smt.mbqi false)"]}
 
