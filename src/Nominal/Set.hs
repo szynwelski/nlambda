@@ -174,7 +174,7 @@ instance Show a => Show (Set a) where
               in show v ++ (if null condition then "" else " :" ++ condition)
 
 instance NominalType a => Conditional (Set a) where
-    ifUnsolved c s1 s2 = union (filter (const c) s1) (filter (const $ not c) s2)
+    cond c s1 s2 = union (filter (const c) s1) (filter (const $ not c) s2)
 
 instance (Contextual a, Ord a) => Contextual (Set a) where
     when ctx (Set es) = Set $ filterNotFalse

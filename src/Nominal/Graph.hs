@@ -20,7 +20,7 @@ import Prelude hiding (filter, map, not, or, sum)
 data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)} deriving (Eq, Ord, Show)
 
 instance NominalType a => Conditional (Graph a) where
-    ifUnsolved c (Graph vs1 es1) (Graph vs2 es2) = Graph (ifUnsolved c vs1 vs2) (ifUnsolved c es1 es2)
+    cond c (Graph vs1 es1) (Graph vs2 es2) = Graph (cond c vs1 vs2) (cond c es1 es2)
 
 instance (Contextual a, Ord a) => Contextual (Graph a) where
     when ctx (Graph vs es) = Graph (when ctx vs) (when ctx es)

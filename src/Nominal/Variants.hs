@@ -34,7 +34,7 @@ instance Show a => Show (Variants a) where
       where showVariant (v, c) = show v ++ if c == true then "" else " : " ++ show c
 
 instance Ord a => Conditional (Variants a) where
-    ifUnsolved c (Variants vs1) (Variants vs2) = Variants $ unionVariants c vs1 vs2
+    cond c (Variants vs1) (Variants vs2) = Variants $ unionVariants c vs1 vs2
       where filterWith c vs = Map.map (/\ c) vs
             unionVariants c vs1 vs2 = Map.unionWith (\/) (filterWith c vs1) (filterWith (not c) vs2)
 

@@ -31,8 +31,8 @@ automaton q a d i f = onlyReachable $ Automaton q' a (union d1 d2) i' f'
 ----------------------------------------------------------------------------------------------------
 
 instance (Conditional q, NominalType q, NominalType a) => Conditional (Automaton q a) where
-    ifUnsolved c (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) =
-        Automaton (ifUnsolved c q1 q2) (ifUnsolved c a1 a2) (ifUnsolved c d1 d2) (ifUnsolved c i1 i2) (ifUnsolved c f1 f2)
+    cond c (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) =
+        Automaton (cond c q1 q2) (cond c a1 a2) (cond c d1 d2) (cond c i1 i2) (cond c f1 f2)
 
 instance (Contextual q, Contextual a, Ord q, Ord a) => Contextual (Automaton q a) where
     when ctx (Automaton q a d i f) = Automaton (when ctx q) (when ctx a) (when ctx d) (when ctx i) (when ctx f)
