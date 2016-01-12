@@ -5,10 +5,10 @@ import Data.Set (elems, empty, insert)
 import Nominal.Atom (Atom)
 import Nominal.AtomsType (relations)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
-import Nominal.Set (Set, filter, fromList, isSingleton, map, maxSize, replicateAtoms, replicateSetUntil, size, unions)
+import Nominal.Set (Set, filter, fromList, isSingleton, map, maxSize, replicateAtoms, replicateSetUntil, size, sum, unions)
 import Nominal.Type (NominalType, Scope(..), eq, foldVariables, mapVariables)
 import Nominal.Variants (Variants, fromVariant, variant, variantsRelation)
-import Prelude hiding (and, filter, map)
+import Prelude hiding (and, filter, map, sum)
 
 ----------------------------------------------------------------------------------------------------
 -- Support
@@ -50,6 +50,10 @@ orbit supp elem = map mapFun $ filter filterFun $ replicateAtoms elSuppSize
         relFun list rel = and [rel (list!!pred i) (list!!pred j) <==> rel (elSupp!!pred i) (elSupp!!pred j) | i<-[1..elSuppSize], j<-[1..elSuppSize], i/=j]
                        /\ and [rel (list!!pred i) (supp!!pred j) <==> rel (elSupp!!pred i) (supp!!pred j) | i<-[1..elSuppSize], j<-[1..length supp]]
         filterFun list = and $ fmap (relFun list) $ fmap variantsRelation relations
+
+-- | For a given list of atoms and a set returns the closure of the set under all automorphisms of atoms that fix every element of the list.
+hull :: NominalType a => [Atom] -> Set a -> Set a
+hull supp = sum . map (orbit supp)
 
 -- | Returns an orbit of an element in a set.
 setOrbit :: NominalType a => Set a -> a -> Set a
