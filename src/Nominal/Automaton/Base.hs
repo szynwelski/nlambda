@@ -22,7 +22,7 @@ automaton :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -
 automaton q a d i f = onlyReachable $ Automaton q' a (union d1 d2) i' f'
     where q' = insert Nothing $ map Just q
           d1 = mapFilter (\(s1,l,s2) -> maybeIf (contains q s1 /\ contains q s2) (Just s1,l,Just s2)) d
-          d2 = map (\(s1,l) -> (s1,l,Nothing)) ((pairs q' a) \\ (map (\(s,l,_)-> (s,l)) d1  ))
+          d2 = map (\(s1,l) -> (s1,l,Nothing)) ((pairs q' a) \\ (map (\(s,l,_)-> (s,l)) d1))
           i' = map Just (intersection q i)
           f' = map Just (intersection q f)
 
@@ -96,8 +96,8 @@ intersectionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Aut
                                                    otherwise         -> Nothing
           q = pairsWith intersectionPair q1 q2
           d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') (intersectionPair s1 s1',l,intersectionPair s2 s2')) d1 d2
-          i = pairsWith intersectionPair i1 i2
-          f = pairsWith intersectionPair f1 f2
+          i = delete Nothing (pairsWith intersectionPair i1 i2)
+          f = delete Nothing (pairsWith intersectionPair f1 f2)
 
 ----------------------------------------------------------------------------------------------------
 -- Automaton minimization
@@ -110,6 +110,6 @@ minimize aut@(Automaton q a d i f) = automaton q' a d' i' f'
           nf = q \\ f
           equiv = square q \\ reachableFromSet (reverseEdges relGraph) (union (pairs nf f) (pairs f nf))
           q' = map vertices (stronglyConnectedComponents $ graph q equiv)
-          d' = empty -- TODO
+          d' = filter (\(ss1,ll,ss2) -> exists (\(s1,l,s2)-> member s1 ss1 /\ eq l ll /\ member s2 ss2) d) (triples q' a q')
           i' = filter (intersect i) q'
           f' = filter (intersect f) q'

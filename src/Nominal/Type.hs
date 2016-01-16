@@ -13,9 +13,16 @@ import Prelude hiding (and, map, not, or)
 -- NominalType
 ----------------------------------------------------------------------------------------------------
 
-data Scope = All | Free
+-- | Variables scope.
+data Scope
+    -- | All variables.
+    = All
+    -- | Only free variables.
+    | Free
 
+-- | Map function for variables from a scope.
 type MapVarFun = (Scope, Variable -> Variable)
+-- | Fold function for variables from a scope.
 type FoldVarFun b = (Scope, Variable -> b -> b)
 
 -- | Basic type in 'NLambda' required by most of functions in the module.
@@ -23,10 +30,13 @@ class Ord a => NominalType a where
     -- | Checks equivalence of two given elements.
     eq :: a -> a -> Formula
     eq x y = fromBool (x == y)
+    -- | If __a__ is a variant type then returns variants values.
     variants :: a -> Variants a
     variants = variant
+    -- | Map all variables from a given scope.
     mapVariables :: MapVarFun -> a -> a
     mapVariables _ = id
+    -- | Fold all variables form a given scope.
     foldVariables :: FoldVarFun b -> b -> a -> b
     foldVariables _ acc _ = acc
 

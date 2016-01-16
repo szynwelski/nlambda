@@ -46,37 +46,17 @@ constraint r x1 x2 = let f = constraintStruct r x1 x2
                                          otherwise          -> empty
                      in Formula fvs f
 
--- | Creates a formula that describes the equality relation between given variables.
---
--- > equals x x == true
--- > equals x y == equals y x
 equals :: Variable -> Variable -> Formula
 equals = constraint Equals
 
--- | Creates a formula that describes the "<" relation between given variables.
---
--- > lessThan x x == false
--- > lessThan x y == greaterThan y x
 lessThan :: Variable -> Variable -> Formula
 lessThan = constraint LessThan
 
--- | Creates a formula that describes the "≤" relation between given variables.
---
--- > lessEquals x x == true
--- > lessEquals x y == greaterEquals y x
 lessEquals :: Variable -> Variable -> Formula
 lessEquals = constraint LessEquals
 
--- | Creates a formula that describes the ">" relation between given variables.
---
--- > greaterThan x x == false
--- > greaterThan x y == lessThan y x
 greaterThan :: Variable -> Variable -> Formula
 greaterThan = constraint GreaterThan
 
--- | Creates a formula that describes the "≥" relation between given variables.
---
--- > greaterEquals x x == true
--- > greaterEquals x y == lessEquals y x
 greaterEquals :: Variable -> Variable -> Formula
 greaterEquals = constraint GreaterEquals

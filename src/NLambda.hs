@@ -3,6 +3,7 @@
 {-|
 Module:         NLambda
 Description:    Module for computations over infinite structures.
+Stability:      experimental
 
 Module supports computations over infinite structures using logical formulas and SMT solving.
 -}
@@ -14,7 +15,7 @@ module Nominal.Variable,
 -- ** Type
 module Nominal.Formula,
 -- * Nominal type
-NominalType(eq), neq,
+module Nominal.Type,
 -- * Conditional
 module Nominal.Conditional,
 -- * Contextual
@@ -41,9 +42,7 @@ module Nominal.Automaton.Deterministic,
 -- ** Nondeterministic automaton
 module Nominal.Automaton.Nondeterministic,
 -- Example atoms
-a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z
-)
-where
+a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z) where
 
 #if TOTAL_ORDER
 import Nominal.Atom
@@ -74,7 +73,7 @@ import Nominal.Set
 #else
 import Nominal.Set hiding (range, openRange, isLowerBound, hasLowerBound, isUpperBound, hasUpperBound, isMinimum, hasMinimum, isMaximum, hasMaximum, isInfimum, isSupremum, isConnected, isOpen, isClosed, isCompact)
 #endif
-import Nominal.Type (NominalType(eq), neq)
+import Nominal.Type (NominalType(..), Scope, MapVarFun, FoldVarFun, neq)
 import Nominal.Variable (Variable, variable, variableName)
 import Nominal.Variants (Variants, variant, fromVariant, iteV)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
@@ -108,6 +107,3 @@ w = atom "w"
 x = atom "x"
 y = atom "y"
 z = atom "z"
-
-gg :: Graph (Atom, Atom)
-gg = Graph differentAtomsPairs (map (\(a,b) -> ((a,b),(b,a))) differentAtomsPairs)

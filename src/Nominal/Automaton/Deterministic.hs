@@ -23,7 +23,8 @@ atomsDA q d i f = da q atoms d i f
 
 -- | Checks whether an automaton is deterministic.
 isDeterministic :: (NominalType q, NominalType a) => Automaton q a -> Formula
-isDeterministic aut = forAll (`hasSizeLessThan` 2) (pairsWith (\s l -> transit aut s l) (states aut) (alphabet aut))
+isDeterministic aut = isSingleton (initialStates aut) /\
+  forAll (`hasSizeLessThan` 2) (pairsWith (\s l -> transit aut s l) (states aut) (alphabet aut))
 
 -- | Returns a deterministic automaton that accepts the union of languages accepted by two deterministic automata.
 unionDA :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (Maybe q1, Maybe q2) a

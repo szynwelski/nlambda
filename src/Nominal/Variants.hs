@@ -35,7 +35,7 @@ instance Show a => Show (Variants a) where
 
 instance Ord a => Conditional (Variants a) where
     cond c (Variants vs1) (Variants vs2) = Variants $ unionVariants c vs1 vs2
-      where filterWith c vs = Map.map (/\ c) vs
+      where filterWith c = Map.filter (/= false) . Map.map (/\ c)
             unionVariants c vs1 vs2 = Map.unionWith (\/) (filterWith c vs1) (filterWith (not c) vs2)
 
 instance (Contextual a, Ord a) => Contextual (Variants a) where
