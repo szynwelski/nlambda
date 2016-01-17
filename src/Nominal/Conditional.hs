@@ -21,7 +21,7 @@ instance Conditional b => Conditional (a -> b) where
 instance (Conditional a) => Conditional [a] where
     cond c l1 l2 = if length l1 == length l2
                            then zipWith (cond c) l1 l2
-                           else ifSolve c l1 l2 (error "cond cannot be applied to lists of different sizes with unsolvable condition")
+                           else ifSolve c l1 l2 (error "cond cannot be applied to lists of different sizes with undetermined condition")
 
 instance Conditional () where
     cond c _ _ = ()
