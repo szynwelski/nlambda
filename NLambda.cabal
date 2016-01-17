@@ -1,8 +1,11 @@
 name:		   NLambda
-version:	   0.0.1
+version:	   1.0
 build-type:        Simple
 cabal-version:     >= 1.2
 author:            M.Szynwelski, B.Klin
+license:           BSD3
+license-file:      LICENSE
+copyright:         (c) 2015-2016, M.Szynwelski, B.Klin
 
 Flag TOTAL_ORDER
   description: Set atoms type with total order
@@ -44,6 +47,5 @@ Library
     Nominal.Set,
     Nominal.Type,
     Nominal.Util.InsertionSet,
-    Nominal.Util.UnionFind,
     Nominal.Variable,
     Nominal.Variants
