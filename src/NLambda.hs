@@ -57,9 +57,9 @@ import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Either
 #if TOTAL_ORDER
-import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables)
+import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables, getEquationsFromFormula)
 #else
-import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables, lessThan, lessEquals, greaterThan, greaterEquals)
+import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables, getEquationsFromFormula, lessThan, lessEquals, greaterThan, greaterEquals)
 #endif
 #if TOTAL_ORDER
 import Nominal.Graph

@@ -32,6 +32,7 @@ module Nominal.Formula (
     -- variable functions
     foldFormulaVariables,
     mapFormulaVariables,
+    getEquationsFromFormula,
 
     -- ** Formula solving
     isTrue,
@@ -63,3 +64,4 @@ solve f
     | isTrue f  = Just True
     | isFalse f = Just False
     | otherwise = Nothing
+

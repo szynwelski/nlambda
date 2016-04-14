@@ -135,13 +135,28 @@ filterSetElems f = filterNotFalse . Map.mapWithKey (\v (vs, c) -> let fv = f v i
 filterNotFalse :: Map a SetElementCondition -> Map a SetElementCondition
 filterNotFalse = Map.filter ((/= false) . snd)
 
+checkEquality :: NominalType a => (a, SetElementCondition) -> (a, SetElementCondition)
+checkEquality (v, (vs, c)) =
+    if Set.null eqs
+    then (v, (vs, c))
+    else if Map.null eqsMap
+         then (v, (vs, c))
+         else (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
+    where eqs = getEquationsFromFormula c
+          (vs', eqsMap) = Set.foldr checkVars (vs, Map.empty) eqs
+          checkVars (x1, x2) (vs, m)
+              | Set.member x2 vs = (Set.delete x2 vs, Map.insert x2 x1 m)
+              | Set.member x1 vs = (Set.delete x1 vs, Map.insert x1 x2 m)
+              | otherwise        = (vs, m)
+
+
 ----------------------------------------------------------------------------------------------------
 -- Identifiers
 ----------------------------------------------------------------------------------------------------
 
 checkIdentifiers :: (NominalType a, NominalType b) => Identifier -> (a, (b, SetElementCondition)) -> (a, (b, SetElementCondition))
 checkIdentifiers id (oldV, (newV, cond)) =
-    let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierNotEquals id var then getIterationLevel var else Nothing) newV
+    let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierNotEquals id var then getIterationLevel var else Nothing) (oldV, newV)
         iterVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierEquals id var then getIterationLevel var else Nothing) (newV, cond)
         newIterVarsLevels = [0..] List.\\ otherVarsLevels
         changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
@@ -251,7 +266,9 @@ filter f = Set . filterNotFalse
                . Map.fromListWith sumCondition
                . Map.foldrWithKey (filterAndMerge f) []
                . setElements
-    where filterAndMerge f v cond rs = fmap (\(v', (c, cond')) -> (v', (fst cond', c /\ snd cond'))) (applyWithIdentifiers f (v, cond)) ++ rs
+    where filterAndMerge f v cond rs = fmap (\(v', (c, cond')) -> checkEquality (v', (fst cond', c /\ snd cond')))
+                                            (applyWithIdentifiers f (v, cond))
+                                       ++ rs
 
 -- | For a set of sets returns the union of these sets.
 sum :: NominalType a => Set (Set a) -> Set a

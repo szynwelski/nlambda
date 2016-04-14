@@ -225,3 +225,9 @@ mapFormulaVariables fun (Formula fvs f) = doMap fun f
 
 replaceFormulaVariable :: Variable -> Variable -> Formula -> Formula
 replaceFormulaVariable oldVar newVar = mapFormulaVariables (\var -> if oldVar == var then newVar else var)
+
+getEquationsFromFormula :: Formula -> Set (Variable, Variable)
+getEquationsFromFormula f = go (formula f)
+    where go (Constraint Equals x1 x2) = singleton (x1, x2)
+          go (And fs) = unions $ elems $ map (go . formula) fs
+          go _ = empty
