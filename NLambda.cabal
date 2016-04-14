@@ -26,6 +26,7 @@ Library
   if flag(TOTAL_ORDER)
     cpp-options: -DTOTAL_ORDER
   other-modules:
+    NLambdaTest,
     Nominal.Atom,
     Nominal.AtomsSpace,
     Nominal.AtomsType,

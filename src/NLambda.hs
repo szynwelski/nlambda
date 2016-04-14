@@ -73,7 +73,7 @@ import Nominal.Set
 #else
 import Nominal.Set hiding (range, openRange, isLowerBound, hasLowerBound, isUpperBound, hasUpperBound, isMinimum, hasMinimum, isMaximum, hasMaximum, isInfimum, isSupremum, isConnected, isOpen, isClosed, isCompact)
 #endif
-import Nominal.Type (NominalType(..), Scope, MapVarFun, FoldVarFun, neq)
+import Nominal.Type (BareNominalType(..), NominalType(..), Scope, MapVarFun, FoldVarFun, neq)
 import Nominal.Variable (Variable, variable, variableName)
 import Nominal.Variants (Variants, variant, fromVariant, iteV)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)

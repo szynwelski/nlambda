@@ -7,6 +7,7 @@ import Nominal.Graph
 import Nominal.Maybe
 import Nominal.Set
 import Nominal.Type
+import Nominal.Variants (variant)
 import Prelude hiding (filter, map, not)
 
 ----------------------------------------------------------------------------------------------------
@@ -37,8 +38,9 @@ instance (Conditional q, NominalType q, NominalType a) => Conditional (Automaton
 instance (Contextual q, Contextual a, Ord q, Ord a) => Contextual (Automaton q a) where
     when ctx (Automaton q a d i f) = Automaton (when ctx q) (when ctx a) (when ctx d) (when ctx i) (when ctx f)
 
-instance (NominalType q, NominalType a) => NominalType (Automaton q a) where
+instance (NominalType q, NominalType a) => BareNominalType (Automaton q a) where
     eq (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) = eq q1 q2 /\ eq a1 a2 /\ eq d1 d2 /\ eq i1 i2 /\ eq f1 f2
+    variants = variant
     mapVariables fun (Automaton q a d i f) = Automaton (mapVariables fun q) (mapVariables fun a) (mapVariables fun d)
                                                        (mapVariables fun i) (mapVariables fun f)
     foldVariables fun acc (Automaton q a d i f) =

@@ -25,8 +25,9 @@ instance NominalType a => Conditional (Graph a) where
 instance (Contextual a, Ord a) => Contextual (Graph a) where
     when ctx (Graph vs es) = Graph (when ctx vs) (when ctx es)
 
-instance NominalType a => NominalType (Graph a) where
+instance NominalType a => BareNominalType (Graph a) where
     eq (Graph vs1 es1) (Graph vs2 es2) = eq vs1 vs2 /\ eq es1 es2
+    variants = variant
     mapVariables f (Graph vs es) = Graph (mapVariables f vs) (mapVariables f es)
     foldVariables f acc (Graph vs es) = foldVariables f (foldVariables f acc vs) es
 
