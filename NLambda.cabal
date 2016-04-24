@@ -18,8 +18,11 @@ Library
     MissingH,
     multimap,
     directory,
+    parsec,
     process,
     random,
+    text,
+    transformers,
     mtl
   hs-source-dirs:  src
   exposed-modules: NLambda
@@ -27,9 +30,10 @@ Library
     cpp-options: -DTOTAL_ORDER
   other-modules:
     NLambdaTest,
-    Nominal.Atom,
-    Nominal.AtomsSpace,
-    Nominal.AtomsType,
+    Nominal.Atoms,
+    Nominal.Atoms.Logic,
+    Nominal.Atoms.Signature,
+    Nominal.Atoms.Space,
     Nominal.Automaton.Base,
     Nominal.Automaton.Deterministic,
     Nominal.Automaton.Nondeterministic,
@@ -37,8 +41,8 @@ Library
     Nominal.Contextual,
     Nominal.Either,
     Nominal.Formula,
-    Nominal.Formula.Definition
     Nominal.Formula.Constructors
+    Nominal.Formula.Definition
     Nominal.Formula.Operators
     Nominal.Formula.Quantification
     Nominal.Formula.Solver

@@ -35,7 +35,7 @@ instance Contextual Formula where
     when ctx f
         | isTrue (ctx ==> f) = true
         | isTrue (ctx ==> not f) = false
-        | otherwise = f
+        | otherwise = simplifyFormula f
 
 instance Contextual Bool
 

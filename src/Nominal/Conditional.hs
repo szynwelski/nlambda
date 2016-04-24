@@ -21,7 +21,10 @@ instance Conditional b => Conditional (a -> b) where
 instance (Conditional a) => Conditional [a] where
     cond c l1 l2 = if length l1 == length l2
                            then zipWith (cond c) l1 l2
-                           else ifSolve c l1 l2 (error "cond cannot be applied to lists of different sizes with undetermined condition")
+                           else case solve c of
+                                  Just True  -> l1
+                                  Just False -> l2
+                                  Nothing    -> error "cond cannot be applied to lists of different sizes with undetermined condition"
 
 instance Conditional () where
     cond c _ _ = ()
@@ -54,12 +57,10 @@ instance (Conditional a, Conditional b, Conditional c, Conditional d, Conditiona
 -- if then else with formula solving
 ----------------------------------------------------------------------------------------------------
 
-ifSolve :: Formula -> a -> a -> a -> a
-ifSolve c x1 x2 x3 = case solve c of
-                       Just True -> x1
-                       Just False -> x2
-                       Nothing -> x3
-
 -- | /if ... then ... else/ ... with condition solving.
 ite :: Conditional a => Formula -> a -> a -> a
-ite c x1 x2 = ifSolve c x1 x2 (cond c x1 x2)
+ite c x1 x2
+    | f == true  = x1
+    | f == false = x2
+    | otherwise  = (cond f x1 x2)
+  where f = simplifyFormula c

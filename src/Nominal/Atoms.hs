@@ -1,8 +1,9 @@
-module Nominal.Atom where
+module Nominal.Atoms where
 
+import Nominal.Atoms.Signature (Constant, showConstant)
 import Nominal.Formula
-import Nominal.Variable
-import Nominal.Variants
+import Nominal.Variable (Variable, constantVar, variable)
+import Nominal.Variants (Variants, variant, variantsRelation)
 
 ----------------------------------------------------------------------------------------------------
 -- Atom
@@ -14,6 +15,10 @@ type Atom = Variants Variable
 -- | Creates atom with the given name.
 atom :: String -> Atom
 atom = variant . variable
+
+-- | Creates atom representing given constant
+constant :: Constant -> Atom
+constant = variant . constantVar . showConstant
 
 -- | Creates a formula that describes the "<" relation between given atoms.
 --

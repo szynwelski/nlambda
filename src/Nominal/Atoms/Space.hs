@@ -1,8 +1,8 @@
-module Nominal.AtomsSpace where
+module Nominal.Atoms.Space where
 
 import Control.Monad (replicateM)
 import Control.Monad.State (State, evalState, state)
-import Nominal.Atom (Atom, atom)
+import Nominal.Atoms (Atom, atom)
 
 ----------------------------------------------------------------------------------------------------
 -- Atoms space

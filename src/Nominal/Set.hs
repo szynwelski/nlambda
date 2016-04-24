@@ -85,10 +85,11 @@ import qualified Data.Maybe as Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Nominal.Atom
+import Nominal.Atoms
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
+import Nominal.Formula.Operators (getEquationsFromFormula)
 import Nominal.Maybe
 import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
@@ -176,7 +177,7 @@ applyWithIdentifiers f (v, cond) =
 ----------------------------------------------------------------------------------------------------
 
 -- | The set of elements, can be infinite.
-data Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
+newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
 
 instance Show a => Show (Set a) where
     show s = "{" ++ (join ", " (fmap showSetElement (Map.assocs $ setElements s))) ++ "}"

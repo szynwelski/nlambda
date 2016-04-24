@@ -29,17 +29,13 @@ module Nominal.Formula (
     forAllVars,
     (∀),
 
-    -- variable functions
-    foldFormulaVariables,
-    mapFormulaVariables,
-    getEquationsFromFormula,
-
     -- ** Formula solving
     isTrue,
     isFalse,
+    simplifyFormula,
     solve) where
 
-import Nominal.AtomsType (existsVar, forAllVars, isFalse, isTrue)
+import Nominal.Atoms.Logic (existsVar, forAllVars, isFalse, isTrue, simplifyFormula)
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
 import Nominal.Formula.Operators
@@ -64,4 +60,6 @@ solve f
     | isTrue f  = Just True
     | isFalse f = Just False
     | otherwise = Nothing
+
+
 

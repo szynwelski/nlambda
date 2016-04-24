@@ -1,8 +1,9 @@
 module Nominal.Formula.Constructors where
 
 import Data.Set (Set, delete, elems, empty, foldl, fromList, map, unions)
+import Nominal.Atoms.Signature (Relation(..), checkConstants, symmetricRelation)
 import Nominal.Formula.Definition
-import Nominal.Variable (Variable)
+import Nominal.Variable (Variable, isConstant, constantValue)
 import Prelude hiding (foldl, map)
 
 ----------------------------------------------------------------------------------------------------
@@ -11,11 +12,11 @@ import Prelude hiding (foldl, map)
 
 -- | Creates the tautology formula.
 true :: Formula
-true = Formula empty T
+true = Formula True T
 
 -- | Creates the contradiction formula.
 false :: Formula
-false = Formula empty F
+false = Formula True F
 
 -- | Creates a formula based on a given 'Bool' value.
 fromBool :: Bool -> Formula
@@ -26,25 +27,12 @@ fromBool False = false
 -- Constraints
 ----------------------------------------------------------------------------------------------------
 
-symmetricRelation :: Relation -> Relation
-symmetricRelation LessThan = GreaterThan
-symmetricRelation LessEquals = GreaterEquals
-symmetricRelation GreaterThan = LessThan
-symmetricRelation GreaterEquals = LessEquals
-symmetricRelation Equals = Equals
-symmetricRelation NotEquals = NotEquals
-
-constraintStruct :: Relation -> Variable -> Variable -> FormulaStructure
-constraintStruct r x1 x2
-    | x1 == x2 = if r == LessThan || r == GreaterThan || r == NotEquals then F else T
-    | x1 > x2 = Constraint (symmetricRelation r) x2 x1
-    | otherwise = Constraint r x1 x2
-
 constraint :: Relation -> Variable -> Variable -> Formula
-constraint r x1 x2 = let f = constraintStruct r x1 x2
-                         fvs = case f of (Constraint _ _ _) -> fromList [x1,x2]
-                                         otherwise          -> empty
-                     in Formula fvs f
+constraint r x1 x2
+    | isConstant x1 && isConstant x2 = fromBool $ checkConstants r (constantValue x1) (constantValue x2)
+    | x1 == x2 = if r == LessThan || r == GreaterThan || r == NotEquals then false else true
+    | x1 > x2 = Formula True $ Constraint (symmetricRelation r) x2 x1
+    | otherwise = Formula True $ Constraint r x1 x2
 
 equals :: Variable -> Variable -> Formula
 equals = constraint Equals

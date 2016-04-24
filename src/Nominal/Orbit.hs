@@ -2,8 +2,9 @@ module Nominal.Orbit where
 
 import Data.List (elemIndex, delete)
 import Data.Set (elems, empty, insert)
-import Nominal.Atom (Atom)
-import Nominal.AtomsType (relations)
+import Nominal.Atoms (Atom)
+import Nominal.Atoms.Signature (minRelations)
+import Nominal.Formula.Constructors (constraint)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
 import Nominal.Set (Set, filter, fromList, isSingleton, map, maxSize, replicateAtoms, replicateSetUntil, size, sum, unions)
 import Nominal.Type (NominalType, Scope(..), eq, foldVariables, mapVariables)
@@ -49,7 +50,7 @@ orbit supp elem = map mapFun $ filter filterFun $ replicateAtoms elSuppSize
         mapFun list = groupAction (\x -> maybe x (list !!) (elemIndex x elSupp)) elem
         relFun list rel = and [rel (list!!pred i) (list!!pred j) <==> rel (elSupp!!pred i) (elSupp!!pred j) | i<-[1..elSuppSize], j<-[1..elSuppSize], i/=j]
                        /\ and [rel (list!!pred i) (supp!!pred j) <==> rel (elSupp!!pred i) (supp!!pred j) | i<-[1..elSuppSize], j<-[1..length supp]]
-        filterFun list = and $ fmap (relFun list) $ fmap variantsRelation relations
+        filterFun list = and $ fmap (relFun list) $ fmap (variantsRelation . constraint) minRelations
 
 -- | For a given list of atoms and a set returns the closure of the set under all automorphisms of atoms that fix every element of the list.
 hull :: NominalType a => [Atom] -> Set a -> Set a

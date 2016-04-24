@@ -1,6 +1,6 @@
 module Nominal.Automaton.Deterministic where
 
-import Nominal.Atom
+import Nominal.Atoms
 import Nominal.Automaton.Base
 import Nominal.Conditional
 import Nominal.Formula

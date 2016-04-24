@@ -2,28 +2,8 @@ module Nominal.Formula.Definition where
 
 import Data.List.Utils (join)
 import Data.Set (Set, elems)
+import Nominal.Atoms.Signature (Relation)
 import Nominal.Variable (Variable)
-
-----------------------------------------------------------------------------------------------------
--- Relation
-----------------------------------------------------------------------------------------------------
-data Relation = LessThan | LessEquals | Equals | NotEquals | GreaterEquals | GreaterThan deriving (Eq, Ord)
-
-instance Show Relation where
-    show LessThan = "<"
-    show LessEquals = "≤"
-    show Equals = "="
-    show NotEquals = "≠"
-    show GreaterThan = ">"
-    show GreaterEquals = "≥"
-
-relationAscii :: Relation -> String
-relationAscii LessThan = "<"
-relationAscii LessEquals = "<="
-relationAscii Equals = "="
-relationAscii NotEquals = "/="
-relationAscii GreaterThan = ">"
-relationAscii GreaterEquals = ">="
 
 ----------------------------------------------------------------------------------------------------
 -- Formula structure
@@ -59,7 +39,7 @@ instance Show FormulaStructure where
 ----------------------------------------------------------------------------------------------------
 
 -- | First order formula with free variables and relations between variables.
-data Formula = Formula {freeVariables :: Set Variable, formula :: FormulaStructure}
+data Formula = Formula {isSimplified :: Bool, formula :: FormulaStructure}
 
 instance Eq Formula where
     (Formula _ f1) == (Formula _ f2) = f1 == f2

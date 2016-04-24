@@ -23,8 +23,9 @@ module Nominal.Contextual,
 -- * Variants
 module Nominal.Variants,
 -- ** Atom
-module Nominal.Atom,
-module Nominal.AtomsSpace,
+module Nominal.Atoms,
+module Nominal.Atoms.Space,
+module Nominal.Atoms.Signature,
 -- ** Either
 module Nominal.Either,
 -- ** Maybe
@@ -40,16 +41,15 @@ module Nominal.Automaton.Base,
 -- ** Deterministic automaton
 module Nominal.Automaton.Deterministic,
 -- ** Nondeterministic automaton
-module Nominal.Automaton.Nondeterministic,
--- Example atoms
-a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z) where
+module Nominal.Automaton.Nondeterministic) where
 
 #if TOTAL_ORDER
-import Nominal.Atom
+import Nominal.Atoms
 #else
-import Nominal.Atom hiding (lt, le, gt, ge)
+import Nominal.Atoms hiding (lt, le, gt, ge)
 #endif
-import Nominal.AtomsSpace
+import Nominal.Atoms.Signature (Constant)
+import Nominal.Atoms.Space
 import Nominal.Automaton.Base
 import Nominal.Automaton.Deterministic
 import Nominal.Automaton.Nondeterministic
@@ -57,9 +57,9 @@ import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Either
 #if TOTAL_ORDER
-import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables, getEquationsFromFormula)
+import Nominal.Formula
 #else
-import Nominal.Formula hiding (foldFormulaVariables, mapFormulaVariables, getEquationsFromFormula, lessThan, lessEquals, greaterThan, greaterEquals)
+import Nominal.Formula hiding (lessThan, lessEquals, greaterThan, greaterEquals)
 #endif
 #if TOTAL_ORDER
 import Nominal.Graph
@@ -78,32 +78,3 @@ import Nominal.Variable (Variable, variable, variableName)
 import Nominal.Variants (Variants, variant, fromVariant, iteV)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 
-----------------------------------------------------------------------------------------------------
--- Examples
-----------------------------------------------------------------------------------------------------
-a = atom "a"
-b = atom "b"
-c = atom "c"
-d = atom "d"
-e = atom "e"
-f = atom "f"
-g = atom "g"
-h = atom "h"
-i = atom "i"
-j = atom "j"
-k = atom "k"
-l = atom "l"
-m = atom "m"
-n = atom "n"
-o = atom "o"
-p = atom "p"
-q = atom "q"
-r = atom "r"
-s = atom "s"
-t = atom "t"
-u = atom "u"
-v = atom "v"
-w = atom "w"
-x = atom "x"
-y = atom "y"
-z = atom "z"

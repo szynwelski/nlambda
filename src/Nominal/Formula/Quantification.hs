@@ -2,10 +2,11 @@ module Nominal.Formula.Quantification (existsVar, forAllVars) where
 
 import Control.Monad (liftM2)
 import Data.Set
+import Nominal.Atoms.Signature (Relation(..), symmetricRelation)
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
 import Nominal.Formula.Operators
-import Nominal.Variable (Variable)
+import Nominal.Variable (Variable, isConstant)
 import Prelude hiding (and, filter, map, not, or)
 
 ----------------------------------------------------------------------------------------------------
@@ -87,13 +88,13 @@ quantifiersEliminationFromExists x f = orFromSet $ union (replaceByVariables x e
 ----------------------------------------------------------------------------------------------------
 
 reduceVariable :: Variable -> Formula -> Formula
-reduceVariable x (Formula fvs (And fs)) | size cs > 0 = Formula fvs $ And $ insert c $ map (replaceFormulaVariable x y) (delete c fs)
+reduceVariable x (Formula _ (And fs)) | size cs > 0 = Formula False $ And $ insert c $ map (replaceFormulaVariable x y) (delete c fs)
     where isEqualityWithVar x (Formula _ (Constraint Equals y z)) = x == y || x == z
           isEqualityWithVar _ _ = False
           cs = filter (isEqualityWithVar x) fs
           c = findMin cs
           y = (\(Formula _ (Constraint _ x1 x2)) -> if x1 == x then x2 else x1) c
-reduceVariable x (Formula fvs (Or fs)) | size cs > 0 = Formula fvs $ Or $ insert c $ map (replaceFormulaVariable x y) (delete c fs)
+reduceVariable x (Formula _ (Or fs)) | size cs > 0 = Formula False $ Or $ insert c $ map (replaceFormulaVariable x y) (delete c fs)
     where isInequalityWithVar x (Formula _ (Constraint NotEquals x1 x2)) = x == x1 || x == x2
           isInequalityWithVar _ _ = False
           cs = filter (isInequalityWithVar x) fs
@@ -104,14 +105,12 @@ reduceVariable _ f = f
 createExists :: Variable -> Formula -> Formula
 createExists _ (Formula _ T) = true
 createExists _ (Formula _ F) = false
-createExists x f@(Formula fvs _) | notMember x fvs = f
-createExists x (Formula _ (And fs)) | size fs2 > 0 = and $ (createExists x $ and $ elems fs1) : elems fs2
-    where (fs1, fs2) = partition (\(Formula fvs _) -> member x fvs) fs
 createExists x (Formula _ (Or fs)) = orFromSet $ map (createExists x) fs
 createExists x f = quantifiersEliminationFromExists x f
 
 -- | Creates a formula representing ∃x.f
 existsVar :: Variable -> Formula -> Formula
+existsVar x _ | isConstant x = error "existsVar with constant"
 existsVar x f = createExists x (reduceVariable x f)
 
 ----------------------------------------------------------------------------------------------------
@@ -121,13 +120,10 @@ existsVar x f = createExists x (reduceVariable x f)
 createForAll :: Variable -> Formula -> Formula
 createForAll x (Formula _ T) = true
 createForAll x (Formula _ F) = false
-createForAll x ff@(Formula fv f) | notMember x fv = ff
-createForAll x (Formula _ (Constraint _ _ _)) = false
 createForAll x (Formula _ (And fs)) = andFromSet $ map (createForAll x) fs
-createForAll x (Formula _ (Or fs)) | size fs2 > 0 = or $ (createForAll x $ or $ elems fs1) : elems fs2
-    where (fs1, fs2) = partition (\(Formula fvs _) -> member x fvs) fs
 createForAll x f = not $ quantifiersEliminationFromExists x (not f)
 
 -- | Creates a formula representing ∀x.f
 forAllVars :: Variable -> Formula -> Formula
+forAllVars x _ | isConstant x = error "forAllVars with constant"
 forAllVars x f = createForAll x (reduceVariable x f)

@@ -12,6 +12,8 @@ prod,
 prodWithMono,
 variantsRelation) where
 
+import Control.Applicative ((<*>))
+import Data.Functor ((<$>))
 import Data.List.Utils (join)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -26,7 +28,7 @@ import Prelude hiding (or, not)
 
 -- | Storing values under various conditions, which could not be solved as 'true' or 'false'.
 -- Is often the result of 'ite' or 'iteV' functions.
-data Variants a = Variants (Map a Formula) deriving (Eq, Ord)
+newtype Variants a = Variants (Map a Formula) deriving (Eq, Ord)
 
 -- | Creates a single variant.
 variant :: a -> Variants a
