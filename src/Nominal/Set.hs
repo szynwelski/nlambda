@@ -85,6 +85,7 @@ import qualified Data.Maybe as Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Data.Word (Word)
 import Nominal.Atoms
 import Nominal.Conditional
 import Nominal.Contextual
@@ -163,8 +164,8 @@ checkIdentifiers id (oldV, (newV, cond)) =
         changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
     in mapVariablesIf (hasIdentifierEquals id) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
 
-getVariableId :: NominalType a => a -> IO Int
-getVariableId v = do {r <- randomIO; return $ (length $ toList $ variants v) + r}
+getVariableId :: NominalType a => a -> IO Word
+getVariableId v = do {r <- randomIO; return $ (fromIntegral $ length $ toList $ variants v) + r}
 
 applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
 applyWithIdentifiers f (v, cond) =

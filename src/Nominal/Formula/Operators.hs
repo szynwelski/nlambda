@@ -6,7 +6,7 @@ import Nominal.Atoms.Signature (Relation(..))
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
 import Nominal.Variable (Variable, isConstant)
-import Prelude hiding (foldl, foldr, map, not, null)
+import Prelude hiding (and, foldl, foldr, map, not, null, or)
 
 ----------------------------------------------------------------------------------------------------
 -- Simplification of constraints with the same variables
@@ -80,7 +80,7 @@ Formula _ F /\ _ = false
 _ /\ Formula _ F = false
 Formula _ T /\ f = f
 f /\ Formula _ T = f
-f1 /\ f2 = andFromSet (fromList [f1,f2])
+f1 /\ f2 = and [f1,f2]
 
 -- | Creates a logical conjunction of a given list of formulas.
 and :: [Formula] -> Formula
@@ -128,7 +128,7 @@ Formula _ T \/ _ = true
 _ \/ Formula _ T = true
 Formula _ F \/ f = f
 f \/ Formula _ F = f
-f1 \/ f2 = orFromSet (fromList [f1,f2])
+f1 \/ f2 = or [f1,f2]
 
 -- | Creates a logical disjunction of a given list of formulas.
 or :: [Formula] -> Formula

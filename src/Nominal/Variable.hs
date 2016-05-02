@@ -4,7 +4,6 @@ Variable,
 constantVar,
 variable,
 variableName,
-variableNameAscii,
 iterationVariable,
 iterationVariablesList,
 isConstant,
@@ -15,21 +14,25 @@ hasIdentifierNotEquals,
 clearIdentifier,
 getIterationLevel,
 changeIterationLevel,
-fromVariableNameAscii) where
+toParts,
+fromParts) where
 
-import Data.List.Utils (split)
 import Data.Map (Map, findWithDefault)
-import Data.Maybe (isNothing)
-import Numeric (readInt, showIntAtBase)
+import Data.Word (Word)
+import Numeric (showIntAtBase)
 
 ----------------------------------------------------------------------------------------------------
 -- Variable
 ----------------------------------------------------------------------------------------------------
 
-type Identifier = Int
+type Identifier = Word
 
--- | Free variable in a 'Nominal.Formula' or iteration variable in a 'Nominal.Set'.
+-- | Free variable in a 'Nominal.Formula' or iteration variable in a 'Nominal.Set' or constant.
 data Variable = Var String | IterationVariable Int Int (Maybe Identifier) | ConstantVar String deriving (Eq, Ord)
+
+----------------------------------------------------------------------------------------------------
+-- Constant
+----------------------------------------------------------------------------------------------------
 
 isConstant :: Variable -> Bool
 isConstant (ConstantVar _) = True
@@ -39,7 +42,7 @@ constantValue :: Variable -> String
 constantValue (ConstantVar value) = value
 constantValue _ = error "function constantValue can be applied only for constants"
 
----------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------
 -- Variable name
 ----------------------------------------------------------------------------------------------------
 
@@ -48,28 +51,27 @@ digits 0 = []
 digits x = digits (x `div` 10) ++ [x `mod` 10]
 
 variableNameBeforeIndex :: Int -> String
-variableNameBeforeIndex charIndex = showIntAtBase 25 (toEnum . (+97)) charIndex ""
-
-variableNameWithIndex :: Int -> Int -> Maybe Identifier -> String
-variableNameWithIndex charIndex varIndex _ = variableNameBeforeIndex charIndex ++ fmap (toEnum . (+ 8320)) (digits varIndex)
-
-variableNameAsciiWithIndex :: Int -> Int -> Maybe Identifier -> String
-variableNameAsciiWithIndex charIndex varIndex id = variableNameBeforeIndex charIndex ++ '_' : show varIndex ++ maybe "" (("_" ++) . show) id
-
-createVariableName :: (Int -> Int -> Maybe Identifier -> String) -> Variable -> String
-createVariableName _ (Var name) = name
-createVariableName indexName (IterationVariable level index id) = indexName level index id
-createVariableName _ _ = error "constant has no name"
+variableNameBeforeIndex level = showIntAtBase 25 (toEnum . (+97)) level ""
 
 -- | Returns the name of the variable.
 variableName :: Variable -> String
-variableName = createVariableName variableNameWithIndex
-
-variableNameAscii :: Variable -> String
-variableNameAscii = createVariableName variableNameAsciiWithIndex
+variableName (Var name) = name
+variableName (IterationVariable level index _) = variableNameBeforeIndex level ++ fmap (toEnum . (+ 8320)) (digits index)
 
 instance Show Variable where
     show v = if isConstant v then constantValue v else variableName v
+
+----------------------------------------------------------------------------------------------------
+-- Variable parts
+----------------------------------------------------------------------------------------------------
+
+toParts :: Variable -> Either String (Int, Int, Maybe Identifier)
+toParts (Var name) = Left name
+toParts (IterationVariable level index id) = Right (level, index, id)
+
+fromParts :: Either String (Int, Int, Maybe Identifier) -> Variable
+fromParts (Left name) = Var name
+fromParts (Right (level, index, id)) = IterationVariable level index id
 
 ----------------------------------------------------------------------------------------------------
 -- Variable constructors
@@ -89,17 +91,6 @@ iterationVariable level index = IterationVariable level index Nothing
 
 iterationVariablesList :: Int -> Int -> [Variable]
 iterationVariablesList level size = fmap (iterationVariable level) [1..size]
-
-fromVariableNameBeforeIndex :: String -> Int
-fromVariableNameBeforeIndex = fst . head . readInt 25 ((`elem` [97..122]) . fromEnum) ((subtract 97) . fromEnum)
-
-fromVariableNameAscii :: String -> Variable
-fromVariableNameAscii name =
-    let parts = split "_" name
-    in case length parts of
-         1 -> Var $ head parts
-         2 -> IterationVariable (fromVariableNameBeforeIndex $ head parts) (read $ parts !! 1) Nothing
-         3 -> IterationVariable (fromVariableNameBeforeIndex $ head parts) (read $ parts !! 1) (Just $ read $ parts !! 2)
 
 ----------------------------------------------------------------------------------------------------
 -- Operations on iteratation variables

@@ -1,146 +1,169 @@
 module Nominal.Formula.Solver (isTrue, isFalse, lia, lra, simplifyFormula) where
 
+import Control.Applicative ((<|>), (*>), (<*))
+import Data.Attoparsec.ByteString.Char8 (Parser, char, decimal, isDigit, letter_ascii, many1, sepBy, sepBy1, skipWhile, string, takeWhile, takeWhile1)
+import Data.Attoparsec.ByteString.Lazy (Result(Done, Fail), parse)
+import Data.ByteString.Builder (Builder, char8, intDec, string8, toLazyByteString, wordDec)
+import qualified Data.ByteString.Char8 as S -- strict
+import qualified Data.ByteString.Lazy.Char8 as L -- lazy
 import Data.Char (isSpace)
-import Data.Functor.Identity (Identity)
-import Data.List (find, takeWhile)
+import Data.List (find)
 import Data.List.Utils (split)
-import Data.Maybe (fromJust)
-import Data.Monoid ((<>))
+import Data.Monoid ((<>), mconcat, mempty)
 import Data.Set (Set, elems, fromList, null)
-import Data.Text.Lazy (unpack)
-import Data.Text.Lazy.Builder
+import Data.Word (Word)
 import Nominal.Atoms.Signature (Relation(..), relationAscii, relations)
 import Nominal.Formula.Constructors
 import Nominal.Formula.Definition
 import Nominal.Formula.Operators
-import Nominal.Variable (Variable, constantValue, constantVar, fromVariableNameAscii, isConstant, variableName, variableNameAscii)
-import Prelude hiding (and, map, null, or)
+import Nominal.Variable (Variable, constantValue, constantVar, fromParts, isConstant, toParts)
+import Prelude hiding (null, takeWhile)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import System.IO.Unsafe (unsafePerformIO)
-import System.Process (readProcessWithExitCode)
-import Text.Parsec
+import System.Process.ByteString.Lazy (readProcessWithExitCode)
 
 ----------------------------------------------------------------------------------------------------
 -- SmtLogic
 ----------------------------------------------------------------------------------------------------
 
-data SmtLogic = SmtLogic {sort :: String, logic :: String, constantToSmt :: String -> String,
-                          parseConstant :: ParsecT String () Identity Variable}
+data SmtLogic = SmtLogic {sort :: String, logic :: String, constantToSmt :: String -> SmtScript,
+                          parseConstant :: Parser Variable}
 
-parseInt :: ParsecT String () Identity Variable
+parseInt :: Parser Variable
 parseInt = do
-    n <- many digit
-    _ <- string ".0"
-    return $ constantVar n
+    x <- decimal
+    return $ constantVar $ show x
 
 lia :: SmtLogic
-lia = SmtLogic "Int" "LIA" id parseInt
+lia = SmtLogic "Int" "LIA" string8 parseInt
 
-ratioToSmt :: String -> String
-ratioToSmt r = let rs = split "/" r in if length rs == 1 then r else "(/ " ++ (rs !! 0) ++ " " ++ (rs !! 1) ++ ")"
+ratioToSmt :: String -> SmtScript
+ratioToSmt r = let rs = split "/" r
+               in if length rs == 1
+                  then string8 r
+                  else string8 "(/ " <> string8 (rs !! 0) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'
 
-parseRatio :: ParsecT String () Identity Variable
+parseRatio :: Parser Variable
 parseRatio = do
-    _ <- string "(/ "
-    x <- many digit
-    _ <- string ".0 "
-    y <- many digit
-    _ <- string ".0)"
-    return $ constantVar $ x ++ "/" ++ y
+    text "(/"
+    spaces
+    x <- decimal
+    text ".0"
+    spaces
+    y <- decimal
+    text ".0"
+    char ')'
+    return $ constantVar $ show x ++ "/" ++ show y
 
 lra :: SmtLogic
-lra = SmtLogic "Real" "LRA" ratioToSmt parseRatio
+lra = SmtLogic "Real" "LRA" ratioToSmt ((parseInt <* text ".0") <|> parseRatio)
 
 ----------------------------------------------------------------------------------------------------
 -- SMT Solver
 ----------------------------------------------------------------------------------------------------
 
-data SmtSolver = SmtSolver {command :: String, options :: [String], smtOptions :: [String]}
+data SmtSolver = SmtSolver {executable :: FilePath, options :: [String], smtOptions :: [String]}
+
+getExecutable :: String -> FilePath
+getExecutable command = unsafePerformIO $ do
+    path <- findExecutable command
+    return $ case path of
+               Nothing   -> error ("SMT Solver \"" ++ command ++ "\" is not installed or is not added to PATH.")
+               Just path -> path
 
 z3Solver :: SmtSolver
-z3Solver = SmtSolver {command = "z3", options = ["-smt2", "-in", "-nw"],
+z3Solver = SmtSolver {executable = getExecutable "z3", options = ["-smt2", "-in", "-nw"],
                       smtOptions = ["(set-option :smt.auto-config false)",
                                     "(set-option :smt.mbqi false)",
                                     "(set-option :pp.min-alias-size 1000000)",
                                     "(set-option :pp.max-depth 1000000)"]}
+type SmtScript = Builder
+type SmtResult = L.ByteString
 
-isNotSatisfiable :: String -> Bool
-isNotSatisfiable = (== "unsat") . filter (Prelude.not . isSpace)
-
-type SmtScript = String
-
-runSolver :: SmtSolver -> SmtScript -> String
+runSolver :: SmtSolver -> SmtScript -> SmtResult
 runSolver solver script = unsafePerformIO $ do
-    exec <- findExecutable (command solver)
-    (case exec of
-      Nothing       -> return $ error ("SMT Solver \""
-                              ++ (command solver)
-                              ++ "\" is not installed or is not added to PATH.")
-      Just execPath -> do (exit, out, err) <- readProcessWithExitCode execPath (options solver)
-                                                (concat (smtOptions solver) ++ script)
-                          return (case exit of
-                            ExitSuccess -> out
-                            ExitFailure code -> error $ unlines ["SMT Solver " ++ (command solver) ++ " exits with code: "
-                               ++ show code, "input: " ++ script, "output: " ++ out, "error: " ++ err]))
+    (exit, out, err) <- readProcessWithExitCode (executable solver) (options solver)
+                          (toLazyByteString $ (mconcat $ fmap string8 (smtOptions solver)) <> script)
+    return $ case exit of
+               ExitSuccess      -> out
+               ExitFailure code -> error $ unlines ["SMT Solver " ++ show (executable solver) ++ " exits with code: " ++ show code,
+                                                    "input: " ++ (show $ toLazyByteString $ script),
+                                                    "output: " ++ show out,
+                                                    "error: " ++ show err]
 
 ----------------------------------------------------------------------------------------------------
 -- SMT-LIB script
 ----------------------------------------------------------------------------------------------------
 
-variableToSmt :: SmtLogic -> Variable -> String
-variableToSmt l x = if isConstant x then constantToSmt l $ constantValue x else variableNameAscii x
+variableToSmt :: Variable -> SmtScript
+variableToSmt v =
+    case toParts v of
+      Left name -> string8 name
+      Right (level, index, id) -> char8 'v' <> intDec level <> char8 '_' <> intDec index <> char8 '_' <> maybe mempty wordDec id
 
-getSmtAssertOp :: SmtLogic -> String -> [Formula] -> Builder
+toSmt :: SmtLogic -> Variable -> SmtScript
+toSmt l x = if isConstant x
+            then constantToSmt l $ constantValue x
+            else variableToSmt x
+
+getSmtAssertOp :: SmtLogic -> String -> [Formula] -> SmtScript
 getSmtAssertOp l op fs =
-    singleton '('
-    <> fromString op
-    <> singleton ' '
-    <> (foldl1 (<>) $ fmap (getSmtAssert l) fs)
-    <> singleton ')'
+    char8 '('
+    <> string8 op
+    <> char8 ' '
+    <> (mconcat $ fmap (getSmtAssert l) fs)
+    <> char8 ')'
 
-getSmtAssert :: SmtLogic -> Formula -> Builder
+getSmtAssert :: SmtLogic -> Formula -> SmtScript
 getSmtAssert l (Formula _ f) = getAssert l f
-    where getAssert _ T = fromString " true "
-          getAssert _ F = fromString " false "
+    where getAssert _ T = string8 " true "
+          getAssert _ F = string8 " false "
           getAssert _ (Constraint NotEquals x1 x2) =
-            fromString "(not (= "
-            <> fromString (variableToSmt l x1)
-            <> singleton ' '
-            <> fromString (variableToSmt l x2)
-            <> fromString "))"
+            string8 "(not (= "
+            <> toSmt l x1
+            <> char8 ' '
+            <> toSmt l x2
+            <> string8 "))"
           getAssert _ (Constraint r x1 x2) =
-            singleton '('
-            <> fromString (relationAscii r)
-            <> singleton ' '
-            <> fromString (variableToSmt l x1)
-            <> singleton ' '
-            <> fromString (variableToSmt l x2)
-            <> singleton ')'
+            char8 '('
+            <> string8 (relationAscii r)
+            <> char8 ' '
+            <> toSmt l x1
+            <> char8 ' '
+            <> toSmt l x2
+            <> char8 ')'
           getAssert l (And fs) = getSmtAssertOp l "and" $ elems fs
           getAssert l (Or fs) = getSmtAssertOp l "or" $ elems fs
           getAssert l (Not f) = getSmtAssertOp l "not" [f]
 
 getSmtAssertForAllFree :: SmtLogic -> Formula -> SmtScript
 getSmtAssertForAllFree l f =
-  unpack $ toLazyText $
   let fvs = freeVariables f
   in (if null fvs
-      then fromString ""
-      else foldl1 (<>) (fmap (\x -> fromString "(declare-const "
-                                    <> fromString (variableNameAscii x)
-                                    <> singleton ' '
-                                    <> fromString (sort l)
-                                    <> singleton ')') (elems fvs)))
-     <> fromString "(assert "
+      then mempty
+      else mconcat (fmap (\x -> string8 "(declare-const "
+                               <> variableToSmt x
+                               <> char8 ' '
+                               <> string8 (sort l)
+                               <> char8 ')') (elems fvs)))
+     <> string8 "(assert "
      <> (getSmtAssert l f)
-     <> singleton ')'
+     <> char8 ')'
 
 getSmtScript :: String -> SmtLogic -> Formula -> SmtScript
-getSmtScript check l f = "(set-logic " ++ logic l ++ ")" ++ (getSmtAssertForAllFree l f) ++ check
+getSmtScript check l f =
+    string8 "(set-logic "
+    <> string8 (logic l)
+    <> char8 ')'
+    <> getSmtAssertForAllFree l f
+    <> string8 check
 
 checkSatScript :: SmtLogic -> Formula -> SmtScript
 checkSatScript = getSmtScript "(check-sat)"
+
+isNotSatisfiable :: SmtResult -> Bool
+isNotSatisfiable = (== "unsat") . filter (Prelude.not . isSpace) . L.unpack
 
 simplifyScript :: SmtLogic -> Formula -> SmtScript
 simplifyScript = getSmtScript "(apply ctx-solver-simplify)"
@@ -150,14 +173,16 @@ simplifyScript = getSmtScript "(apply ctx-solver-simplify)"
 ----------------------------------------------------------------------------------------------------
 
 isTrue :: SmtLogic -> Formula -> Bool
-isTrue l (Formula _ T) = True
-isTrue l (Formula _ F) = False
+isTrue _ (Formula _ T) = True
+isTrue _ (Formula _ F) = False
+isTrue _ (Formula True _ ) = False
 isTrue l f = isNotSatisfiable $ runSolver z3Solver $ checkSatScript l (Formula False $ Not f)
 
 isFalse :: SmtLogic -> Formula -> Bool
 isFalse _ (Formula _ T) = False
 isFalse _ (Formula _ F) = True
-isFalse l f = isTrue l (Formula False $ Not f)
+isFalse _ (Formula True _ ) = False
+isFalse l f = isNotSatisfiable $ runSolver z3Solver $ checkSatScript l f
 
 simplifyFormula :: SmtLogic -> Formula -> Formula
 simplifyFormula _ (Formula _ T) = true
@@ -169,116 +194,129 @@ simplifyFormula l f = parseSimplifiedFormula l $ runSolver z3Solver $ simplifySc
 -- Parser of the result of simplification
 ----------------------------------------------------------------------------------------------------
 
-parseSimplifiedFormula :: SmtLogic -> String -> Formula
-parseSimplifiedFormula l output =
-  case parse (parseGoals l) "" output of
-    Left e -> error (show e)
-    Right f -> f
+toInt :: S.ByteString -> Int
+toInt s = fst $ maybe (error $ "input is not a number: " ++ show s) id $ S.readInt s
 
-parseGoals :: SmtLogic -> ParsecT String () Identity Formula
+toWord :: S.ByteString -> Word
+toWord = fromIntegral . toInt
+
+text :: String -> Parser S.ByteString
+text = string . S.pack
+
+spaces :: Parser ()
+spaces = skipWhile isSpace
+
+parseSimplifiedFormula :: SmtLogic -> SmtResult -> Formula
+parseSimplifiedFormula l output =
+  case parse (parseGoals l) output of
+    Fail rest ctx e -> error $ unlines ["Fail to parse SMT Solver output:",
+                                        "- not parsed output: " ++ show rest,
+                                        "- list of contexts in which the error occurred: " ++ show ctx,
+                                        "- error message: " ++ show e]
+    Done _ f -> f
+
+parseGoals :: SmtLogic -> Parser Formula
 parseGoals l = do
-    _ <- string "(goals"
-    _ <- spaces
+    text "(goals"
+    spaces
     f <- parseGoal l
-    _ <- char ')'
+    spaces
+    char ')'
     return f
 
-parseGoal :: SmtLogic -> ParsecT String () Identity Formula
+parseGoal :: SmtLogic -> Parser Formula
 parseGoal l = do
-    _ <- string "(goal"
-    _ <- spaces
-    fs <- many $ parseFormula l
-    _ <- spaces
-    _ <- parseOptions
-    _ <- char ')'
-    _ <- spaces
+    text "(goal"
+    spaces
+    fs <- parseFormula l `sepBy` spaces
+    spaces
+    parseOptions
+    char ')'
     return $ case fs of
                []        -> true
+               [f]       -> f
                otherwise -> Formula True (And $ fromList fs)
 
-parseOptions :: ParsecT String () Identity [(String, String)]
-parseOptions = many parseOption
+parseOptions :: Parser [(S.ByteString, S.ByteString)]
+parseOptions = parseOption `sepBy` spaces
 
-parseOption :: ParsecT String () Identity (String, String)
-parseOption = try parsePrecision <|> try parseDepth
+parseOption :: Parser (S.ByteString, S.ByteString)
+parseOption = parsePrecision <|> parseDepth
 
-parsePrecision :: ParsecT String () Identity (String, String)
+parsePrecision :: Parser (S.ByteString, S.ByteString)
 parsePrecision = do
-    k <- string ":precision"
-    _ <- spaces
-    v <- string "precise"
-    _ <- spaces
+    k <- text ":precision"
+    spaces
+    v <- text "precise"
     return (k,v)
 
-parseDepth :: ParsecT String () Identity (String, String)
+parseDepth :: Parser (S.ByteString, S.ByteString)
 parseDepth = do
-    k <- string ":depth"
-    _ <- spaces
-    v <- many digit
-    _ <- spaces
-    return (k,v)
+    k <- text ":depth"
+    spaces
+    v <- decimal
+    return (k, S.pack $ show v)
 
-parseFormula :: SmtLogic -> ParsecT String () Identity Formula
-parseFormula l = try parseTrue <|> try parseFalse <|> try (parseConstraint l)
-                 <|> try (parseNot l) <|> try (parseAnd l) <|> try (parseOr l)
+parseFormula :: SmtLogic -> Parser Formula
+parseFormula l = parseTrue <|> parseFalse <|> (parseConstraint l) <|> (parseNot l) <|> (parseAnd l) <|> (parseOr l)
 
-parseTrue :: ParsecT String () Identity Formula
-parseTrue = do
-    _ <- string "true"
-    _ <- spaces
-    return true
+parseTrue :: Parser Formula
+parseTrue = text "true" *> return true
 
-parseFalse :: ParsecT String () Identity Formula
-parseFalse = do
-    _ <- string "false"
-    _ <- spaces
-    return false
+parseFalse :: Parser Formula
+parseFalse = text "false" *> return false
 
-parseConstraint :: SmtLogic -> ParsecT String () Identity Formula
+parseConstraint :: SmtLogic -> Parser Formula
 parseConstraint l = do
-    _ <- char '('
+    char '('
     r <- parseRelation
-    _ <- spaces
-    x <- parseVariable <|> parseConstant l
-    _ <- spaces
-    y <- parseVariable <|> parseConstant l
-    _ <- char ')'
-    _ <- spaces
+    spaces
+    x <- parseIterationVariable <|> parseVariable <|> parseConstant l
+    spaces
+    y <- parseIterationVariable <|> parseVariable <|> parseConstant l
+    char ')'
     return $ Formula True (Constraint r x y)
 
-parseRelation :: ParsecT String () Identity Relation
+parseRelation :: Parser Relation
 parseRelation = do
-    r <- many (oneOf "=<>")
-    return $ fromJust $ find (\rel -> r == relationAscii rel) relations
+    r <- takeWhile1 (\c -> c == '=' || c == '<' || c == '>')
+    return $ maybe (error $ "unknown relation: " ++ show r) id $ find (\rel -> S.unpack r == relationAscii rel) relations
 
-parseVariable :: ParsecT String () Identity Variable
+parseVariable :: Parser Variable
 parseVariable = do
-    x <- many $ alphaNum <|> char '_' <|> char '-'
-    return $ fromVariableNameAscii x
+    x <- many1 letter_ascii
+    return $ fromParts (Left x)
 
-parseNot :: SmtLogic -> ParsecT String () Identity Formula
+parseIterationVariable :: Parser Variable
+parseIterationVariable = do
+    char 'v'
+    x <- takeWhile1 isDigit
+    char '_'
+    y <- takeWhile1 isDigit
+    char '_'
+    z <- takeWhile isDigit
+    return $ fromParts $ Right (toInt x, toInt y, if S.null z then Nothing else Just $ toWord z)
+
+parseNot :: SmtLogic -> Parser Formula
 parseNot l = do
-    _ <- string "(not"
-    _ <- spaces
+    text  "(not"
+    spaces
     f <- parseFormula l
-    _ <- char ')'
-    _ <- spaces
+    char ')'
     return $ Nominal.Formula.Operators.not f
 
-parseAnd :: SmtLogic -> ParsecT String () Identity Formula
+parseAnd :: SmtLogic -> Parser Formula
 parseAnd l = do
-    _ <- string "(and"
-    _ <- spaces
-    fs <- many $ try $ parseFormula l
-    _ <- char ')'
-    _ <- spaces
+    text "(and"
+    spaces
+    fs <- parseFormula l `sepBy1` spaces
+    char ')'
     return $ Formula True (And $ fromList fs)
 
-parseOr :: SmtLogic -> ParsecT String () Identity Formula
+parseOr :: SmtLogic -> Parser Formula
 parseOr l = do
-    _ <- string "(or"
-    _ <- spaces
-    fs <- many $ parseFormula l
-    _ <- char ')'
-    _ <- spaces
+    text "(or"
+    spaces
+    fs <- parseFormula l `sepBy1` spaces
+    char ')'
     return $ Formula True (Or $ fromList fs)

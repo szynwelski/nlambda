@@ -13,23 +13,21 @@ Flag TOTAL_ORDER
 
 Library
   build-depends:   
+    attoparsec,
     base,
+    bytestring,
     containers,
-    MissingH,
-    multimap,
     directory,
-    parsec,
-    process,
-    random,
-    text,
-    transformers,
-    mtl
+    MissingH,
+    mtl,
+    multimap,
+    process-listlike,
+    random
   hs-source-dirs:  src
   exposed-modules: NLambda
   if flag(TOTAL_ORDER)
     cpp-options: -DTOTAL_ORDER
   other-modules:
-    NLambdaTest,
     Nominal.Atoms,
     Nominal.Atoms.Logic,
     Nominal.Atoms.Signature,
