@@ -79,6 +79,7 @@ isOpen,
 isClosed,
 isCompact) where
 
+import Data.IORef (IORef, readIORef, newIORef, writeIORef)
 import qualified Data.List as List ((\\))
 import Data.List.Utils (join)
 import qualified Data.Maybe as Maybe
@@ -100,7 +101,6 @@ import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdenti
 import Nominal.Variants (Variants, fromVariant, toList, variant)
 import Prelude hiding (or, and, not, sum, map, filter)
 import System.IO.Unsafe (unsafePerformIO)
-import System.Random (randomIO)
 
 ----------------------------------------------------------------------------------------------------
 -- Set elements
@@ -165,12 +165,19 @@ checkIdentifiers id (oldV, (newV, cond)) =
         changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
     in mapVariablesIf (hasIdentifierEquals id) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
 
-getVariableId :: NominalType a => a -> IO Word
-getVariableId v = do {r <- randomIO; return $ (fromIntegral $ length $ toList $ variants v) + r}
+counter :: IORef Word
+counter = unsafePerformIO $ newIORef 0
+
+getVariableId :: NominalType a => a -> Word
+getVariableId v = unsafePerformIO $
+  do
+    i <- readIORef counter
+    writeIORef counter (i + (fromIntegral $ length $ toList $ variants v) + 1)
+    return i
 
 applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
 applyWithIdentifiers f (v, cond) =
-    let id = unsafePerformIO $ getVariableId v
+    let id = getVariableId v
         (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setIdentifier id) (v, cond)
     in fmap (\(v'', c) -> checkIdentifiers id (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
 
