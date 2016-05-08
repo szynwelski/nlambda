@@ -94,6 +94,7 @@ import Nominal.Formula.Operators (getEquationsFromFormula)
 import Nominal.Maybe
 import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
+import Nominal.Util.UnionFind (representatives)
 import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, getIterationLevel, hasIdentifierEquals,
                          hasIdentifierNotEquals, iterationVariablesList, iterationVariable, setIdentifier, variableName)
 import Nominal.Variants (Variants, fromVariant, toList, variant)
@@ -143,12 +144,12 @@ checkEquality (v, (vs, c)) =
     then (v, (vs, c))
     else if Map.null eqsMap
          then (v, (vs, c))
-         else (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
+         else checkVariablesInElement (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
     where eqs = getEquationsFromFormula c
-          (vs', eqsMap) = Set.foldr checkVars (vs, Map.empty) eqs
+          (vs', eqsMap) = foldr checkVars (vs, Map.empty) $ representatives $ Set.elems eqs
           checkVars (x1, x2) (vs, m)
-              | Set.member x2 vs = (Set.delete x2 vs, Map.insert x2 x1 m)
               | Set.member x1 vs = (Set.delete x1 vs, Map.insert x1 x2 m)
+              | Set.member x2 vs = (Set.delete x2 vs, Map.insert x2 x1 m)
               | otherwise        = (vs, m)
 
 

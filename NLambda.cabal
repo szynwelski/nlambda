@@ -50,5 +50,6 @@ Library
     Nominal.Set,
     Nominal.Type,
     Nominal.Util.InsertionSet,
+    Nominal.Util.UnionFind,
     Nominal.Variable,
     Nominal.Variants
