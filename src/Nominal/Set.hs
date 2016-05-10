@@ -166,6 +166,7 @@ checkIdentifiers id (oldV, (newV, cond)) =
     in mapVariablesIf (hasIdentifierEquals id) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
 
 counter :: IORef Word
+{-# NOINLINE counter #-}
 counter = unsafePerformIO $ newIORef 0
 
 getVariableId :: NominalType a => a -> Word

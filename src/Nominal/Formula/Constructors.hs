@@ -1,10 +1,8 @@
 module Nominal.Formula.Constructors where
 
-import Data.Set (Set, delete, elems, empty, foldl, fromList, map, unions)
 import Nominal.Atoms.Signature (Relation(..), checkConstants, symmetricRelation)
 import Nominal.Formula.Definition
 import Nominal.Variable (Variable, isConstant, constantValue)
-import Prelude hiding (foldl, map)
 
 ----------------------------------------------------------------------------------------------------
 -- Formula constructors

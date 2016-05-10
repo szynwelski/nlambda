@@ -10,7 +10,7 @@ import Data.Char (isSpace)
 import Data.List (find)
 import Data.List.Utils (split)
 import Data.Monoid ((<>), mconcat, mempty)
-import Data.Set (Set, elems, fromList, null)
+import Data.Set (elems, fromList, null)
 import Data.Word (Word)
 import Nominal.Atoms.Signature (Relation(..), relationAscii, relations)
 import Nominal.Formula.Constructors

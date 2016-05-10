@@ -21,13 +21,13 @@ Library
     MissingH,
     mtl,
     multimap,
-    process-listlike,
-    random
+    process-listlike
   hs-source-dirs:  src
   exposed-modules: NLambda
   if flag(TOTAL_ORDER)
     cpp-options: -DTOTAL_ORDER
   other-modules:
+    NLambdaTest,
     Nominal.Atoms,
     Nominal.Atoms.Logic,
     Nominal.Atoms.Signature,

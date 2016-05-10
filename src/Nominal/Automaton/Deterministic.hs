@@ -2,12 +2,10 @@ module Nominal.Automaton.Deterministic where
 
 import Nominal.Atoms
 import Nominal.Automaton.Base
-import Nominal.Conditional
 import Nominal.Formula
 import Nominal.Maybe
 import Nominal.Set
 import Nominal.Type
-import Nominal.Variants
 
 ----------------------------------------------------------------------------------------------------
 -- Deterministic automaton

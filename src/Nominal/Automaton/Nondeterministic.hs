@@ -6,7 +6,6 @@ import Nominal.Automaton.Deterministic (isDeterministic)
 import Nominal.Formula
 import Nominal.Set
 import Nominal.Type
-import Nominal.Variants
 import Prelude hiding (not)
 
 ----------------------------------------------------------------------------------------------------

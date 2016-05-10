@@ -1,15 +1,13 @@
-{-# LANGUAGE DefaultSignatures, FlexibleContexts, CPP, TypeOperators #-}
+{-# LANGUAGE ConstraintKinds, DefaultSignatures, FlexibleContexts, CPP, TypeOperators #-}
 
 module Nominal.Type where
 
 import Data.Map (Map, findWithDefault)
-import Data.Set (Set, elems, empty, insert)
-import Nominal.Atoms (Atom)
-import Nominal.Conditional
+import Data.Set (Set, empty, insert)
 import Nominal.Formula
 import Nominal.Formula.Operators (foldFormulaVariables, mapFormulaVariables)
 import Nominal.Variable (Variable)
-import Nominal.Variants (Variants, fromList, fromVariant, map, mapWithMono, prodWithMono, toList, variant, variantsRelation)
+import Nominal.Variants (Variants, fromList, map, mapWithMono, prodWithMono, toList, variant, variantsRelation)
 import Prelude hiding (and, map, not, or)
 import GHC.Generics
 

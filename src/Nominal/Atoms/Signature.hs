@@ -1,8 +1,10 @@
-{-# LANGUAGE CPP, NullaryTypeClasses #-}
+{-# LANGUAGE CPP, MultiParamTypeClasses #-}
 module Nominal.Atoms.Signature where
 
+#if TOTAL_ORDER
 import Data.Ratio (denominator, numerator)
 import Data.String.Utils (replace)
+#endif
 
 ----------------------------------------------------------------------------------------------------
 -- Relation

@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP, NullaryTypeClasses #-}
+{-# LANGUAGE CPP, MultiParamTypeClasses #-}
 module Nominal.Atoms.Logic where
 
 import Nominal.Formula.Definition (Formula)

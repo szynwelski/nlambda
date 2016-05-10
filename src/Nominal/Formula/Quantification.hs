@@ -1,6 +1,5 @@
 module Nominal.Formula.Quantification (existsVar, forAllVars) where
 
-import Control.Monad (liftM2)
 import Data.Set
 import Nominal.Atoms.Signature (Relation(..), symmetricRelation)
 import Nominal.Formula.Definition

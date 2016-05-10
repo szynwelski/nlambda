@@ -9,6 +9,10 @@ import GHC.Generics (Generic)
 -- hiding all
 import qualified Prelude
 
+a = atom "a"
+b = atom "b"
+c = atom "c"
+
 -- Define some simple custom type
 data MyAutomaton = InitialState | S2 Atom | S3 (Atom, Atom)
   deriving (Eq, Ord, Show, Generic)

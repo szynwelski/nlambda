@@ -9,7 +9,7 @@ import Nominal.Maybe
 import Nominal.Orbit
 import Nominal.Set
 import Nominal.Type
-import Nominal.Variants hiding (filter, fromList, map)
+import Nominal.Variants hiding (fromList, map)
 import Prelude hiding (filter, map, not, or, sum)
 
 ----------------------------------------------------------------------------------------------------
