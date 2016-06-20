@@ -21,7 +21,7 @@ Library
     MissingH,
     mtl,
     multimap,
-    process-listlike
+    process-extras
   hs-source-dirs:  src
   exposed-modules: NLambda
   if flag(TOTAL_ORDER)
