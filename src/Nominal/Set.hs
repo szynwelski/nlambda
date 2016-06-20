@@ -93,6 +93,7 @@ import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Formula.Operators (getEquationsFromFormula)
 import Nominal.Maybe
+import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
@@ -195,7 +196,7 @@ instance Show a => Show (Set a) where
               let formula = if c == true then "" else " " ++ show c
                   variables = if Set.null vs
                                 then ""
-                                else " for " ++ (join "," (fmap show $ Set.elems vs)) ++ " ∊ 𝔸"
+                                else " for " ++ (join "," (fmap show $ Set.elems vs)) ++ " " ++ Symbols.inSet ++ " " ++ Symbols.atoms
                   condition = formula ++ variables
               in show v ++ (if null condition then "" else " :" ++ condition)
 

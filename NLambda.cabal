@@ -26,6 +26,8 @@ Library
   exposed-modules: NLambda
   if flag(TOTAL_ORDER)
     cpp-options: -DTOTAL_ORDER
+  if os(windows) 
+    cpp-options: -DDISABLE_UNICODE 
   other-modules:
     NLambdaTest,
     Nominal.Atoms,
@@ -52,4 +54,5 @@ Library
     Nominal.Util.InsertionSet,
     Nominal.Util.UnionFind,
     Nominal.Variable,
-    Nominal.Variants
+    Nominal.Variants,
+    Nominal.Text.Symbols

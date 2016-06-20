@@ -20,6 +20,7 @@ fromParts) where
 import Data.Map (Map, findWithDefault)
 import Data.Word (Word)
 import Numeric (showIntAtBase)
+import qualified Nominal.Text.Symbols as Symbols
 
 ----------------------------------------------------------------------------------------------------
 -- Variable
@@ -46,17 +47,13 @@ constantValue _ = error "function constantValue can be applied only for constant
 -- Variable name
 ----------------------------------------------------------------------------------------------------
 
-digits :: Integral x => x -> [x]
-digits 0 = []
-digits x = digits (x `div` 10) ++ [x `mod` 10]
-
 variableNameBeforeIndex :: Int -> String
 variableNameBeforeIndex level = showIntAtBase 25 (toEnum . (+97)) level ""
 
 -- | Returns the name of the variable.
 variableName :: Variable -> String
 variableName (Var name) = name
-variableName (IterationVariable level index _) = variableNameBeforeIndex level ++ fmap (toEnum . (+ 8320)) (digits index)
+variableName (IterationVariable level index _) = variableNameBeforeIndex level ++ Symbols.subscriptIndex index
 
 instance Show Variable where
     show v = if isConstant v then constantValue v else variableName v

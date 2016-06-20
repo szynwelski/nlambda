@@ -3,6 +3,7 @@ module Nominal.Formula.Definition where
 import Data.List.Utils (join)
 import Data.Set (Set, elems)
 import Nominal.Atoms.Signature (Relation)
+import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Variable (Variable)
 
 ----------------------------------------------------------------------------------------------------
@@ -30,9 +31,9 @@ instance Show FormulaStructure where
     show T = "true"
     show F = "false"
     show (Constraint r x1 x2) = show x1 ++ " " ++ show r ++ " " ++ show x2
-    show (And fs) = join " ∧ " $ fmap (showSubformula . formula) $ elems fs
-    show (Or fs) = join " ∨ " $ fmap (showSubformula . formula) $ elems fs
-    show (Not f) = "¬(" ++ show f ++ ")"
+    show (And fs) = join Symbols.and $ fmap (showSubformula . formula) $ elems fs
+    show (Or fs) = join Symbols.or $ fmap (showSubformula . formula) $ elems fs
+    show (Not f) = Symbols.not ++ "(" ++ show f ++ ")"
 
 ----------------------------------------------------------------------------------------------------
 -- Formula

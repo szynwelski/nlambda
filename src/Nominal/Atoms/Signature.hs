@@ -1,6 +1,8 @@
 {-# LANGUAGE CPP, MultiParamTypeClasses #-}
 module Nominal.Atoms.Signature where
 
+import qualified Nominal.Text.Symbols as Symbols
+
 #if TOTAL_ORDER
 import Data.Ratio (denominator, numerator)
 import Data.String.Utils (replace)
@@ -12,12 +14,12 @@ import Data.String.Utils (replace)
 data Relation = LessThan | LessEquals | Equals | NotEquals | GreaterEquals | GreaterThan deriving (Eq, Ord, Enum)
 
 instance Show Relation where
-    show LessThan = "<"
-    show LessEquals = "≤"
-    show Equals = "="
-    show NotEquals = "≠"
-    show GreaterThan = ">"
-    show GreaterEquals = "≥"
+    show LessThan      = Symbols.lt
+    show LessEquals    = Symbols.leq
+    show Equals        = Symbols.eq
+    show NotEquals     = Symbols.neq
+    show GreaterThan   = Symbols.gt
+    show GreaterEquals = Symbols.geq
 
 relationAscii :: Relation -> String
 relationAscii LessThan = "<"
