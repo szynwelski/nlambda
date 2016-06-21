@@ -338,7 +338,8 @@ forAll f = isEmpty . (filter $ \x -> not (f x))
 -- | Partition the set into two sets, one with all elements that satisfy
 -- the predicate and one with all elements that don't satisfy the predicate.
 partition :: NominalType a => (a -> Formula) -> Set a -> (Set a, Set a)
-partition f s = (filter f s, filter (not . f) s)
+partition f s = let ss = map (\e -> (e, f e)) s
+                in (map fst $ filter snd ss, map fst $ filter (not . snd) ss)
 
 -- | Returns union of two given sets.
 union :: NominalType a => Set a -> Set a -> Set a
