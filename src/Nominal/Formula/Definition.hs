@@ -1,5 +1,8 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Formula.Definition where
 
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
 import Data.List.Utils (join)
 import Data.Set (Set, elems)
 import Nominal.Atoms.Signature (Relation)
@@ -16,7 +19,7 @@ data FormulaStructure
     | Constraint Relation Variable Variable
     | And (Set Formula)
     | Or (Set Formula)
-    | Not Formula deriving (Eq, Ord)
+    | Not Formula deriving (Eq, Ord, Generic, NFData)
 
 ----------------------------------------------------------------------------------------------------
 -- Show
@@ -41,6 +44,7 @@ instance Show FormulaStructure where
 
 -- | First order formula with free variables and relations between variables.
 data Formula = Formula {isSimplified :: Bool, formula :: FormulaStructure}
+  deriving (Generic, NFData)
 
 instance Eq Formula where
     (Formula _ f1) == (Formula _ f2) = f1 == f2

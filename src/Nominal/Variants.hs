@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Variants (
 Variants,
 variant,
@@ -12,6 +13,8 @@ prod,
 prodWithMono,
 variantsRelation) where
 
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
 import Control.Applicative ((<*>))
 import Data.Functor ((<$>))
 import Data.List.Utils (join)
@@ -28,7 +31,7 @@ import Prelude hiding (or, not)
 
 -- | Storing values under various conditions, which could not be solved as 'true' or 'false'.
 -- Is often the result of 'ite' or 'iteV' functions.
-newtype Variants a = Variants (Map a Formula) deriving (Eq, Ord)
+newtype Variants a = Variants (Map a Formula) deriving (Eq, Ord, Generic, NFData)
 
 -- | Creates a single variant.
 variant :: a -> Variants a

@@ -1,6 +1,9 @@
 {-# LANGUAGE CPP, MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Atoms.Signature where
 
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
 import qualified Nominal.Text.Symbols as Symbols
 
 #if TOTAL_ORDER
@@ -11,7 +14,7 @@ import Data.String.Utils (replace)
 ----------------------------------------------------------------------------------------------------
 -- Relation
 ----------------------------------------------------------------------------------------------------
-data Relation = LessThan | LessEquals | Equals | NotEquals | GreaterEquals | GreaterThan deriving (Eq, Ord, Enum)
+data Relation = LessThan | LessEquals | Equals | NotEquals | GreaterEquals | GreaterThan deriving (Eq, Ord, Enum, Generic, NFData)
 
 instance Show Relation where
     show LessThan      = Symbols.lt

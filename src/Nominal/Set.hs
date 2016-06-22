@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Set (
 Set,
 -- ** Construction
@@ -79,6 +80,8 @@ isOpen,
 isClosed,
 isCompact) where
 
+import Control.DeepSeq (NFData)
+import GHC.Generics (Generic)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
 import qualified Data.List as List ((\\))
 import Data.List.Utils (join)
@@ -188,7 +191,7 @@ applyWithIdentifiers f (v, cond) =
 ----------------------------------------------------------------------------------------------------
 
 -- | The set of elements, can be infinite.
-newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
+newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord, Generic, NFData)
 
 instance Show a => Show (Set a) where
     show s = "{" ++ (join ", " (fmap showSetElement (Map.assocs $ setElements s))) ++ "}"

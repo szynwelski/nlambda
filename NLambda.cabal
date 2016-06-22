@@ -17,6 +17,7 @@ Library
     base,
     bytestring,
     containers,
+    deepseq,
     directory,
     MissingH,
     mtl,
