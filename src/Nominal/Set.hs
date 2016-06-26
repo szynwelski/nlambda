@@ -173,16 +173,17 @@ counter :: IORef Word
 {-# NOINLINE counter #-}
 counter = unsafePerformIO $ newIORef 0
 
-getVariableId :: NominalType a => a -> Word
-getVariableId v = unsafePerformIO $
+getVariableId :: Set.Set Variable -> Word
+{-# NOINLINE getVariableId #-}
+getVariableId vs = unsafePerformIO $
   do
     i <- readIORef counter
-    writeIORef counter (i + (fromIntegral $ length $ toList $ variants v) + 1)
+    writeIORef counter (i + (fromIntegral $ Set.size vs) + 1)
     return i
 
 applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
 applyWithIdentifiers f (v, cond) =
-    let id = getVariableId v
+    let id = getVariableId $ fst $ cond
         (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setIdentifier id) (v, cond)
     in fmap (\(v'', c) -> checkIdentifiers id (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
 
