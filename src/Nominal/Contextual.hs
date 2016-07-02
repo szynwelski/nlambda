@@ -3,6 +3,7 @@ module Nominal.Contextual where
 import Data.Map (Map, assocs, fromList)
 import Data.Set (Set, map)
 import Nominal.Formula
+import Nominal.Formula.Operators
 import Nominal.Variable (Variable)
 import Prelude hiding (map, not)
 
@@ -33,9 +34,10 @@ instance Contextual Variable
 
 instance Contextual Formula where
     when ctx f
+        | isTrue ctx = simplifyFormula f
         | isTrue (ctx ==> f) = true
         | isTrue (ctx ==> not f) = false
-        | otherwise = simplifyFormula f
+        | otherwise = simplifyFormula $ mapFormula (when ctx) f
 
 instance Contextual Bool
 

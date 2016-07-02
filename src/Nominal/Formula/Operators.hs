@@ -227,6 +227,15 @@ mapFormulaVariables fun (Formula _ f) = doMap fun f
           doMap fun (Or fs) = orFromSet $ map (mapFormulaVariables fun) fs
           doMap fun (Not f) = not $ mapFormulaVariables fun f
 
+mapFormula :: (Formula -> Formula) -> Formula -> Formula
+mapFormula fun f = doMap fun (formula f)
+    where doMap _ T = f
+          doMap _ F = f
+          doMap fun (Constraint r x1 x2) = f
+          doMap fun (And fs) = andFromSet $ map fun fs
+          doMap fun (Or fs) = orFromSet $ map fun fs
+          doMap fun (Not f) = not $ fun f
+
 replaceFormulaVariable :: Variable -> Variable -> Formula -> Formula
 replaceFormulaVariable oldVar newVar = mapFormulaVariables (\var -> if oldVar == var then newVar else var)
 
@@ -235,4 +244,3 @@ getEquationsFromFormula f = go (formula f)
     where go (Constraint Equals x1 x2) = singleton (x1, x2)
           go (And fs) = unions $ elems $ map (go . formula) fs
           go _ = empty
-
