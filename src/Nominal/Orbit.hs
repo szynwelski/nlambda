@@ -7,7 +7,7 @@ import Nominal.Atoms.Signature (minRelations)
 import Nominal.Contextual (Contextual)
 import Nominal.Formula.Constructors (constraint)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
-import Nominal.Set (Set, filter, isSingleton, map, maxSize, replicateAtoms, replicateSetUntil, size, sum, unions)
+import Nominal.Set (Set, filter, intersect, isSingleton, map, maxSizeWith, replicateAtoms, replicateSetUntil, sizeWith, sum, unions)
 import Nominal.Type (NominalType, Scope(..), eq, freeVariables, mapVariables)
 import Nominal.Variants (Variants, fromVariant, variant, variantsRelation)
 import Prelude hiding (and, filter, map, sum)
@@ -49,7 +49,7 @@ orbit supp elem = map mapFun $ filter filterFun $ replicateAtoms elSuppSize
   where elSupp = support elem
         elSuppSize = length elSupp
         mapFun list = groupAction (\x -> maybe x (list !!) (elemIndex x elSupp)) elem
-        relFun list rel = and [rel (list!!pred i) (list!!pred j) <==> rel (elSupp!!pred i) (elSupp!!pred j) | i<-[1..elSuppSize], j<-[1..elSuppSize], i/=j]
+        relFun list rel = and [rel (list!!pred i) (list!!pred j) <==> rel (elSupp!!pred i) (elSupp!!pred j) | i<-[1..elSuppSize], j<-[1..elSuppSize], i<j]
                        /\ and [rel (list!!pred i) (supp!!pred j) <==> rel (elSupp!!pred i) (supp!!pred j) | i<-[1..elSuppSize], j<-[1..length supp]]
         filterFun list = and $ fmap (relFun list) $ fmap (variantsRelation . constraint) minRelations
 
@@ -73,12 +73,12 @@ setOrbits s = map (setOrbit s) s
 -- | Returns a number of orbits of a set.
 -- It uses 'size' function which is inefficient for large sets and will not return the answer for the infinite sets.
 setOrbitsNumber :: (Contextual a, NominalType a) => Set a -> Variants Int
-setOrbitsNumber = size . setOrbits
+setOrbitsNumber = sizeWith intersect . setOrbits
 
 -- | Returns a maximum number of orbits of a set.
 -- It uses 'maxSize' function which is inefficient for large sets and will not return the answer for the infinite sets.
 setOrbitsMaxNumber :: (Contextual a, NominalType a) => Set a -> Int
-setOrbitsMaxNumber = maxSize . setOrbits
+setOrbitsMaxNumber = maxSizeWith intersect . setOrbits
 
 -- | Checks whether two elements are in the same orbit with a given support.
 inTheSameOrbit :: NominalType a => [Atom] -> a -> a -> Formula
@@ -90,5 +90,5 @@ inTheSameSetOrbit s e1 e2 = eq (setOrbit s e1) (setOrbit s e2)
 
 -- | Returns a set of all equivariant subsets of a given set
 equivariantSubsets :: (Contextual a, NominalType a) => Set a -> Set (Set a)
-equivariantSubsets s = map (unions . fmap (setOrbit s)) $ replicateSetUntil (maxSize $ setOrbits s) s
+equivariantSubsets s = map (unions . fmap (setOrbit s)) $ replicateSetUntil (maxSizeWith intersect $ setOrbits s) s
 

@@ -60,9 +60,13 @@ replicateAtomsUntil,
 hasSizeLessThan,
 hasSize,
 listSize,
+listSizeWith,
 listMaxSize,
+listMaxSizeWith,
 size,
+sizeWith,
 maxSize,
+maxSizeWith,
 isSingleton,
 -- ** Set of atoms properties
 range,
@@ -109,7 +113,7 @@ import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdenti
 import Nominal.Variants (Variants, fromVariant, toList, variant)
 import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
-import qualified Prelude as P (any, filter)
+import qualified Prelude as P
 import System.IO.Unsafe (unsafePerformIO)
 
 ----------------------------------------------------------------------------------------------------
@@ -500,16 +504,24 @@ hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)
 isSingleton :: NominalType a => Set a -> Formula
 isSingleton s = hasSize s 1
 
--- | Returns a variants of numbers of the size of a list.
-listSize :: NominalType a => [a] -> Variants Int
-listSize = simplify . go
+-- | Returns a variants of numbers of the size of a list with given equality relation.
+listSizeWith :: (a -> a -> Formula) -> [a] -> Variants Int
+listSizeWith eq = simplify . go
     where go [] = variant 0
           go (e:l) = let s = go l in ite (or $ fmap (eq e) l) s (V.map (+1) s)
 
+-- | Returns a variants of numbers of the size of a list.
+listSize :: NominalType a => [a] -> Variants Int
+listSize = listSizeWith eq
+
+-- | Returns the maximum size of a list for all free atoms constraints with given equality relation.
+listMaxSizeWith :: (a -> a -> Formula) -> [a] -> Int
+listMaxSizeWith _ [] = 0
+listMaxSizeWith eq (e:l) = let s = listMaxSizeWith eq l in if isTrue (or $ fmap (eq e) l) then s else (s+1)
+
 -- | Returns the maximum size of a list for all free atoms constraints.
 listMaxSize :: NominalType a => [a] -> Int
-listMaxSize [] = 0
-listMaxSize (e:l) = let s = listMaxSize l in if isTrue (or $ fmap (eq e) l) then s else (s+1)
+listMaxSize = listMaxSizeWith eq
 
 -- | Returns a list of possible values in the set or 'Nothing' if set has infinite number of values.
 setValues :: (Contextual a, NominalType a) => Set a -> Maybe [a]
@@ -525,20 +537,29 @@ elemValues (v, (vs, c)) = if all (\val -> Set.null $ Set.intersection vs $ freeV
                           else Nothing
     where vars = Set.elems $ Set.union vs (freeVariables v)
           conds = exclusiveConditions vars
-          values = fmap (\cond -> when (c /\ cond) v) conds
+          values = fmap (flip when v) $ P.filter (/= false) $ fmap (simplifyFormula . (c /\)) conds
+
+-- | Returns a variants of numbers of the size of a set with given equality relation.
+-- It will not return the answer for the infinite sets.
+sizeWith :: (Contextual a, NominalType a) => (a -> a -> Formula) -> Set a -> Variants Int
+sizeWith eq s = Maybe.maybe (findSize s 1) (listSizeWith eq) (setValues s)
+    where findSize s n = ite (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
 
 -- | Returns a variants of numbers of the size of a set.
 -- It is an inefficient function for large sets and will not return the answer for the infinite sets.
 size :: (Contextual a, NominalType a) => Set a -> Variants Int
-size s = Maybe.maybe (findSize s 1) listSize (setValues s)
-    where findSize s n = ite (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
+size = sizeWith eq
+
+-- | Returns the maximum size of a set for all free atoms constraints with given equality relation.
+-- It will not return the answer for the infinite sets.
+maxSizeWith :: (Contextual a, NominalType a) => (a -> a -> Formula) -> Set a -> Int
+maxSizeWith eq s = Maybe.maybe (findSize s 1) (listMaxSizeWith eq) (setValues s)
+    where findSize s n = if isTrue (hasSizeLessThan s n) then pred n else findSize s (succ n)
 
 -- | Returns the maximum size of a set for all free atoms constraints.
 -- It is an inefficient function for large sets and will not return the answer for the infinite sets.
 maxSize :: (Contextual a, NominalType a) => Set a -> Int
-maxSize s = Maybe.maybe (findSize s 1) listMaxSize (setValues s)
-    where findSize s n = if isTrue (hasSizeLessThan s n) then pred n else findSize s (succ n)
-
+maxSize = maxSizeWith eq
 
 ----------------------------------------------------------------------------------------------------
 -- Set of atoms properties
