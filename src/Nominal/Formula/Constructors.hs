@@ -35,6 +35,9 @@ constraint r x1 x2
 equals :: Variable -> Variable -> Formula
 equals = constraint Equals
 
+notEquals :: Variable -> Variable -> Formula
+notEquals = constraint NotEquals
+
 lessThan :: Variable -> Variable -> Formula
 lessThan = constraint LessThan
 

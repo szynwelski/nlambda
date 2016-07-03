@@ -69,6 +69,9 @@ collectWith cf = foldVariables (All, maybe id insert . cf) empty
 getAllVariables :: BareNominalType a => a -> Set Variable
 getAllVariables = foldVariables (All, insert) empty
 
+freeVariables :: BareNominalType a => a -> Set Variable
+freeVariables = foldVariables (Free, insert) empty
+
 mapVariablesIf :: BareNominalType a => (Variable -> Bool) -> (Variable -> Variable) -> a -> a
 mapVariablesIf cf mf = mapVariables (All, \v -> if cf v then mf v else v)
 

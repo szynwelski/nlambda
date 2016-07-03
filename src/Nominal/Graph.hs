@@ -225,7 +225,7 @@ isColoringOf :: (NominalType a, NominalType b) => (a -> b) -> Graph a -> Formula
 isColoringOf c g = forAll (\(v1,v2) -> c v1 `neq` c v2) (edges g)
 
 -- | Checks whether a graph has an equivariant k-coloring.
-hasEquivariantColoring :: NominalType a => Graph a -> Int -> Formula
+hasEquivariantColoring :: (Contextual a, NominalType a) => Graph a -> Int -> Formula
 hasEquivariantColoring g k = member true (pairsWith (\os ps -> (coloring os ps) `isColoringOf` g) (replicateSet n orbits) (partitions n k))
     where orbits = setOrbits (vertices g)
           n = maxSize orbits

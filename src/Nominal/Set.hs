@@ -59,6 +59,8 @@ replicateAtomsUntil,
 -- ** Size
 hasSizeLessThan,
 hasSize,
+listSize,
+listMaxSize,
 size,
 maxSize,
 isSingleton,
@@ -81,7 +83,6 @@ isClosed,
 isCompact) where
 
 import Control.DeepSeq (NFData)
-import GHC.Generics (Generic)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
 import qualified Data.List as List ((\\))
 import Data.List.Utils (join)
@@ -90,20 +91,25 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Word (Word)
+import GHC.Generics (Generic)
 import Nominal.Atoms
+import Nominal.Atoms.Logic (exclusiveConditions)
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
+import Nominal.Formula.Constructors (constraint)
 import Nominal.Formula.Operators (getEquationsFromFormula)
 import Nominal.Maybe
 import qualified Nominal.Text.Symbols as Symbols
-import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, getAllVariables, mapVariablesIf, neq, replaceVariables)
+import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, freeVariables, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
 import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, getIterationLevel, hasIdentifierEquals,
                          hasIdentifierNotEquals, iterationVariablesList, iterationVariable, setIdentifier, variableName)
 import Nominal.Variants (Variants, fromVariant, toList, variant)
+import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
+import qualified Prelude as P (any, filter)
 import System.IO.Unsafe (unsafePerformIO)
 
 ----------------------------------------------------------------------------------------------------
@@ -476,6 +482,10 @@ replicateAtoms n = replicateSet n atoms
 replicateAtomsUntil :: Int -> Set [Atom]
 replicateAtomsUntil n = replicateSetUntil n atoms
 
+----------------------------------------------------------------------------------------------------
+-- Size of the set
+----------------------------------------------------------------------------------------------------
+
 -- | Returns a formula describing condition that a set has a size less than a given number.
 -- It is an inefficient function for large sets and will not return the answer for the infinite sets.
 hasSizeLessThan :: NominalType a => Set a -> Int -> Formula
@@ -486,19 +496,49 @@ hasSizeLessThan s n = forAll id $ mapList (\xs -> let l = length xs in or [eq (x
 hasSize :: NominalType a => Set a -> Int -> Formula
 hasSize s n = hasSizeLessThan s (succ n) /\ not (hasSizeLessThan s n)
 
--- | Returns a variants of numbers of the size of a set.
--- It is an inefficient function for large sets and will not return the answer for the infinite sets.
-size :: NominalType a => Set a -> Variants Int
-size s = findSize s 1 where findSize s n = ite (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
-
--- | Returns the maximum size of a set for all free atoms constraints.
--- It is an inefficient function for large sets and will not return the answer for the infinite sets.
-maxSize :: NominalType a => Set a -> Int
-maxSize s = findSize s 1 where findSize s n = if isTrue (hasSizeLessThan s n) then pred n else findSize s (succ n)
-
 -- | Returns a formula describing condition that a set has exacly one element.
 isSingleton :: NominalType a => Set a -> Formula
 isSingleton s = hasSize s 1
+
+-- | Returns a variants of numbers of the size of a list.
+listSize :: NominalType a => [a] -> Variants Int
+listSize = simplify . go
+    where go [] = variant 0
+          go (e:l) = let s = go l in ite (or $ fmap (eq e) l) s (V.map (+1) s)
+
+-- | Returns the maximum size of a list for all free atoms constraints.
+listMaxSize :: NominalType a => [a] -> Int
+listMaxSize [] = 0
+listMaxSize (e:l) = let s = listMaxSize l in if isTrue (or $ fmap (eq e) l) then s else (s+1)
+
+-- | Returns a list of possible values in the set or 'Nothing' if set has infinite number of values.
+setValues :: (Contextual a, NominalType a) => Set a -> Maybe [a]
+setValues s = if P.any Maybe.isNothing values
+              then Nothing
+              else Just $ concat $ fmap Maybe.fromJust values
+    where values = fmap elemValues $ Map.assocs $ setElements s
+
+-- | Returns a list of possible values for set element or 'Nothing' if set element has infinite number of values.
+elemValues :: (Contextual a, NominalType a) => (a, SetElementCondition) -> Maybe [a]
+elemValues (v, (vs, c)) = if all (\val -> Set.null $ Set.intersection vs $ freeVariables val) values
+                          then Just values
+                          else Nothing
+    where vars = Set.elems $ Set.union vs (freeVariables v)
+          conds = exclusiveConditions vars
+          values = fmap (\cond -> when (c /\ cond) v) conds
+
+-- | Returns a variants of numbers of the size of a set.
+-- It is an inefficient function for large sets and will not return the answer for the infinite sets.
+size :: (Contextual a, NominalType a) => Set a -> Variants Int
+size s = Maybe.maybe (findSize s 1) listSize (setValues s)
+    where findSize s n = ite (hasSizeLessThan s n) (variant $ pred n) (findSize s (succ n))
+
+-- | Returns the maximum size of a set for all free atoms constraints.
+-- It is an inefficient function for large sets and will not return the answer for the infinite sets.
+maxSize :: (Contextual a, NominalType a) => Set a -> Int
+maxSize s = Maybe.maybe (findSize s 1) listMaxSize (setValues s)
+    where findSize s n = if isTrue (hasSizeLessThan s n) then pred n else findSize s (succ n)
+
 
 ----------------------------------------------------------------------------------------------------
 -- Set of atoms properties

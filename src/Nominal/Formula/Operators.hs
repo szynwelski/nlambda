@@ -86,6 +86,9 @@ f1 /\ f2 = and [f1,f2]
 and :: [Formula] -> Formula
 and = andFromSet . fromList
 
+simplifiedAnd :: [Formula] -> Formula
+simplifiedAnd = Formula True . And . fromList
+
 ----------------------------------------------------------------------------------------------------
 -- Or
 ----------------------------------------------------------------------------------------------------
@@ -133,6 +136,9 @@ f1 \/ f2 = or [f1,f2]
 -- | Creates a logical disjunction of a given list of formulas.
 or :: [Formula] -> Formula
 or = orFromSet . fromList
+
+simplifiedOr :: [Formula] -> Formula
+simplifiedOr = Formula True . Or . fromList
 
 ----------------------------------------------------------------------------------------------------
 -- Not

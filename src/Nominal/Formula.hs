@@ -6,6 +6,7 @@ module Nominal.Formula (
     false,
     fromBool,
     equals,
+    notEquals,
     lessThan,
     lessEquals,
     greaterThan,

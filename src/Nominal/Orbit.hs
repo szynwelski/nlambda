@@ -4,10 +4,11 @@ import Data.List (elemIndex, delete)
 import Data.Set (elems, empty, insert)
 import Nominal.Atoms (Atom)
 import Nominal.Atoms.Signature (minRelations)
+import Nominal.Contextual (Contextual)
 import Nominal.Formula.Constructors (constraint)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
 import Nominal.Set (Set, filter, isSingleton, map, maxSize, replicateAtoms, replicateSetUntil, size, sum, unions)
-import Nominal.Type (NominalType, Scope(..), eq, foldVariables, mapVariables)
+import Nominal.Type (NominalType, Scope(..), eq, freeVariables, mapVariables)
 import Nominal.Variants (Variants, fromVariant, variant, variantsRelation)
 import Prelude hiding (and, filter, map, sum)
 
@@ -17,7 +18,7 @@ import Prelude hiding (and, filter, map, sum)
 
 -- | Returns all free atoms of an element. The result list is also support of an element, but not always the least one.
 support :: NominalType a => a -> [Atom]
-support = fmap variant . elems . foldVariables (Free, insert) empty
+support = fmap variant . elems . freeVariables
 
 -- | Returns the least support of an element. From the result of 'support' function it removes atoms and check if it is still support.
 leastSupport :: NominalType a => a -> [Atom]
@@ -71,8 +72,13 @@ setOrbits s = map (setOrbit s) s
 
 -- | Returns a number of orbits of a set.
 -- It uses 'size' function which is inefficient for large sets and will not return the answer for the infinite sets.
-setOrbitsNumber :: NominalType a => Set a -> Variants Int
+setOrbitsNumber :: (Contextual a, NominalType a) => Set a -> Variants Int
 setOrbitsNumber = size . setOrbits
+
+-- | Returns a maximum number of orbits of a set.
+-- It uses 'maxSize' function which is inefficient for large sets and will not return the answer for the infinite sets.
+setOrbitsMaxNumber :: (Contextual a, NominalType a) => Set a -> Int
+setOrbitsMaxNumber = maxSize . setOrbits
 
 -- | Checks whether two elements are in the same orbit with a given support.
 inTheSameOrbit :: NominalType a => [Atom] -> a -> a -> Formula
@@ -83,6 +89,6 @@ inTheSameSetOrbit :: NominalType a => Set a -> a -> a -> Formula
 inTheSameSetOrbit s e1 e2 = eq (setOrbit s e1) (setOrbit s e2)
 
 -- | Returns a set of all equivariant subsets of a given set
-equivariantSubsets :: NominalType a => Set a -> Set (Set a)
+equivariantSubsets :: (Contextual a, NominalType a) => Set a -> Set (Set a)
 equivariantSubsets s = map (unions . fmap (setOrbit s)) $ replicateSetUntil (maxSize $ setOrbits s) s
 

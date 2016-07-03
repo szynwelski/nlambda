@@ -92,7 +92,7 @@ prodWithMono f as bs = mapWithMono (uncurry f) $ prod as bs
 -- | Returns value of a single variant.
 fromVariant :: Variants a -> a
 fromVariant vs = case values vs of
-                v:[] -> v
+                [v] -> v
                 otherwise -> error "Nominal.Variants.fromVariant: not single variant"
 
 variantsRelation :: (a -> a -> Formula) -> Variants a -> Variants a -> Formula

@@ -235,7 +235,7 @@ parseGoal l = do
     return $ case fs of
                []        -> true
                [f]       -> f
-               otherwise -> Formula True (And $ fromList fs)
+               otherwise -> simplifiedAnd fs
 
 parseOptions :: Parser [(S.ByteString, S.ByteString)]
 parseOptions = parseOption `sepBy` spaces
@@ -311,7 +311,7 @@ parseAnd l = do
     spaces
     fs <- parseFormula l `sepBy1` spaces
     char ')'
-    return $ Formula True (And $ fromList fs)
+    return $ simplifiedAnd fs
 
 parseOr :: SmtLogic -> Parser Formula
 parseOr l = do
@@ -319,4 +319,4 @@ parseOr l = do
     spaces
     fs <- parseFormula l `sepBy1` spaces
     char ')'
-    return $ Formula True (Or $ fromList fs)
+    return $ simplifiedOr fs

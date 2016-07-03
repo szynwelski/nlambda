@@ -16,6 +16,7 @@ Library
     attoparsec,
     base,
     bytestring,
+    combinat,
     containers,
     deepseq,
     directory,
