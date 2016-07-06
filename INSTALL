@@ -1,5 +1,5 @@
 Installation guide:
-- Download and unpack the package file (http://www.mimuw.edu.pl/~szynwelski/nlambda/nlambda-1.0.tar.gz).
+- Download and unpack the package file (http://www.mimuw.edu.pl/~szynwelski/nlambda/nlambda-1.1.tar.gz).
 - Move into the directory nlambda.
 - Perform the following commands:
     runhaskell Setup configure --user -fTOTAL_ORDER

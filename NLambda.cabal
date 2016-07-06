@@ -1,8 +1,8 @@
 name:		   NLambda
-version:	   1.0
+version:	   1.1
 build-type:        Simple
 cabal-version:     >= 1.2
-author:            M.Szynwelski, B.Klin
+author:            M.Szynwelski, B.Klin, J.Moerman
 license:           BSD3
 license-file:      LICENSE
 copyright:         (c) 2015-2016, M.Szynwelski, B.Klin
@@ -14,7 +14,7 @@ Flag TOTAL_ORDER
 Library
   build-depends:   
     attoparsec,
-    base,
+    base >= 4.7 && < 5,
     bytestring,
     combinat,
     containers,
