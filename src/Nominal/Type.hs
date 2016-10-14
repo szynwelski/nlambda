@@ -27,7 +27,7 @@ type MapVarFun = (Scope, Variable -> Variable)
 -- | Fold function for variables from a scope.
 type FoldVarFun b = (Scope, Variable -> b -> b)
 
--- | Basic type in 'NLambda' required by most of functions in the module.
+-- | Basic type in 'NLambda' required by most of functions in the module (without Ord class).
 class BareNominalType a where
     -- | Checks equivalence of two given elements.
     eq :: a -> a -> Formula
@@ -53,6 +53,7 @@ class BareNominalType a where
 
 -- Since I dropped the Ord constraint in the type class, we add it again
 -- so that the other modules work just fine.
+-- | Basic type in 'NLambda' required by most of functions in the module.
 type NominalType a = (Ord a, BareNominalType a)
 
 -- | Checks whether two elements are not equivalent.

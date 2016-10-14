@@ -34,8 +34,8 @@ instance Show FormulaStructure where
     show T = "true"
     show F = "false"
     show (Constraint r x1 x2) = show x1 ++ " " ++ show r ++ " " ++ show x2
-    show (And fs) = join Symbols.and $ fmap (showSubformula . formula) $ elems fs
-    show (Or fs) = join Symbols.or $ fmap (showSubformula . formula) $ elems fs
+    show (And fs) = join Symbols.and ((showSubformula . formula) <$> elems fs)
+    show (Or fs) = join Symbols.or ((showSubformula . formula) <$> elems fs)
     show (Not f) = Symbols.not ++ "(" ++ show f ++ ")"
 
 ----------------------------------------------------------------------------------------------------

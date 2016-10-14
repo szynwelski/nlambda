@@ -16,7 +16,7 @@ null :: InsertionSet a -> Bool
 null (InsertionSet s _) = Set.null s
 
 insert :: Ord a => a -> InsertionSet a -> InsertionSet a
-insert e is@(InsertionSet s l) = if Set.member e s then is else (InsertionSet (Set.insert e s) (e : l))
+insert e is@(InsertionSet s l) = if Set.member e s then is else InsertionSet (Set.insert e s) (e : l)
 
 toSet :: InsertionSet a -> Set a
 toSet (InsertionSet s _) = s

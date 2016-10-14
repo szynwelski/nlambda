@@ -31,7 +31,6 @@ Library
   if os(windows) 
     cpp-options: -DDISABLE_UNICODE 
   other-modules:
-    NLambdaTest,
     Nominal.Atoms,
     Nominal.Atoms.Logic,
     Nominal.Atoms.Signature,

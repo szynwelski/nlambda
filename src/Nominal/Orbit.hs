@@ -51,7 +51,7 @@ orbit supp elem = map mapFun $ filter filterFun $ replicateAtoms elSuppSize
         mapFun list = groupAction (\x -> maybe x (list !!) (elemIndex x elSupp)) elem
         relFun list rel = and [rel (list!!pred i) (list!!pred j) <==> rel (elSupp!!pred i) (elSupp!!pred j) | i<-[1..elSuppSize], j<-[1..elSuppSize], i<j]
                        /\ and [rel (list!!pred i) (supp!!pred j) <==> rel (elSupp!!pred i) (supp!!pred j) | i<-[1..elSuppSize], j<-[1..length supp]]
-        filterFun list = and $ fmap (relFun list) $ fmap (variantsRelation . constraint) minRelations
+        filterFun list = and $ fmap (relFun list . variantsRelation . constraint) minRelations
 
 multiorbit :: NominalType a => a -> Set a
 multiorbit elem = map mapFun $ replicateAtoms $ length elSupp

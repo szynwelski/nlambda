@@ -39,19 +39,19 @@ class AtomsLogic where
 ----------------------------------------------------------------------------------------------------
 
 partitions :: [Variable] -> [[[Variable]]]
-partitions vars = fmap (fmap (fmap $ (vars !!) . pred)) $ fmap fromSetPartition $ setPartitions $ length vars
+partitions vars = fmap (fmap (fmap $ (vars !!) . pred) . fromSetPartition) (setPartitions $ length vars)
 
 sortedPartitions :: [Variable] -> [[[Variable]]]
-sortedPartitions = concat . fmap permutations . partitions
+sortedPartitions = concatMap permutations . partitions
 
 consecutiveRelations :: (Variable -> Variable -> Formula) -> [Variable] -> [Formula]
-consecutiveRelations rel vs = fmap (uncurry rel) $ zip vs (tail vs)
+consecutiveRelations rel vs = uncurry rel <$> zip vs (tail vs)
 
 pairwiseDifferent :: [Variable] -> [Formula]
 pairwiseDifferent vs = [notEquals v1 v2 | v1 <- vs, v2 <- vs, v1 < v2]
 
 equivalenceClasses :: ([Variable] -> [Formula]) -> [[Variable]] -> Formula
-equivalenceClasses classRelations parts = simplifiedAnd ((classRelations $ fmap head parts) ++ classes)
+equivalenceClasses classRelations parts = simplifiedAnd (classRelations (fmap head parts) ++ classes)
     where classes = concatMap (consecutiveRelations equals) parts
 
 #if TOTAL_ORDER

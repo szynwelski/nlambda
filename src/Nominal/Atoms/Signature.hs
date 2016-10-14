@@ -52,7 +52,7 @@ relationFunction Equals = (==)
 relationFunction NotEquals = (/=)
 
 checkConstants :: Relation -> String -> String -> Bool
-checkConstants r x y = (relationFunction r) (readConstant x) (readConstant y)
+checkConstants r x y = relationFunction r (readConstant x) (readConstant y)
 
 ----------------------------------------------------------------------------------------------------
 -- Atoms signature

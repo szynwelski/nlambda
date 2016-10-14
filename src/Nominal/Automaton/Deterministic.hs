@@ -15,24 +15,24 @@ import Nominal.Variants
 
 -- | The constructor of a deterministic automaton.
 da :: (NominalType q, NominalType a) => Set q -> Set a -> (q -> a -> q) -> q -> Set q -> Automaton q a
-da q a d i f = automaton q a (pairsWith (\s l -> (s,l,d s l)) q a) (singleton i) f
+da q a d i = automaton q a (pairsWith (\s l -> (s,l,d s l)) q a) (singleton i)
 
 -- | The constructor of a deterministic automaton with additional not accepting state.
 daWithTrashCan :: (NominalType q, NominalType a) => Set q -> Set a -> (q -> a -> q) -> q -> Set q -> Automaton (Maybe q) a
-daWithTrashCan q a d i f = automatonWithTrashCan q a (pairsWith (\s l -> (s,l,d s l)) q a) (singleton i) f
+daWithTrashCan q a d i = automatonWithTrashCan q a (pairsWith (\s l -> (s,l,d s l)) q a) (singleton i)
 
 -- | The constructor of a deterministic automaton with atoms as states.
 atomsDA  :: NominalType q => Set q -> (q -> Atom -> q) -> q -> Set q -> Automaton q Atom
-atomsDA q d i f = da q atoms d i f
+atomsDA q = da q atoms
 
 -- | The constructor of a deterministic automaton with atoms as states with additional not accepting state.
 atomsDAWithTrashCan :: NominalType q => Set q -> (q -> Atom -> q) -> q -> Set q -> Automaton (Maybe q) Atom
-atomsDAWithTrashCan q d i f = daWithTrashCan q atoms d i f
+atomsDAWithTrashCan q = daWithTrashCan q atoms
 
 -- | Checks whether an automaton is deterministic.
 isDeterministic :: (NominalType q, NominalType a) => Automaton q a -> Formula
 isDeterministic aut = isSingleton (initialStates aut) /\
-  forAll (`hasSizeLessThan` 2) (pairsWith (\s l -> transit aut s l) (states aut) (alphabet aut))
+  forAll (`hasSizeLessThan` 2) (pairsWith (transit aut) (states aut) (alphabet aut))
 
 -- | Returns a deterministic automaton that accepts the union of languages accepted by two deterministic automata.
 unionDA :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (q1, q2) a
@@ -40,7 +40,7 @@ unionDA (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = automaton q a d i 
     where q = pairs q1 q2
           d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
           i = pairs i1 i2
-          f = union (pairs f1 q2) (pairs q1 f2)
+          f = pairs f1 q2 `union` pairs q1 f2
 
 -- | Returns a deterministic automaton that accepts only words rejected by a given automaton.
 complementDA :: NominalType q => Automaton q a -> Automaton q a

@@ -38,7 +38,7 @@ variant :: a -> Variants a
 variant x = Variants $ Map.singleton x true
 
 instance Show a => Show (Variants a) where
-    show (Variants vs) = join " | " (fmap showVariant $ Map.assocs vs)
+    show (Variants vs) = join " | " (showVariant <$> Map.assocs vs)
       where showVariant (v, c) = show v ++ if c == true then "" else " : " ++ show c
 
 instance Ord a => Conditional (Variants a) where
@@ -93,7 +93,7 @@ prodWithMono f as bs = mapWithMono (uncurry f) $ prod as bs
 fromVariant :: Variants a -> a
 fromVariant vs = case values vs of
                 [v] -> v
-                otherwise -> error "Nominal.Variants.fromVariant: not single variant"
+                _   -> error "Nominal.Variants.fromVariant: not single variant"
 
 variantsRelation :: (a -> a -> Formula) -> Variants a -> Variants a -> Formula
-variantsRelation r vs1 vs2 = or [(r v1 v2) /\ c1 /\ c2 | (v1, c1) <- toList vs1, (v2, c2) <- toList vs2]
+variantsRelation r vs1 vs2 = or [r v1 v2 /\ c1 /\ c2 | (v1, c1) <- toList vs1, (v2, c2) <- toList vs2]

@@ -23,11 +23,11 @@ naWithTrashCan = automatonWithTrashCan
 
 -- | The constructor of a nondeterministic automaton with atoms as states.
 atomsNA :: NominalType q => Set q -> Set (q, Atom, q) -> Set q -> Set q -> Automaton q Atom
-atomsNA q d i f = na q atoms d i f
+atomsNA q = na q atoms
 
 -- | The constructor of a nondeterministic automaton with atoms as states with additional not accepting state.
 atomsNAWithTrashCan :: NominalType q => Set q -> Set (q, Atom, q) -> Set q -> Set q -> Automaton (Maybe q) Atom
-atomsNAWithTrashCan q d i f = naWithTrashCan q atoms d i f
+atomsNAWithTrashCan q = naWithTrashCan q atoms
 
 -- | Checks whether an automaton is nondeterministic.
 isNondeterministic :: (NominalType q, NominalType a) => Automaton q a -> Formula

@@ -28,7 +28,7 @@ simplify = when true
 ----------------------------------------------------------------------------------------------------
 
 instance Contextual b => Contextual (a -> b) where
-    when ctx f = \x -> when ctx (f x)
+    when ctx f = when ctx . f
 
 instance Contextual Variable
 

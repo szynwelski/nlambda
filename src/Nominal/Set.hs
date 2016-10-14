@@ -86,6 +86,7 @@ isOpen,
 isClosed,
 isCompact) where
 
+import Control.Arrow ((***))
 import Control.DeepSeq (NFData)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
 import qualified Data.List as List ((\\))
@@ -136,7 +137,7 @@ checkVariablesInElement (v, (vs, c)) =
     in if ISet.null iterVars
        then (v, (Set.empty, c'))
        else let oldIterVars = ISet.toList iterVars
-                newIterVars = iterationVariablesList (minimum $ fmap (Maybe.fromJust . getIterationLevel) $ Set.elems vs)
+                newIterVars = iterationVariablesList (minimum ((Maybe.fromJust . getIterationLevel) <$> Set.elems vs))
                                                      (length oldIterVars)
             in if oldIterVars == newIterVars
                then (v, (Set.fromList oldIterVars, c'))
@@ -147,18 +148,16 @@ checkVariables :: NominalType a => Map a SetElementCondition -> Map a SetElement
 checkVariables = Map.fromListWith sumCondition . Map.foldrWithKey (\v c es -> checkVariablesInElement (v, c) : es) []
 
 filterSetElems :: NominalType a => (a -> SetElementCondition) -> Map a SetElementCondition -> Map a SetElementCondition
-filterSetElems f = filterNotFalse . Map.mapWithKey (\v (vs, c) -> let fv = f v in (Set.union vs $ fst fv, c /\ snd fv))
+filterSetElems f = filterNotFalse . Map.mapWithKey (\v (vs, c) -> (Set.union vs *** (/\) c) $ f v)
 
 filterNotFalse :: Map a SetElementCondition -> Map a SetElementCondition
 filterNotFalse = Map.filter ((/= false) . snd)
 
 checkEquality :: NominalType a => (a, SetElementCondition) -> (a, SetElementCondition)
 checkEquality (v, (vs, c)) =
-    if Set.null eqs
+    if Set.null eqs || Map.null eqsMap
     then (v, (vs, c))
-    else if Map.null eqsMap
-         then (v, (vs, c))
-         else checkVariablesInElement (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
+    else checkVariablesInElement (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
     where eqs = getEquationsFromFormula c
           (vs', eqsMap) = foldr checkVars (vs, Map.empty) $ representatives $ Set.elems eqs
           checkVars (x1, x2) (vs, m)
@@ -188,12 +187,12 @@ getVariableId :: Set.Set Variable -> Word
 getVariableId vs = unsafePerformIO $
   do
     i <- readIORef counter
-    writeIORef counter (i + (fromIntegral $ Set.size vs) + 1)
+    writeIORef counter (i + fromIntegral (Set.size vs) + 1)
     return i
 
 applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
 applyWithIdentifiers f (v, cond) =
-    let id = getVariableId $ fst $ cond
+    let id = getVariableId $ fst cond
         (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setIdentifier id) (v, cond)
     in fmap (\(v'', c) -> checkIdentifiers id (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
 
@@ -205,40 +204,39 @@ applyWithIdentifiers f (v, cond) =
 newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord, Generic, NFData)
 
 instance Show a => Show (Set a) where
-    show s = "{" ++ (join ", " (fmap showSetElement (Map.assocs $ setElements s))) ++ "}"
+    show s = "{" ++ join ", " (fmap showSetElement (Map.assocs $ setElements s)) ++ "}"
       where showSetElement (v, (vs, c)) =
               let formula = if c == true then "" else " " ++ show c
                   variables = if Set.null vs
                                 then ""
-                                else " for " ++ (join "," (fmap show $ Set.elems vs)) ++ " " ++ Symbols.inSet ++ " " ++ Symbols.atoms
+                                else " for " ++ join "," (show <$> Set.elems vs) ++ " " ++ Symbols.inSet ++ " " ++ Symbols.atoms
                   condition = formula ++ variables
               in show v ++ (if null condition then "" else " :" ++ condition)
 
 instance NominalType a => Conditional (Set a) where
-    cond c s1 s2 = union (filter (const c) s1) (filter (const $ not c) s2)
+    cond c s1 s2 = filter (const c) s1 `union` filter (const $ not c) s2
 
 instance (Contextual a, Ord a) => Contextual (Set a) where
     when ctx (Set es) = Set $ filterNotFalse
                             $ Map.fromListWith sumCondition
-                            $ fmap (\(v,(vs, c)) -> (when (ctx /\ c) v, when ctx (vs, c)))
-                            $ Map.assocs es
+                            $ (\(v,(vs, c)) -> (when (ctx /\ c) v, when ctx (vs, c))) <$> Map.assocs es
 
 mapWithout :: Set.Set Variable -> (Variable -> Variable) -> Variable -> Variable
 mapWithout vs f x = if Set.member x vs then x else f x
 
 mapSetVariables :: NominalType a => MapVarFun -> (a, SetElementCondition) -> (a, SetElementCondition)
 mapSetVariables (All, f) se = mapVariables (All, f) se
-mapSetVariables (Free, f) (v, (vs, c)) = mapVariables (Free, (mapWithout vs f)) (v, (vs, c))
+mapSetVariables (Free, f) (v, (vs, c)) = mapVariables (Free, mapWithout vs f) (v, (vs, c))
 
 foldWithout :: Set.Set Variable -> (Variable -> b -> b) -> Variable -> b -> b
 foldWithout vs f x = if Set.member x vs then id else f x
 
 foldSetVariables :: NominalType a => FoldVarFun b -> b -> (a, SetElementCondition) -> b
 foldSetVariables (All, f) acc se = foldVariables (All, f) acc se
-foldSetVariables (Free, f) acc (v, (vs, c)) = foldVariables (Free, (foldWithout vs f)) acc (v, (vs, c))
+foldSetVariables (Free, f) acc (v, (vs, c)) = foldVariables (Free, foldWithout vs f) acc (v, (vs, c))
 
 instance NominalType a => BareNominalType (Set a) where
-    eq s1 s2 = (isSubsetOf s1 s2) /\ (isSubsetOf s2 s1)
+    eq s1 s2 = isSubsetOf s1 s2 /\ isSubsetOf s2 s1
     variants = variant
     mapVariables f (Set es) = Set $ Map.fromListWith sumCondition $ fmap (mapSetVariables f) (Map.assocs es)
     foldVariables f acc (Set es) = foldl (foldSetVariables f) acc (Map.assocs es)
@@ -269,7 +267,7 @@ empty = Set Map.empty
 
 -- | Checks whether the set is not empty.
 isNotEmpty :: Set a -> Formula
-isNotEmpty (Set es) = or $ fmap getCondition $ Map.elems es
+isNotEmpty (Set es) = or (getCondition <$> Map.elems es)
 
 -- | Insert an element to a set.
 insert :: NominalType a => a -> Set a -> Set a
@@ -278,7 +276,7 @@ insert e (Set es) = Set $ foldr insertVariant es (toList $ variants e)
 
 -- | Delete an element from a set.
 delete :: NominalType a => a -> Set a -> Set a
-delete e = filter (not . (eq e)) . Set . (Map.delete e) . setElements
+delete e = filter (not . eq e) . Set . Map.delete e . setElements
 
 -- | Applies function to all elements of a set and returns a new set.
 map :: (NominalType a, NominalType b) => (a -> b) -> Set a -> Set b
@@ -340,11 +338,11 @@ deleteAll es s = foldl (flip delete) s es
 
 -- | Returns a formula describing the membership of an element that satisfy the predicate.
 exists :: NominalType a => (a -> Formula) -> Set a -> Formula
-exists f = isNotEmpty . (filter f)
+exists f = isNotEmpty . filter f
 
 -- | Returns a formula describing the condition that all elements of a set satisfy the predicate.
 forAll :: NominalType a => (a -> Formula) -> Set a -> Formula
-forAll f = isEmpty . (filter $ \x -> not (f x))
+forAll f = isEmpty . filter (not . f)
 
 -- | Partition the set into two sets, one with all elements that satisfy
 -- the predicate and one with all elements that don't satisfy the predicate.
@@ -386,7 +384,7 @@ isNotSubsetOf s = not . isSubsetOf s
 
 -- | Returns a formula describing that the first set is a proper subset of the second set.
 isProperSubsetOf :: NominalType a => Set a -> Set a -> Formula
-isProperSubsetOf s1 s2 = (isSubsetOf s1 s2) /\ (isNotSubsetOf s2 s1)
+isProperSubsetOf s1 s2 = isSubsetOf s1 s2 /\ isNotSubsetOf s2 s1
 
 -- | Returns a formula describing that the first set is not a proper subset of the second set.
 isNotProperSubsetOf :: NominalType a => Set a -> Set a -> Formula
@@ -394,7 +392,7 @@ isNotProperSubsetOf s = not . isProperSubsetOf s
 
 -- | Returns an intersetion of two sets.
 intersection :: NominalType a => Set a -> Set a -> Set a
-intersection s1 s2 = filter (contains s1) s2
+intersection s = filter (contains s)
 
 -- | Checks whether two sets intersect.
 intersect :: NominalType a => Set a -> Set a -> Formula
@@ -402,7 +400,7 @@ intersect s1 s2 = isNotEmpty $ intersection s1 s2
 
 -- | Checks whether two sets are disjoint.
 disjoint :: NominalType a => Set a -> Set a -> Formula
-disjoint s1 s2 = not (intersect s1 s2)
+disjoint s1 s2 = not (s1 `intersect` s2)
 
 -- | Returns a difference of two sets.
 difference :: NominalType a => Set a -> Set a -> Set a
@@ -474,7 +472,7 @@ replicateSet n s = mapList id (replicate n s)
 -- >>> replicateSetUntil 3 atoms
 -- {[], [a₁] : for a₁ ∊ 𝔸, [a₁,a₂] : for a₁,a₂ ∊ 𝔸, [a₁,a₂,a₃] : for a₁,a₂,a₃ ∊ 𝔸}
 replicateSetUntil :: NominalType a => Int -> Set a -> Set [a]
-replicateSetUntil n s = unions $ fmap (flip replicateSet s) [0..n]
+replicateSetUntil n s = unions $ fmap (`replicateSet` s) [0..n]
 
 -- |
 -- > replicateAtoms n = replicateSet n atoms
@@ -517,7 +515,7 @@ listSize = listSizeWith eq
 -- | Returns the maximum size of a list for all free atoms constraints with given equality relation.
 listMaxSizeWith :: (a -> a -> Formula) -> [a] -> Int
 listMaxSizeWith _ [] = 0
-listMaxSizeWith eq (e:l) = let s = listMaxSizeWith eq l in if isTrue (or $ fmap (eq e) l) then s else (s+1)
+listMaxSizeWith eq (e:l) = let s = listMaxSizeWith eq l in if isTrue (or $ fmap (eq e) l) then s else s+1
 
 -- | Returns the maximum size of a list for all free atoms constraints.
 listMaxSize :: NominalType a => [a] -> Int
@@ -527,17 +525,17 @@ listMaxSize = listMaxSizeWith eq
 setValues :: (Contextual a, NominalType a) => Set a -> Maybe [a]
 setValues s = if P.any Maybe.isNothing values
               then Nothing
-              else Just $ concat $ fmap Maybe.fromJust values
+              else Just $ concatMap Maybe.fromJust values
     where values = fmap elemValues $ Map.assocs $ setElements s
 
 -- | Returns a list of possible values for set element or 'Nothing' if set element has infinite number of values.
 elemValues :: (Contextual a, NominalType a) => (a, SetElementCondition) -> Maybe [a]
-elemValues (v, (vs, c)) = if all (\val -> Set.null $ Set.intersection vs $ freeVariables val) values
+elemValues (v, (vs, c)) = if all (Set.null . Set.intersection vs . freeVariables) values
                           then Just values
                           else Nothing
     where vars = Set.elems $ Set.union vs (freeVariables v)
           conds = exclusiveConditions vars
-          values = fmap (flip when v) $ P.filter (/= false) $ fmap (simplifyFormula . (c /\)) conds
+          values = fmap (`when` v) $ P.filter (/= false) $ fmap (simplifyFormula . (c /\)) conds
 
 -- | Returns a variants of numbers of the size of a set with given equality relation.
 -- It will not return the answer for the infinite sets.
@@ -575,7 +573,7 @@ openRange l u = filter (\a -> gt a l /\ lt a u) atoms
 
 -- | Checks whether a given atom is the lower bound of a set.
 isLowerBound :: Atom -> Set Atom -> Formula
-isLowerBound a s = forAll (le a) s
+isLowerBound a = forAll (le a)
 
 -- | Checks whether a set has the lower bound.
 hasLowerBound :: Set Atom -> Formula
@@ -583,7 +581,7 @@ hasLowerBound s = exists (`isLowerBound` s) atoms
 
 -- | Checks whether a given atom is the upper bound of a set.
 isUpperBound :: Atom -> Set Atom -> Formula
-isUpperBound a s = forAll (ge a) s
+isUpperBound a = forAll (ge a)
 
 -- | Checks whether a set has the upper bound.
 hasUpperBound :: Set Atom -> Formula

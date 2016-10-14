@@ -18,7 +18,7 @@ getConstraintsForVariable x (Formula _ f) = get f
           get F = (empty, empty, empty)
           get (Constraint r x1 x2) | x1 == x = getFromConstraint r x2
           get (Constraint r x1 x2) | x2 == x = getFromConstraint (symmetricRelation r) x1
-          get (Constraint _ _ _) = (empty, empty, empty)
+          get Constraint{} = (empty, empty, empty)
           get (And fs) = getFromSet $ map formula fs
           get (Or fs) = getFromSet $ map formula fs
           getFromConstraint LessThan y = (empty, empty, singleton y)

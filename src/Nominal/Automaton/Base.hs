@@ -24,10 +24,10 @@ automaton = Automaton
 
 -- | An automaton constructor with additional not accepting state.
 automatonWithTrashCan :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton (Maybe q) a
-automatonWithTrashCan q a d i f = onlyReachable $ Automaton q' a (union d1 d2) i' f'
+automatonWithTrashCan q a d i f = onlyReachable $ Automaton q' a (d1 `union` d2) i' f'
     where q' = insert Nothing $ map Just q
           d1 = mapFilter (\(s1,l,s2) -> maybeIf (contains q s1 /\ contains q s2) (Just s1,l,Just s2)) d
-          d2 = map (\(s1,l) -> (s1,l,Nothing)) ((pairs q' a) \\ (map (\(s,l,_)-> (s,l)) d1))
+          d2 = map (\(s1,l) -> (s1,l,Nothing)) (pairs q' a \\ map (\(s,l,_)-> (s,l)) d1)
           i' = map Just (intersection q i)
           f' = map Just (intersection q f)
 
@@ -84,20 +84,20 @@ isEmptyAutomaton :: (NominalType q, NominalType a) => Automaton q a -> Formula
 isEmptyAutomaton = not . isNotEmptyAutomaton
 
 pairsDelta :: (NominalType q1, NominalType q2, NominalType a) => Set (q1,a,q1) -> Set (q2,a,q2) -> Set ((q1,q2),a,(q1,q2))
-pairsDelta d1 d2 = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') ((s1,s1'),l,(s2,s2'))) d1 d2
+pairsDelta = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') ((s1,s1'),l,(s2,s2')))
 
 -- | Returns an automaton that accepts the union of languages accepted by two automata.
 unionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (Either q1 q2) a
-unionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Automaton q a d i f)
-    where eitherUnion s1 s2 = union (map Left s1) (map Right s2)
+unionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = Automaton q a d i f
+    where eitherUnion s1 s2 = map Left s1 `union` map Right s2
           q = eitherUnion q1 q2
-          d = union (map (\(s1,l,s2)->(Left s1,l,Left s2)) d1) (map (\(s1,l,s2)->(Right s1,l,Right s2)) d2)
+          d = map (\(s1,l,s2)->(Left s1,l,Left s2)) d1 `union` map (\(s1,l,s2)->(Right s1,l,Right s2)) d2
           i = eitherUnion i1 i2
           f = eitherUnion f1 f2
 
 -- | Returns an automaton that accepts the intersection of languages accepted by two automata.
 intersectionAutomaton :: (NominalType q1, NominalType q2, NominalType a) => Automaton q1 a -> Automaton q2 a -> Automaton (q1, q2) a
-intersectionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = (Automaton q a d i f)
+intersectionAutomaton (Automaton q1 a d1 i1 f1) (Automaton q2 _ d2 i2 f2) = Automaton q a d i f
     where q = pairs q1 q2
           d = pairsWithFilter (\(s1,l,s2) (s1',l',s2') -> maybeIf (eq l l') ((s1, s1'),l,(s2, s2'))) d1 d2
           i = pairs i1 i2
@@ -112,7 +112,7 @@ minimize :: (NominalType q, NominalType a) => Automaton q a -> Automaton (Set q)
 minimize aut@(Automaton q a d i f) = automaton q' a d' i' f'
     where relGraph = graph (square q) (map (\(s1,_,s2) -> (s1,s2)) $ pairsDelta d d)
           nf = q \\ f
-          equiv = square q \\ reachableFromSet (reverseEdges relGraph) (union (pairs nf f) (pairs f nf))
+          equiv = square q \\ reachableFromSet (reverseEdges relGraph) (pairs nf f `union` pairs f nf)
           q' = map vertices (stronglyConnectedComponents $ graph q equiv)
           d' = filter (\(ss1,ll,ss2) -> exists (\(s1,l,s2)-> member s1 ss1 /\ eq l ll /\ member s2 ss2) d) (triples q' a q')
           i' = filter (intersect i) q'

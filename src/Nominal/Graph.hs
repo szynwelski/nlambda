@@ -105,11 +105,11 @@ reverseEdges (Graph vs es) = Graph vs $ map swap es
 
 -- | Produces a set of edges containing edges that are obtained by composition of edges in a given set.
 composeEdges :: NominalType a => Set (a,a) -> Set (a,a) -> Set (a,a)
-composeEdges es1 es2 = pairsWithFilter (\(a, b) (c, d) -> maybeIf (eq b c) (a, d)) es1 es2
+composeEdges = pairsWithFilter (\(a, b) (c, d) -> maybeIf (eq b c) (a, d))
 
 -- | Produces a graph with edges that are obtained by composition of edges in a given graph.
 compose :: NominalType a => Graph a -> Graph a -> Graph a
-compose (Graph vs1 es1) (Graph vs2 es2) = Graph (union vs1 vs2) (composeEdges es1 es2)
+compose (Graph vs1 es1) (Graph vs2 es2) = Graph (vs1 `union` vs2) (composeEdges es1 es2)
 
 -- | Adds all reverse edges to existing edges in a graph.
 undirected :: NominalType a => Graph a -> Graph a
@@ -135,7 +135,7 @@ isSimple = not . hasLoop
 
 -- | Checks whether a graph has a given edge.
 containsEdge :: NominalType a => Graph a -> (a, a) -> Formula
-containsEdge (Graph vs es) e = contains es e
+containsEdge (Graph vs es) = contains es
 
 predsFunction :: NominalType a => Graph a -> (a -> Formula) -> Set a
 predsFunction g cf = mapFilter (\(a, b) -> maybeIf (cf b) a) (edges g)
@@ -159,7 +159,7 @@ succsFromSet g s = succsFunction g (contains s)
 
 -- | Returns all neighbours of an element in a graph.
 neighbors :: NominalType a => Graph a -> a -> Set a
-neighbors g v = union (succs g v) (preds g v)
+neighbors g v = succs g v `union` preds g v
 
 -- | Returns a transitive closure of a graph.
 transitiveClosure :: NominalType a => Graph a -> Graph a
@@ -189,7 +189,7 @@ hasEvenLengthCycle g = hasCycle (compose g g)
 
 -- | Checks whether a graph has a odd-length cycle.
 hasOddLengthCycle :: NominalType a => Graph a -> Formula
-hasOddLengthCycle g = intersect (edges $ reverseEdges g) (edges $ transitiveClosure $ compose g g)
+hasOddLengthCycle g = edges (reverseEdges g) `intersect` edges (transitiveClosure $ compose g g)
 
 -- | Checks whether a graph (treated as undirected) is bipartite in the sense that it does not have odd-length cycle
 isBipartite :: NominalType a => Graph a -> Formula
@@ -226,14 +226,14 @@ isColoringOf c g = forAll (\(v1,v2) -> c v1 `neq` c v2) (edges g)
 
 -- | Checks whether a graph has an equivariant k-coloring.
 hasEquivariantColoring :: (Contextual a, NominalType a) => Graph a -> Int -> Formula
-hasEquivariantColoring g k = member true (pairsWith (\os ps -> (coloring os ps) `isColoringOf` g) (replicateSet n orbits) (partitions n k))
+hasEquivariantColoring g k = member true (pairsWith (\os ps -> coloring os ps `isColoringOf` g) (replicateSet n orbits) (partitions n k))
     where orbits = setOrbits (vertices g)
           n = maxSize orbits
           -- k-size partitions of n-size set (Int -> Int -> Set [Int])
           partitions n 1 = singleton (replicate n 0)
           partitions n k | k < 1 || n < k = empty
           partitions n k | n == k = singleton [0..n-1]
-          partitions n k = union (map (k-1:) $ partitions (n-1) (k-1)) (pairsWith (:) (fromList [0..k-1]) (partitions (n-1) k))
+          partitions n k = map (k-1:) $ partitions (n-1) (k-1) `union` pairsWith (:) (fromList [0..k-1]) (partitions (n-1) k)
           -- for a given list of orbits and assigned numbers returns number assigned for the orbit containing element
           coloring [] [] _ = variant 0
           coloring (o:os) (p:ps) a = ite (member a o) (variant p) (coloring os ps a)

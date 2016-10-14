@@ -9,6 +9,7 @@ import qualified Data.ByteString.Lazy.Char8 as L -- lazy
 import Data.Char (isSpace)
 import Data.List (find)
 import Data.List.Utils (split)
+import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>), mconcat, mempty)
 import Data.Set (elems, fromList, null)
 import Data.Word (Word)
@@ -42,7 +43,7 @@ ratioToSmt :: String -> SmtScript
 ratioToSmt r = let rs = split "/" r
                in if length rs == 1
                   then string8 r
-                  else string8 "(/ " <> string8 (rs !! 0) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'
+                  else string8 "(/ " <> string8 (head rs) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'
 
 parseRatio :: Parser Variable
 parseRatio = do
@@ -68,9 +69,7 @@ data SmtSolver = SmtSolver {executable :: FilePath, options :: [String], smtOpti
 getExecutable :: String -> FilePath
 getExecutable command = unsafePerformIO $ do
     path <- findExecutable command
-    return $ case path of
-               Nothing   -> error ("SMT Solver \"" ++ command ++ "\" is not installed or is not added to PATH.")
-               Just path -> path
+    return $ fromMaybe (error ("SMT Solver \"" ++ command ++ "\" is not installed or is not added to PATH.")) path
 
 z3Solver :: SmtSolver
 z3Solver = SmtSolver {executable = getExecutable "z3", options = ["-smt2", "-in", "-nw"],
@@ -84,11 +83,11 @@ type SmtResult = L.ByteString
 runSolver :: SmtSolver -> SmtScript -> SmtResult
 runSolver solver script = unsafePerformIO $ do
     (exit, out, err) <- readProcessWithExitCode (executable solver) (options solver)
-                          (toLazyByteString $ (mconcat $ fmap string8 (smtOptions solver)) <> script)
+                          (toLazyByteString $ mconcat (fmap string8 (smtOptions solver)) <> script)
     return $ case exit of
                ExitSuccess      -> out
                ExitFailure code -> error $ unlines ["SMT Solver " ++ show (executable solver) ++ " exits with code: " ++ show code,
-                                                    "input: " ++ (show $ toLazyByteString $ script),
+                                                    "input: " ++ show (toLazyByteString script),
                                                     "output: " ++ show out,
                                                     "error: " ++ show err]
 
@@ -112,7 +111,7 @@ getSmtAssertOp l op fs =
     char8 '('
     <> string8 op
     <> char8 ' '
-    <> (mconcat $ fmap (getSmtAssert l) fs)
+    <> mconcat (fmap (getSmtAssert l) fs)
     <> char8 ')'
 
 getSmtAssert :: SmtLogic -> Formula -> SmtScript
@@ -148,7 +147,7 @@ getSmtAssertForAllFree l f =
                                <> string8 (sort l)
                                <> char8 ')') (elems fvs)))
      <> string8 "(assert "
-     <> (getSmtAssert l f)
+     <> getSmtAssert l f
      <> char8 ')'
 
 getSmtScript :: String -> SmtLogic -> Formula -> SmtScript
@@ -195,7 +194,7 @@ simplifyFormula l f = parseSimplifiedFormula l $ runSolver z3Solver $ simplifySc
 ----------------------------------------------------------------------------------------------------
 
 toInt :: S.ByteString -> Int
-toInt s = fst $ maybe (error $ "input is not a number: " ++ show s) id $ S.readInt s
+toInt s = fst $ fromMaybe (error $ "input is not a number: " ++ show s) $ S.readInt s
 
 toWord :: S.ByteString -> Word
 toWord = fromIntegral . toInt
@@ -233,9 +232,9 @@ parseGoal l = do
     parseOptions
     char ')'
     return $ case fs of
-               []        -> true
-               [f]       -> f
-               otherwise -> simplifiedAnd fs
+               []  -> true
+               [f] -> f
+               _   -> simplifiedAnd fs
 
 parseOptions :: Parser [(S.ByteString, S.ByteString)]
 parseOptions = parseOption `sepBy` spaces
@@ -258,7 +257,7 @@ parseDepth = do
     return (k, S.pack $ show v)
 
 parseFormula :: SmtLogic -> Parser Formula
-parseFormula l = parseTrue <|> parseFalse <|> (parseConstraint l) <|> (parseNot l) <|> (parseAnd l) <|> (parseOr l)
+parseFormula l = parseTrue <|> parseFalse <|> parseConstraint l <|> parseNot l <|> parseAnd l <|> parseOr l
 
 parseTrue :: Parser Formula
 parseTrue = text "true" *> return true
@@ -280,7 +279,7 @@ parseConstraint l = do
 parseRelation :: Parser Relation
 parseRelation = do
     r <- takeWhile1 (\c -> c == '=' || c == '<' || c == '>')
-    return $ maybe (error $ "unknown relation: " ++ show r) id $ find (\rel -> S.unpack r == relationAscii rel) relations
+    return $ fromMaybe (error $ "unknown relation: " ++ show r) $ find (\rel -> S.unpack r == relationAscii rel) relations
 
 parseVariable :: Parser Variable
 parseVariable = do

@@ -13,7 +13,7 @@ import Prelude hiding (and, foldl, foldr, map, not, null, or)
 ----------------------------------------------------------------------------------------------------
 
 isConstraint :: Formula -> Bool
-isConstraint (Formula _ (Constraint _ _ _)) = True
+isConstraint (Formula _ Constraint{}) = True
 isConstraint _ = False
 
 sameVarsInConstraints :: FormulaStructure -> FormulaStructure -> Bool
@@ -31,12 +31,12 @@ checkConstraints :: (Set Formula -> FormulaStructure) -> Formula
 checkConstraints creator defVal relFun fs =
     if member nDefVal cs
         then nDefVal
-        else checkSize creator defVal (union cs fs2)
+        else checkSize creator defVal (cs `union` fs2)
     where nDefVal = not defVal
           (fs1, fs2) = partition isConstraint fs
           relLists = MM.assocs $ foldr (\(Constraint r x1 x2) -> MM.insert (x1,x2) (Just r)) MM.empty (map formula fs1)
           rels = fmap (fmap $ foldr1 relFun) relLists
-          cs = fromList $ fmap (\((x1,x2),rel) -> maybe nDefVal (\r -> (constraint r x1 x2)) rel) rels
+          cs = fromList $ fmap (\((x1,x2),rel) -> maybe nDefVal (\r -> constraint r x1 x2) rel) rels
 
 ----------------------------------------------------------------------------------------------------
 -- And
