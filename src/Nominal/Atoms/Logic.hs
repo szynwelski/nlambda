@@ -2,6 +2,7 @@
 module Nominal.Atoms.Logic where
 
 import Data.List (permutations)
+import Data.Map (Map)
 import Nominal.Formula.Definition (Formula)
 import Nominal.Formula.Constructors (equals, false, lessThan, notEquals, true)
 import Nominal.Formula.Operators (simplifiedAnd)
@@ -34,6 +35,9 @@ class AtomsLogic where
     -- | Simplify given formula.
     simplifyFormula :: Formula -> Formula
 
+    -- | Returns a model for a given formula or report an error when formula is unsatisfied.
+    model :: Formula -> Map Variable Variable
+
 ----------------------------------------------------------------------------------------------------
 -- Current atoms logic
 ----------------------------------------------------------------------------------------------------
@@ -63,6 +67,7 @@ instance AtomsLogic where
     isTrue = S.isTrue S.lra
     isFalse = S.isFalse S.lra
     simplifyFormula = S.simplifyFormula S.lra
+    model = S.model S.lra
 
 #else
 
@@ -73,5 +78,6 @@ instance AtomsLogic where
     isTrue = S.isTrue S.lia
     isFalse = S.isFalse S.lia
     simplifyFormula = S.simplifyFormula S.lia
+    model = S.model S.lia
 
 #endif

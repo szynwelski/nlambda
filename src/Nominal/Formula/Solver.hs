@@ -1,7 +1,7 @@
-module Nominal.Formula.Solver (isTrue, isFalse, lia, lra, simplifyFormula) where
+module Nominal.Formula.Solver (isTrue, isFalse, lia, lra, model, simplifyFormula) where
 
 import Control.Applicative ((<|>), (*>), (<*))
-import Data.Attoparsec.ByteString.Char8 (Parser, char, decimal, isDigit, letter_ascii, many1, sepBy, sepBy1, skipWhile, string, takeWhile, takeWhile1)
+import Data.Attoparsec.ByteString.Char8 (Parser, char, digit, isDigit, letter_ascii, many1, sepBy, sepBy1, skipWhile, string, takeWhile, takeWhile1)
 import Data.Attoparsec.ByteString.Lazy (Result(Done, Fail), parse)
 import Data.ByteString.Builder (Builder, char8, intDec, string8, toLazyByteString, wordDec)
 import qualified Data.ByteString.Char8 as S -- strict
@@ -9,11 +9,12 @@ import qualified Data.ByteString.Lazy.Char8 as L -- lazy
 import Data.Char (isSpace)
 import Data.List (find)
 import Data.List.Utils (split)
+import Data.Map (Map, empty, fromList)
 import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>), mconcat, mempty)
-import Data.Set (elems, fromList, null)
+import Data.Set (elems, null)
 import Data.Word (Word)
-import Nominal.Atoms.Signature (Relation(..), relationAscii, relations)
+import Nominal.Atoms.Signature (Constant, Relation(..), relationAscii, relations)
 import Nominal.Formula.Constructors
 import Nominal.Formula.Definition
 import Nominal.Formula.Operators
@@ -31,13 +32,13 @@ import System.Process.ByteString.Lazy (readProcessWithExitCode)
 data SmtLogic = SmtLogic {sort :: String, logic :: String, constantToSmt :: String -> SmtScript,
                           parseConstant :: Parser Variable}
 
-parseInt :: Parser Variable
-parseInt = do
-    x <- decimal
-    return $ constantVar $ show x
+signed :: Parser String -> Parser Variable
+signed parser = do
+    n <- (('-' :) <$> (text "(-" *> spaces *> parser <* spaces <* char ')')) <|> parser
+    return $ constantVar n
 
 lia :: SmtLogic
-lia = SmtLogic "Int" "LIA" string8 parseInt
+lia = SmtLogic "Int" "LIA" string8 (signed $ many1 digit)
 
 ratioToSmt :: String -> SmtScript
 ratioToSmt r = let rs = split "/" r
@@ -45,20 +46,20 @@ ratioToSmt r = let rs = split "/" r
                   then string8 r
                   else string8 "(/ " <> string8 (head rs) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'
 
-parseRatio :: Parser Variable
+parseRatio :: Parser String
 parseRatio = do
     text "(/"
     spaces
-    x <- decimal
+    x <- many1 digit
     text ".0"
     spaces
-    y <- decimal
+    y <- many1 digit
     text ".0"
     char ')'
-    return $ constantVar $ show x ++ "/" ++ show y
+    return $ x ++ "/" ++ y
 
 lra :: SmtLogic
-lra = SmtLogic "Real" "LRA" ratioToSmt ((parseInt <* text ".0") <|> parseRatio)
+lra = SmtLogic "Real" "LRA" ratioToSmt (signed ((many1 digit <* text ".0") <|> parseRatio))
 
 ----------------------------------------------------------------------------------------------------
 -- SMT Solver
@@ -167,6 +168,9 @@ isNotSatisfiable = (== "unsat") . filter (Prelude.not . isSpace) . L.unpack
 simplifyScript :: SmtLogic -> Formula -> SmtScript
 simplifyScript = getSmtScript "(apply ctx-solver-simplify)"
 
+getModelScript :: SmtLogic -> Formula -> SmtScript
+getModelScript = getSmtScript "(check-sat)(get-model)"
+
 ----------------------------------------------------------------------------------------------------
 -- Formula solving
 ----------------------------------------------------------------------------------------------------
@@ -189,6 +193,12 @@ simplifyFormula _ (Formula _ F) = false
 simplifyFormula _ f@(Formula True _) = f
 simplifyFormula l f = parseSimplifiedFormula l $ runSolver z3Solver $ simplifyScript l f
 
+model :: SmtLogic -> Formula -> Map Variable Variable
+model _ (Formula _ T) = empty
+model l f = if isFalse l f
+            then error "No model for unsatisfied formula."
+            else parseModelResult l $ runSolver z3Solver $ getModelScript l f
+
 ----------------------------------------------------------------------------------------------------
 -- Parser of the result of simplification
 ----------------------------------------------------------------------------------------------------
@@ -205,13 +215,16 @@ text = string . S.pack
 spaces :: Parser ()
 spaces = skipWhile isSpace
 
-parseSimplifiedFormula :: SmtLogic -> SmtResult -> Formula
-parseSimplifiedFormula l output =
-  case parse (parseGoals l) output of
-    Fail rest ctx e -> error $ unlines ["Fail to parse SMT Solver output:",
+parseError :: SmtResult -> [String] -> String -> a
+parseError rest ctx e = error $ unlines ["Fail to parse SMT Solver output:",
                                         "- not parsed output: " ++ show rest,
                                         "- list of contexts in which the error occurred: " ++ show ctx,
                                         "- error message: " ++ show e]
+
+parseSimplifiedFormula :: SmtLogic -> SmtResult -> Formula
+parseSimplifiedFormula l output =
+  case parse (parseGoals l) output of
+    Fail rest ctx e -> parseError rest ctx e
     Done _ f -> f
 
 parseGoals :: SmtLogic -> Parser Formula
@@ -253,8 +266,8 @@ parseDepth :: Parser (S.ByteString, S.ByteString)
 parseDepth = do
     k <- text ":depth"
     spaces
-    v <- decimal
-    return (k, S.pack $ show v)
+    v <- many1 digit
+    return (k, S.pack v)
 
 parseFormula :: SmtLogic -> Parser Formula
 parseFormula l = parseTrue <|> parseFalse <|> parseConstraint l <|> parseNot l <|> parseAnd l <|> parseOr l
@@ -319,3 +332,42 @@ parseOr l = do
     fs <- parseFormula l `sepBy1` spaces
     char ')'
     return $ simplifiedOr fs
+
+----------------------------------------------------------------------------------------------------
+-- Parser of the model for formula
+----------------------------------------------------------------------------------------------------
+
+parseModelResult :: SmtLogic -> SmtResult -> Map Variable Variable
+parseModelResult  l output =
+  case parse (parseModelOutput l) output of
+    Fail rest ctx e -> parseError rest ctx e
+    Done _ m -> m
+
+parseModelOutput :: SmtLogic -> Parser (Map Variable Variable)
+parseModelOutput l = do
+    text "sat"
+    spaces
+    parseModel l
+
+parseModel :: SmtLogic -> Parser (Map Variable Variable)
+parseModel l = do
+    text "(model"
+    spaces
+    vs <- parseModelVariable l `sepBy1` spaces
+    spaces
+    char ')'
+    return $ fromList vs
+
+parseModelVariable l = do
+    text "(define-fun"
+    spaces
+    v <- parseIterationVariable <|> parseVariable
+    spaces
+    text "()"
+    spaces
+    text (sort l)
+    spaces
+    c <- parseConstant l
+    spaces
+    char ')'
+    return (v,c)

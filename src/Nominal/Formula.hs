@@ -33,10 +33,11 @@ module Nominal.Formula (
     -- ** Formula solving
     isTrue,
     isFalse,
+    model,
     simplifyFormula,
     solve) where
 
-import Nominal.Atoms.Logic (existsVar, forAllVars, isFalse, isTrue, simplifyFormula)
+import Nominal.Atoms.Logic (existsVar, forAllVars, model, isFalse, isTrue, simplifyFormula)
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
 import Nominal.Formula.Operators
