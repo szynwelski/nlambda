@@ -1,6 +1,6 @@
 module Nominal.Formula.Constructors where
 
-import Nominal.Atoms.Signature (Relation(..), checkConstants, symmetricRelation)
+import Nominal.Atoms.Signature (Relation(..), relationFunction, symmetricRelation)
 import Nominal.Formula.Definition
 import Nominal.Variable (Variable, isConstant, constantValue)
 
@@ -27,7 +27,7 @@ fromBool False = false
 
 constraint :: Relation -> Variable -> Variable -> Formula
 constraint r x1 x2
-    | isConstant x1 && isConstant x2 = fromBool $ checkConstants r (constantValue x1) (constantValue x2)
+    | isConstant x1 && isConstant x2 = fromBool $ relationFunction r (constantValue x1) (constantValue x2)
     | x1 == x2 = if r == LessThan || r == GreaterThan || r == NotEquals then false else true
     | x1 > x2 = Formula True $ Constraint (symmetricRelation r) x2 x1
     | otherwise = Formula True $ Constraint r x1 x2

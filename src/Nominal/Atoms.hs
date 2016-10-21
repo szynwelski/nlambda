@@ -1,6 +1,6 @@
 module Nominal.Atoms where
 
-import Nominal.Atoms.Signature (Constant, showConstant)
+import Nominal.Atoms.Signature (Constant)
 import Nominal.Formula
 import Nominal.Variable (Variable, constantVar, variable)
 import Nominal.Variants (Variants, variant, variantsRelation)
@@ -18,7 +18,7 @@ atom = variant . variable
 
 -- | Creates atom representing given constant
 constant :: Constant -> Atom
-constant = variant . constantVar . showConstant
+constant = variant . constantVar
 
 -- | Creates a formula that describes the "<" relation between given atoms.
 --

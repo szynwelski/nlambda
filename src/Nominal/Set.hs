@@ -68,6 +68,8 @@ sizeWith,
 maxSize,
 maxSizeWith,
 isSingleton,
+-- ** Set element
+element,
 -- ** Set of atoms properties
 range,
 openRange,
@@ -99,6 +101,7 @@ import Data.Word (Word)
 import GHC.Generics (Generic)
 import Nominal.Atoms
 import Nominal.Atoms.Logic (exclusiveConditions)
+import Nominal.Atoms.Signature (defaultConstant)
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
@@ -109,8 +112,8 @@ import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, freeVariables, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
-import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, getIterationLevel, hasIdentifierEquals,
-                         hasIdentifierNotEquals, iterationVariablesList, iterationVariable, setIdentifier, variableName)
+import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, constantVar, getIterationLevel, hasIdentifierEquals,
+                         hasIdentifierNotEquals, iterationVariablesList, iterationVariable, setIdentifier)
 import Nominal.Variants (Variants, fromVariant, toList, variant)
 import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
@@ -558,6 +561,22 @@ maxSizeWith eq s = Maybe.maybe (findSize s 1) (listMaxSizeWith eq) (setValues s)
 -- It is an inefficient function for large sets and will not return the answer for the infinite sets.
 maxSize :: (Contextual a, NominalType a) => Set a -> Int
 maxSize = maxSizeWith eq
+
+----------------------------------------------------------------------------------------------------
+-- Finding set element
+----------------------------------------------------------------------------------------------------
+
+-- | Returns some given element of a set or 'Nothing' if the set is empty.
+-- The function report error if the set constains only elements with conditions with free variables.
+element :: NominalType a => Set a -> Maybe a
+element s
+    | P.not (Map.null withoutFree) = Just $ replaceVariables vsMap v
+    | Map.null withFree = Nothing
+    | otherwise = error "Can't get element for set with only conditions with free variables"
+    where notEmpty = Map.filter (P.not . isFalse . snd) (setElements s)
+          (withoutFree, withFree) = Map.partition (\(vs, c) -> Set.null $ freeVariables c Set.\\ vs) notEmpty
+          (v, (vs, c)) = Map.findMin withoutFree
+          vsMap = model c `Map.union` Map.fromList ((\v -> (v, constantVar defaultConstant)) <$> Set.elems vs)
 
 ----------------------------------------------------------------------------------------------------
 -- Set of atoms properties

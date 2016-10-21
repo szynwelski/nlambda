@@ -40,7 +40,7 @@ import Nominal.Set as NLambda
 import Nominal.Set as NLambda hiding (range, openRange, isLowerBound, hasLowerBound, isUpperBound, hasUpperBound, isMinimum, hasMinimum, isMaximum, hasMaximum, isInfimum, isSupremum, isConnected, isOpen, isClosed, isCompact)
 #endif
 import Nominal.Type as NLambda (BareNominalType(..), NominalType(..), Scope, MapVarFun, FoldVarFun, neq)
-import Nominal.Variable as NLambda (Variable, variable, variableName)
+import Nominal.Variable as NLambda (Variable, variable)
 import Nominal.Variants as NLambda (Variants, variant, fromVariant, iteV)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 

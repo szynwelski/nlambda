@@ -4,7 +4,6 @@ Identifier,
 Variable,
 constantVar,
 variable,
-variableName,
 iterationVariable,
 iterationVariablesList,
 isConstant,
@@ -23,6 +22,7 @@ import GHC.Generics (Generic)
 import Data.Map (Map, findWithDefault)
 import Data.Word (Word)
 import Numeric (showIntAtBase)
+import Nominal.Atoms.Signature (Constant, showConstant)
 import qualified Nominal.Text.Symbols as Symbols
 
 ----------------------------------------------------------------------------------------------------
@@ -32,7 +32,7 @@ import qualified Nominal.Text.Symbols as Symbols
 type Identifier = Word
 
 -- | Free variable in a 'Nominal.Formula' or iteration variable in a 'Nominal.Set' or constant.
-data Variable = Var String | IterationVariable Int Int (Maybe Identifier) | ConstantVar String deriving (Eq, Ord, Generic, NFData)
+data Variable = Var String | IterationVariable Int Int (Maybe Identifier) | ConstantVar Constant deriving (Eq, Ord, Generic, NFData)
 
 ----------------------------------------------------------------------------------------------------
 -- Constant
@@ -42,24 +42,21 @@ isConstant :: Variable -> Bool
 isConstant (ConstantVar _) = True
 isConstant _ = False
 
-constantValue :: Variable -> String
+constantValue :: Variable -> Constant
 constantValue (ConstantVar value) = value
 constantValue _ = error "function constantValue can be applied only for constants"
 
 ----------------------------------------------------------------------------------------------------
--- Variable name
+-- Show
 ----------------------------------------------------------------------------------------------------
 
 variableNameBeforeIndex :: Int -> String
 variableNameBeforeIndex level = showIntAtBase 25 (toEnum . (+97)) level ""
 
--- | Returns the name of the variable.
-variableName :: Variable -> String
-variableName (Var name) = name
-variableName (IterationVariable level index _) = variableNameBeforeIndex level ++ Symbols.subscriptIndex index
-
 instance Show Variable where
-    show v = if isConstant v then constantValue v else variableName v
+    show (Var name) = name
+    show (IterationVariable level index _) = variableNameBeforeIndex level ++ Symbols.subscriptIndex index
+    show (ConstantVar value) = showConstant value
 
 ----------------------------------------------------------------------------------------------------
 -- Variable parts
@@ -79,7 +76,7 @@ fromParts (Right (level, index, id)) = IterationVariable level index id
 
 -- | Creates a constant with a given value
 
-constantVar :: String -> Variable
+constantVar :: Constant -> Variable
 constantVar = ConstantVar
 
 -- | Creates a variable with a given name.

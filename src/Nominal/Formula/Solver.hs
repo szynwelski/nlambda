@@ -14,7 +14,7 @@ import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>), mconcat, mempty)
 import Data.Set (elems, null)
 import Data.Word (Word)
-import Nominal.Atoms.Signature (Constant, Relation(..), relationAscii, relations)
+import Nominal.Atoms.Signature (Constant, Relation(..), readConstant, relationAscii, relations)
 import Nominal.Formula.Constructors
 import Nominal.Formula.Definition
 import Nominal.Formula.Operators
@@ -29,19 +29,20 @@ import System.Process.ByteString.Lazy (readProcessWithExitCode)
 -- SmtLogic
 ----------------------------------------------------------------------------------------------------
 
-data SmtLogic = SmtLogic {sort :: String, logic :: String, constantToSmt :: String -> SmtScript,
+data SmtLogic = SmtLogic {sort :: String, logic :: String, constantToSmt :: Constant -> SmtScript,
                           parseConstant :: Parser Variable}
 
 signed :: Parser String -> Parser Variable
 signed parser = do
     n <- (('-' :) <$> (text "(-" *> spaces *> parser <* spaces <* char ')')) <|> parser
-    return $ constantVar n
+    return $ constantVar $ readConstant n
 
 lia :: SmtLogic
-lia = SmtLogic "Int" "LIA" string8 (signed $ many1 digit)
+lia = SmtLogic "Int" "LIA" (string8 . show) (signed $ many1 digit)
 
-ratioToSmt :: String -> SmtScript
-ratioToSmt r = let rs = split "/" r
+ratioToSmt :: Constant -> SmtScript
+ratioToSmt c = let r = show c
+                   rs = split "/" r
                in if length rs == 1
                   then string8 r
                   else string8 "(/ " <> string8 (head rs) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'

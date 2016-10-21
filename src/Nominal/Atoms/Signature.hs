@@ -51,9 +51,6 @@ relationFunction GreaterEquals = (>=)
 relationFunction Equals = (==)
 relationFunction NotEquals = (/=)
 
-checkConstants :: Relation -> String -> String -> Bool
-checkConstants r x y = relationFunction r (readConstant x) (readConstant y)
-
 ----------------------------------------------------------------------------------------------------
 -- Atoms signature
 ----------------------------------------------------------------------------------------------------
@@ -69,6 +66,9 @@ class AtomsSignature where
     -- | Returns constant for text representation
     readConstant :: String -> Constant
 
+    -- | Default constant value
+    defaultConstant :: Constant
+
 ----------------------------------------------------------------------------------------------------
 -- Current atoms type
 ----------------------------------------------------------------------------------------------------
@@ -81,6 +81,7 @@ instance AtomsSignature where
     showConstant x = let (n,d) = (numerator x, denominator x)
                                           in if d == 1 then show n else show n ++ "/" ++ show d
     readConstant x = if elem '/' x then read $ replace "/" "%" x else read $ x ++ "%1"
+    defaultConstant = 0
 
 #else
 
@@ -89,5 +90,6 @@ instance AtomsSignature where
     minRelations = [Equals]
     showConstant = show
     readConstant = read
+    defaultConstant = 0
 
 #endif
