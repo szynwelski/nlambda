@@ -68,8 +68,9 @@ sizeWith,
 maxSize,
 maxSizeWith,
 isSingleton,
--- ** Set element
+-- ** Set elements
 element,
+toList,
 -- ** Set of atoms properties
 range,
 openRange,
@@ -88,10 +89,10 @@ isOpen,
 isClosed,
 isCompact) where
 
-import Control.Arrow ((***))
+import Control.Arrow ((***), first)
 import Control.DeepSeq (NFData)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
-import qualified Data.List as List ((\\))
+import qualified Data.List as List ((\\), partition)
 import Data.List.Utils (join)
 import qualified Data.Maybe as Maybe
 import Data.Map (Map)
@@ -106,15 +107,15 @@ import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Formula.Constructors (constraint)
-import Nominal.Formula.Operators (getEquationsFromFormula)
+import Nominal.Formula.Operators (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, freeVariables, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
 import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, constantVar, getIterationLevel, hasIdentifierEquals,
-                         hasIdentifierNotEquals, iterationVariablesList, iterationVariable, setIdentifier)
-import Nominal.Variants (Variants, fromVariant, toList, variant)
+                         hasIdentifierNotEquals, isConstant, iterationVariablesList, iterationVariable, setIdentifier)
+import Nominal.Variants (Variants, fromVariant, variant)
 import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
 import qualified Prelude as P
@@ -197,7 +198,7 @@ applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetEle
 applyWithIdentifiers f (v, cond) =
     let id = getVariableId $ fst cond
         (v', cond') = mapVariablesIf (flip Set.member $ fst cond) (setIdentifier id) (v, cond)
-    in fmap (\(v'', c) -> checkIdentifiers id (v', (v'', fmap (/\ c) cond'))) (toList $ variants $ f v')
+    in fmap (\(v'', c) -> checkIdentifiers id (v', (v'', fmap (/\ c) cond'))) (V.toList $ variants $ f v')
 
 ----------------------------------------------------------------------------------------------------
 -- Set
@@ -274,7 +275,7 @@ isNotEmpty (Set es) = or (getCondition <$> Map.elems es)
 
 -- | Insert an element to a set.
 insert :: NominalType a => a -> Set a -> Set a
-insert e (Set es) = Set $ foldr insertVariant es (toList $ variants e)
+insert e (Set es) = Set $ foldr insertVariant es (V.toList $ variants e)
     where insertVariant (v, c) = Map.insertWith sumCondition v (Set.empty, c)
 
 -- | Delete an element from a set.
@@ -567,16 +568,41 @@ maxSize = maxSizeWith eq
 ----------------------------------------------------------------------------------------------------
 
 -- | Returns some given element of a set or 'Nothing' if the set is empty.
--- The function report error if the set constains only elements with conditions with free variables.
-element :: NominalType a => Set a -> Maybe a
+-- The function report error if the set has condition with constraint between free variable and iteration variable
+element :: (Contextual a, NominalType a) => Set a -> NominalMaybe a
 element s
-    | P.not (Map.null withoutFree) = Just $ replaceVariables vsMap v
-    | Map.null withFree = Nothing
-    | otherwise = error "Can't get element for set with only conditions with free variables"
-    where notEmpty = Map.filter (P.not . isFalse . snd) (setElements s)
-          (withoutFree, withFree) = Map.partition (\(vs, c) -> Set.null $ freeVariables c Set.\\ vs) notEmpty
-          (v, (vs, c)) = Map.findMin withoutFree
-          vsMap = model c `Map.union` Map.fromList ((\v -> (v, constantVar defaultConstant)) <$> Set.elems vs)
+    | null notEmpty = nothing
+    | P.not $ null bad = error "Cannot get element from set with constraint between free variable and iteration variable"
+    | otherwise = ite condition (V.fromList $ first Just <$> variants) nothing
+    where notEmpty = Map.assocs $ Map.filter (P.not . isFalse . snd) (setElements s)
+          withConstraints = fmap (\(v, (vs, c)) -> (v, vs, c, getConstraintsFromFormula c)) notEmpty
+          (good, bad) = List.partition (\(v, vs, c, cs) -> P.all (checkConstraint vs) cs) withConstraints
+          checkConstraint vs (r, x1, x2) = isConstant x1 || isConstant x2 || (Set.member x1 vs == Set.member x2 vs)
+          getResult [] cond = ([], cond)
+          getResult ((v, vs, c, cs):rest) cond = let variants = getVariants v vs (not cond /\ c) (freeVars vs cs)
+                                                     newCond = cond \/ or (snd <$> variants)
+                                                     (restVariants, finalCond) = getResult rest newCond
+                                                 in  if isTrue newCond
+                                                     then (variants, true)
+                                                     else (variants ++ restVariants, finalCond)
+          freeVars vs cs = Set.elems $ Set.fromList (concatMap (\(r, x1, x2) -> [x1, x2]) cs) Set.\\ vs
+          getVariants val vs cond free = Maybe.mapMaybe (\ctx -> let c = ctx /\ cond
+                                                                 in if isFalse c
+                                                                    then Nothing
+                                                                    else Just $ getElemValue val vs c) (Set.toList $ Set.fromList $ exclusiveConditions free)
+          getModel cond vs = Map.filterWithKey (\x -> const $ Set.member x vs) (model cond)
+                             `Map.union`
+                             Map.fromList ((\x -> (x, constantVar defaultConstant)) <$> Set.elems vs)
+          getElemValue val vs cond = simplify $ replaceVariables (getModel cond vs) (val, cond)
+          (variants, condition) = getResult good false
+
+-- | Converts set without conditions and iteration variables to list
+toList :: Set a -> [a]
+toList (Set es) = go $ Map.assocs es
+    where go [] = []
+          go ((v, (vs, c)):rest) = if Set.null vs && c == true
+                                   then v : go rest
+                                   else error "Cannot convert set with condition or iteration variables to list"
 
 ----------------------------------------------------------------------------------------------------
 -- Set of atoms properties

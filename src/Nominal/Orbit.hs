@@ -1,13 +1,15 @@
 module Nominal.Orbit where
 
 import Data.List (elemIndex, delete)
-import Data.Set (elems, empty, insert)
+import Data.Set (elems, insert)
 import Nominal.Atoms (Atom)
 import Nominal.Atoms.Signature (minRelations)
+import Nominal.Conditional (ite)
 import Nominal.Contextual (Contextual)
 import Nominal.Formula.Constructors (constraint)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
-import Nominal.Set (Set, filter, intersect, isSingleton, map, maxSizeWith, replicateAtoms, replicateSetUntil, sizeWith, sum, unions)
+import Nominal.Maybe (NominalMaybe)
+import Nominal.Set (Set, element, empty, filter, intersect, isSingleton, map, maxSizeWith, member, replicateAtoms, replicateSetUntil, sizeWith, sum, unions)
 import Nominal.Type (NominalType, Scope(..), eq, freeVariables, mapVariables)
 import Nominal.Variants (Variants, fromVariant, variant, variantsRelation)
 import Prelude hiding (and, filter, map, sum)
@@ -49,8 +51,8 @@ orbit supp elem = map mapFun $ filter filterFun $ replicateAtoms elSuppSize
   where elSupp = support elem
         elSuppSize = length elSupp
         mapFun list = groupAction (\x -> maybe x (list !!) (elemIndex x elSupp)) elem
-        relFun list rel = and [rel (list!!pred i) (list!!pred j) <==> rel (elSupp!!pred i) (elSupp!!pred j) | i<-[1..elSuppSize], j<-[1..elSuppSize], i<j]
-                       /\ and [rel (list!!pred i) (supp!!pred j) <==> rel (elSupp!!pred i) (supp!!pred j) | i<-[1..elSuppSize], j<-[1..length supp]]
+        relFun list rel = and [rel (list!!i) (list!!j) <==> rel (elSupp!!i) (elSupp!!j) | i<-[0..elSuppSize-1], j<-[0..elSuppSize-1], i<j]
+                       /\ and [rel (list!!i) (supp!!j) <==> rel (elSupp!!i) (supp!!j) | i<-[0..elSuppSize-1], j<-[0..length supp - 1]]
         filterFun list = and $ fmap (relFun list . variantsRelation . constraint) minRelations
 
 multiorbit :: NominalType a => a -> Set a
@@ -64,11 +66,15 @@ hull supp = sum . map (orbit supp)
 
 -- | Returns an orbit of an element in a set.
 setOrbit :: NominalType a => Set a -> a -> Set a
-setOrbit s = orbit $ leastSupport s
+setOrbit s e = ite (member e s) (orbit (leastSupport s) e) empty
 
 -- | Returns all orbits of a set.
 setOrbits :: NominalType a => Set a -> Set (Set a)
 setOrbits s = map (setOrbit s) s
+
+-- | Returns set of elements for all orbits of a set.
+setOrbitsRepresentatives :: (Contextual a, NominalType a) => Set a -> Set (NominalMaybe a)
+setOrbitsRepresentatives = map element . setOrbits
 
 -- | Returns a number of orbits of a set.
 -- It uses 'size' function which is inefficient for large sets and will not return the answer for the infinite sets.

@@ -5,7 +5,7 @@ import Data.List (permutations)
 import Data.Map (Map)
 import Nominal.Formula.Definition (Formula)
 import Nominal.Formula.Constructors (equals, false, lessThan, notEquals, true)
-import Nominal.Formula.Operators (simplifiedAnd)
+import Nominal.Formula.Operators (and)
 import qualified Nominal.Formula.Solver as S
 import qualified Nominal.Formula.Quantification as Q
 import Nominal.Variable (Variable)
@@ -55,7 +55,7 @@ pairwiseDifferent :: [Variable] -> [Formula]
 pairwiseDifferent vs = [notEquals v1 v2 | v1 <- vs, v2 <- vs, v1 < v2]
 
 equivalenceClasses :: ([Variable] -> [Formula]) -> [[Variable]] -> Formula
-equivalenceClasses classRelations parts = simplifiedAnd (classRelations (fmap head parts) ++ classes)
+equivalenceClasses classRelations parts = and (classRelations (fmap head parts) ++ classes)
     where classes = concatMap (consecutiveRelations equals) parts
 
 #if TOTAL_ORDER

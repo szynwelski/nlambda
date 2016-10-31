@@ -1,5 +1,6 @@
 module Nominal.Formula.Operators where
 
+import Data.Maybe (isJust)
 import qualified Data.MultiMap as MM
 import Data.Set
 import Nominal.Atoms.Signature (Relation(..))
@@ -246,7 +247,15 @@ replaceFormulaVariable :: Variable -> Variable -> Formula -> Formula
 replaceFormulaVariable oldVar newVar = mapFormulaVariables (\var -> if oldVar == var then newVar else var)
 
 getEquationsFromFormula :: Formula -> Set (Variable, Variable)
-getEquationsFromFormula f = go (formula f)
+getEquationsFromFormula f = go $ formula f
     where go (Constraint Equals x1 x2) = singleton (x1, x2)
           go (And fs) = unions $ elems $ map (go . formula) fs
           go _ = empty
+
+getConstraintsFromFormula :: Formula -> [(Relation, Variable, Variable)]
+getConstraintsFromFormula f = go $ formula f
+    where go (Constraint r x1 x2) = [(r, x1, x2)]
+          go (And fs) = concatMap (go . formula) $ elems fs
+          go (Or fs) = concatMap (go . formula) $ elems fs
+          go (Not f) = go $ formula f
+          go _ = []

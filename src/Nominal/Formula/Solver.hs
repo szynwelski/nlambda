@@ -42,7 +42,7 @@ lia = SmtLogic "Int" "LIA" (string8 . show) (signed $ many1 digit)
 
 ratioToSmt :: Constant -> SmtScript
 ratioToSmt c = let r = show c
-                   rs = split "/" r
+                   rs = split "%" r
                in if length rs == 1
                   then string8 r
                   else string8 "(/ " <> string8 (head rs) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'
