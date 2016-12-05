@@ -37,6 +37,12 @@ newtype Variants a = Variants (Map a Formula) deriving (Eq, Ord, Generic, NFData
 variant :: a -> Variants a
 variant x = Variants $ Map.singleton x true
 
+-- Currently only reads singletons
+instance Read a => Read (Variants a) where
+    readsPrec n str = case readsPrec n str of
+        [(x, str2)] -> [(variant x, str2)]
+        _ -> []
+
 instance Show a => Show (Variants a) where
     show (Variants vs) = join " | " (showVariant <$> Map.assocs vs)
       where showVariant (v, c) = show v ++ if c == true then "" else " : " ++ show c
