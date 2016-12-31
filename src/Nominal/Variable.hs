@@ -19,11 +19,15 @@ fromParts) where
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
+import GHC.Unicode (isAsciiLower)
 import Data.Map (Map, findWithDefault)
 import Data.Word (Word)
 import Numeric (showIntAtBase)
-import Nominal.Atoms.Signature (Constant, showConstant)
+import Nominal.Atoms.Signature (Constant, readConstant, showConstant)
 import qualified Nominal.Text.Symbols as Symbols
+import Nominal.Util.Read (skipSpaces)
+import Text.Read (Lexeme(Ident), ReadPrec, (+++), (<++), lexP, lift, parens, readPrec)
+import Text.Read.Lex (readIntP)
 
 ----------------------------------------------------------------------------------------------------
 -- Variable
@@ -57,6 +61,25 @@ instance Show Variable where
     show (Var name) = name
     show (IterationVariable level index _) = variableNameBeforeIndex level ++ Symbols.subscriptIndex index
     show (ConstantVar value) = showConstant value
+
+----------------------------------------------------------------------------------------------------
+-- Read
+----------------------------------------------------------------------------------------------------
+
+readLevelFromVariableNameBeforeIndex :: ReadPrec Int
+readLevelFromVariableNameBeforeIndex = lift $ readIntP 25 isAsciiLower ((+ (-97)) . fromEnum)
+
+instance Read Variable where
+    readPrec = parens $ do value <- readConstant
+                           return $ ConstantVar value
+                        +++
+                        do skipSpaces
+                           level <- readLevelFromVariableNameBeforeIndex
+                           index <- Symbols.readSubscriptIndex
+                           return $ iterationVariable level index
+                        <++
+                        do Ident name <- lexP
+                           return $ Var name
 
 ----------------------------------------------------------------------------------------------------
 -- Variable parts

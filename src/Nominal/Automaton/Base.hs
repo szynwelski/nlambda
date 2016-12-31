@@ -16,7 +16,7 @@ import Prelude hiding (filter, map, not)
 
 -- | An automaton with a set of state with type __q__ accepting\/rejecting words from an alphabet with type __a__.
 data Automaton q a = Automaton {states :: Set q, alphabet :: Set a, delta :: Set (q, a, q),
-                                initialStates :: Set q, finalStates :: Set q} deriving (Eq, Ord, Show)
+                                initialStates :: Set q, finalStates :: Set q} deriving (Eq, Ord, Show, Read)
 
 -- | An automaton constructor.
 automaton :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a

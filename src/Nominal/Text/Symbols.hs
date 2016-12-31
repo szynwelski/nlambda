@@ -1,13 +1,22 @@
 {-# LANGUAGE CPP #-}
-
 module Nominal.Text.Symbols where
+
+import Numeric (showIntAtBase)
+import Text.Read (ReadPrec, lift, readPrec)
+import Text.Read.Lex (readIntP)
+import Text.ParserCombinators.ReadP (char)
 
 -- I have put the symbols into a single file
 -- This way, we only need CPP here, and not
 -- sprinkled thoughout the library
 
-inSet, atoms, lt, leq, gt, geq, eq, neq, not, or, and :: String
+for, inSet, atoms, lt, leq, gt, geq, eq, neq, not, or, and, valueCondSep, variantsSep :: String
 subscriptIndex :: Int -> String
+readSubscriptIndex :: ReadPrec Int
+
+for = "for"
+valueCondSep = ":"
+variantsSep = "|"
 
 #ifdef DISABLE_UNICODE
 
@@ -22,10 +31,13 @@ gt  = ">"
 geq = ">="
 
 not = "~"
-or = " \\/ "
-and = " /\\ "
+or = "\\/"
+and = "/\\"
 
 subscriptIndex n = "_" ++ show n
+readSubscriptIndex =
+    do lift (char '_')
+       readPrec
 
 #else
 
@@ -40,13 +52,16 @@ gt  = ">"
 geq = "≥"
 
 not = "¬"
-or = " ∨ "
-and = " ∧ "
+or = "∨"
+and = "∧"
 
-digits :: Integral x => x -> [x]
-digits 0 = []
-digits x = digits (x `div` 10) ++ [x `mod` 10]
+fromSubscript :: Char -> Int
+fromSubscript c = fromEnum c - 8320
 
-subscriptIndex n = fmap (toEnum . (+ 8320)) (digits n)
+isSubscript :: Char -> Bool
+isSubscript c = let i = fromSubscript c in i >= 0 && i < 10
+
+subscriptIndex n = showIntAtBase 10 (toEnum . (+8320)) n ""
+readSubscriptIndex = lift $ readIntP 10 isSubscript fromSubscript
 
 #endif

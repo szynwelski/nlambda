@@ -75,7 +75,7 @@ andFromSet fs = if member false fs
 -- > f /\ false == false
 -- > f /\ true  == f
 -- > f /\ g     == g /\ f
-infixr 4 /\
+infixr 3 /\
 (/\) :: Formula -> Formula -> Formula
 Formula _ F /\ _ = false
 _ /\ Formula _ F = false
@@ -126,7 +126,7 @@ orFromSet fs = if member true fs
 -- > f \/ true  == true
 -- > f \/ false == f
 -- > f \/ g     == g \/ f
-infixr 3 \/
+infixr 4 \/
 (\/) :: Formula -> Formula -> Formula
 Formula _ T \/ _ = true
 _ \/ Formula _ T = true
@@ -175,7 +175,7 @@ not (Formula s f) = Formula s (createNot f)
 -- > false ==> f    == true
 -- > f     ==> true == true
 -- > f     ==> g    == g <== f
-infix 2 ==>
+infix 5 ==>
 (==>) :: Formula -> Formula -> Formula
 f1 ==> f2 = not f1 \/ f2
 
@@ -184,7 +184,7 @@ f1 ==> f2 = not f1 \/ f2
 -- > f    <== false == true
 -- > true <== f     == true
 -- > f    <== g     == g ==> f
-infix 2 <==
+infix 5 <==
 (<==) :: Formula -> Formula -> Formula
 f1 <== f2 = f1 \/ not f2
 
@@ -201,7 +201,7 @@ implies = (==>)
 -- > f <==> f     == true
 -- > f <==> not f == false
 -- > f <==> g     == (f /\ g \/ not f /\ not g)
-infix 2 <==>
+infix 6 <==>
 (<==>) :: Formula -> Formula -> Formula
 f1 <==> f2 = (f1 /\ f2) \/ (not f1 /\ not f2)
 

@@ -35,7 +35,7 @@ data SmtLogic = SmtLogic {sort :: String, logic :: String, constantToSmt :: Cons
 signed :: Parser String -> Parser Variable
 signed parser = do
     n <- (('-' :) <$> (text "(-" *> spaces *> parser <* spaces <* char ')')) <|> parser
-    return $ constantVar $ readConstant n
+    return $ constantVar $ read n
 
 lia :: SmtLogic
 lia = SmtLogic "Int" "LIA" (string8 . show) (signed $ many1 digit)

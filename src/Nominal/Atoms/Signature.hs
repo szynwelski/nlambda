@@ -4,33 +4,23 @@ module Nominal.Atoms.Signature where
 
 import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
-import qualified Nominal.Text.Symbols as Symbols
+import Nominal.Text.Symbols
+import Text.ParserCombinators.ReadP (choice, string)
+import Text.Read (ReadPrec, (<++), lift, parens, readPrec, step)
 
 #if TOTAL_ORDER
-import Data.Ratio (denominator, numerator)
+import GHC.Read (expectP)
+import Data.Ratio ((%), denominator, numerator)
 import Data.String.Utils (replace)
+import Text.Read.Lex (Lexeme(Symbol))
 #endif
+
+
 
 ----------------------------------------------------------------------------------------------------
 -- Relation
 ----------------------------------------------------------------------------------------------------
 data Relation = LessThan | LessEquals | Equals | NotEquals | GreaterEquals | GreaterThan deriving (Eq, Ord, Enum, Generic, NFData)
-
-instance Show Relation where
-    show LessThan      = Symbols.lt
-    show LessEquals    = Symbols.leq
-    show Equals        = Symbols.eq
-    show NotEquals     = Symbols.neq
-    show GreaterThan   = Symbols.gt
-    show GreaterEquals = Symbols.geq
-
-relationAscii :: Relation -> String
-relationAscii LessThan = "<"
-relationAscii LessEquals = "<="
-relationAscii Equals = "="
-relationAscii NotEquals = "/="
-relationAscii GreaterThan = ">"
-relationAscii GreaterEquals = ">="
 
 relations :: [Relation]
 relations = [LessThan ..]
@@ -52,6 +42,34 @@ relationFunction Equals = (==)
 relationFunction NotEquals = (/=)
 
 ----------------------------------------------------------------------------------------------------
+-- Show and Read
+----------------------------------------------------------------------------------------------------
+
+instance Show Relation where
+    show LessThan      = lt
+    show LessEquals    = leq
+    show Equals        = eq
+    show NotEquals     = neq
+    show GreaterThan   = gt
+    show GreaterEquals = geq
+
+relationAscii :: Relation -> String
+relationAscii LessThan = "<"
+relationAscii LessEquals = "<="
+relationAscii Equals = "="
+relationAscii NotEquals = "/="
+relationAscii GreaterThan = ">"
+relationAscii GreaterEquals = ">="
+
+instance Read Relation where
+    readPrec = parens $ lift $ choice [string lt  >> return LessThan,
+                                       string leq >> return LessEquals,
+                                       string eq  >> return Equals,
+                                       string neq >> return NotEquals,
+                                       string gt  >> return GreaterThan,
+                                       string geq >> return GreaterEquals]
+
+----------------------------------------------------------------------------------------------------
 -- Atoms signature
 ----------------------------------------------------------------------------------------------------
 
@@ -64,7 +82,7 @@ class AtomsSignature where
     showConstant :: Constant -> String
 
     -- | Returns constant for text representation
-    readConstant :: String -> Constant
+    readConstant :: ReadPrec Constant
 
     -- | Default constant value
     defaultConstant :: Constant
@@ -80,7 +98,15 @@ instance AtomsSignature where
     minRelations = [Equals, LessThan]
     showConstant x = let (n,d) = (numerator x, denominator x)
                                           in if d == 1 then show n else show n ++ "/" ++ show d
-    readConstant x = if elem '/' x then read $ replace "/" "%" x else read $ x ++ "%1"
+    readConstant = parens
+        (do x <- step readPrec
+            expectP (Symbol "/")
+            y <- step readPrec
+            return (x % y)
+         <++
+         do x <- step readPrec
+            return (x % 1)
+        )
     defaultConstant = 0
 
 #else
@@ -89,7 +115,7 @@ type Constant = Integer
 instance AtomsSignature where
     minRelations = [Equals]
     showConstant = show
-    readConstant = read
+    readConstant = readPrec
     defaultConstant = 0
 
 #endif

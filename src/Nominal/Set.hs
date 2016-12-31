@@ -100,6 +100,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Word (Word)
 import GHC.Generics (Generic)
+import GHC.Read (expectP)
 import Nominal.Atoms
 import Nominal.Atoms.Logic (exclusiveConditions)
 import Nominal.Atoms.Signature (defaultConstant)
@@ -113,13 +114,16 @@ import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, freeVariables, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
+import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
 import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, constantVar, getIterationLevel, hasIdentifierEquals,
                          hasIdentifierNotEquals, isConstant, iterationVariablesList, iterationVariable, setIdentifier)
-import Nominal.Variants (Variants, fromVariant, variant)
+import Nominal.Variants (Variants, fromVariant, readVariant, variant)
 import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
 import qualified Prelude as P
 import System.IO.Unsafe (unsafePerformIO)
+import Text.ParserCombinators.ReadPrec (pfail)
+import Text.Read (Lexeme(Punc), ReadPrec, (+++), (<++), lexP, readPrec, reset)
 
 ----------------------------------------------------------------------------------------------------
 -- Set elements
@@ -213,9 +217,42 @@ instance Show a => Show (Set a) where
               let formula = if c == true then "" else " " ++ show c
                   variables = if Set.null vs
                                 then ""
-                                else " for " ++ join "," (show <$> Set.elems vs) ++ " " ++ Symbols.inSet ++ " " ++ Symbols.atoms
+                                else spaces Symbols.for ++ join "," (show <$> Set.elems vs) ++ spaces Symbols.inSet ++ Symbols.atoms
                   condition = formula ++ variables
-              in show v ++ (if null condition then "" else " :" ++ condition)
+              in show v ++ (if null condition then "" else " " ++ Symbols.valueCondSep ++ condition)
+
+readIterVars :: ReadPrec (Set.Set Variable)
+readIterVars = do optional $ string Symbols.valueCondSep
+                  skipSpaces
+                  string $ Symbols.for
+                  skipSpaces
+                  vs <- readSepBy True "," readPrec
+                  skipSpaces
+                  string Symbols.inSet
+                  skipSpaces
+                  string Symbols.atoms
+                  return $ Set.fromList vs
+
+readElements :: (NominalType a, Read a) => ReadPrec [(a, SetElementCondition)]
+readElements = do (v,c) <- readVariant
+                  vs    <- readIterVars <++ return Set.empty
+                  return $ fmap (\(v',c') -> (v', (vs, c/\c'))) $ V.toList $ variants v
+
+readSet :: (NominalType a, Read a) => ReadPrec [[(a, SetElementCondition)]]
+readSet = do expectP (Punc "{")
+             setRest False +++ setNext
+  where setRest started = do Punc c <- lexP
+                             case c of
+                               "}"           -> return []
+                               "," | started -> setNext
+                               _             -> pfail
+        setNext = do x  <- reset readElements
+                     xs <- setRest True
+                     return (x:xs)
+
+instance (NominalType a, Read a) => Read (Set a) where
+    readPrec = do es <- readSet
+                  return $ Set $ Map.fromListWith sumCondition $ concat es
 
 instance NominalType a => Conditional (Set a) where
     cond c s1 s2 = filter (const c) s1 `union` filter (const $ not c) s2

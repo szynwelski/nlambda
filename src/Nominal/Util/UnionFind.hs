@@ -7,7 +7,7 @@ import qualified Data.Map as Map
 -- Disjoint-set data structure
 ----------------------------------------------------------------------------------------------------
 
-data UnionFind a = UnionFind {parents :: Map a a, ranks :: Map a Int} deriving Show
+data UnionFind a = UnionFind {parents :: Map a a, ranks :: Map a Int} deriving (Show, Read)
 
 empty :: UnionFind a
 empty = UnionFind Map.empty Map.empty

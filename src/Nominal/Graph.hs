@@ -17,7 +17,7 @@ import Prelude hiding (filter, map, not, or, sum)
 ----------------------------------------------------------------------------------------------------
 
 -- | A directed graph with vertices of type __a__ and set of pairs representing edges.
-data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)} deriving (Eq, Ord, Show)
+data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)} deriving (Eq, Ord, Show, Read)
 
 instance NominalType a => Conditional (Graph a) where
     cond c (Graph vs1 es1) (Graph vs2 es2) = Graph (cond c vs1 vs2) (cond c es1 es2)

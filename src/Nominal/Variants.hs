@@ -11,6 +11,7 @@ Nominal.Variants.map,
 mapWithMono,
 prod,
 prodWithMono,
+readVariant,
 variantsRelation) where
 
 import Control.DeepSeq (NFData)
@@ -23,7 +24,10 @@ import qualified Data.Map as Map
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
+import Nominal.Util.Read (readSepBy, skipSpaces, spaces, string)
+import qualified Nominal.Text.Symbols as Symbols
 import Prelude hiding (or, not)
+import Text.Read (ReadPrec, (<++), parens, prec, readPrec, step)
 
 ----------------------------------------------------------------------------------------------------
 -- Variants
@@ -37,9 +41,28 @@ newtype Variants a = Variants (Map a Formula) deriving (Eq, Ord, Generic, NFData
 variant :: a -> Variants a
 variant x = Variants $ Map.singleton x true
 
+----------------------------------------------------------------------------------------------------
+-- Classes instances
+----------------------------------------------------------------------------------------------------
+
 instance Show a => Show (Variants a) where
-    show (Variants vs) = join " | " (showVariant <$> Map.assocs vs)
-      where showVariant (v, c) = show v ++ if c == true then "" else " : " ++ show c
+    show (Variants vs) = join (spaces Symbols.variantsSep) (showVariant <$> Map.assocs vs)
+      where showVariant (v, c) = show v ++ if c == true then "" else spaces Symbols.valueCondSep ++ show c
+
+readCondition :: ReadPrec Formula
+readCondition = do string Symbols.valueCondSep
+                   c <- step readPrec
+                   return c
+
+readVariant :: Read a => ReadPrec (a, Formula)
+readVariant = do v <- step readPrec
+                 skipSpaces
+                 c <- readCondition <++ return true
+                 return (v, c)
+
+instance (Ord a, Read a) => Read (Variants a) where
+    readPrec = parens $ do vs <- readSepBy True Symbols.variantsSep readVariant
+                           return $ fromList vs
 
 instance Ord a => Conditional (Variants a) where
     cond c (Variants vs1) (Variants vs2) = Variants $ unionVariants c vs1 vs2
@@ -48,6 +71,10 @@ instance Ord a => Conditional (Variants a) where
 
 instance (Contextual a, Ord a) => Contextual (Variants a) where
     when ctx = fromList . fmap (\(v,c) -> (when (ctx /\ c) v, when ctx c)) . toList
+
+----------------------------------------------------------------------------------------------------
+-- Functions
+----------------------------------------------------------------------------------------------------
 
 -- | /If ... then ... else/ ... for types that are not instances of 'Conditional' class.
 iteV :: Ord a => Formula -> a -> a -> Variants a
