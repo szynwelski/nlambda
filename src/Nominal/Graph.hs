@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Graph where
 
 import Data.Tuple (swap)
@@ -11,25 +12,15 @@ import Nominal.Set
 import Nominal.Type
 import Nominal.Variants hiding (fromList, map)
 import Prelude hiding (filter, map, not, or, sum)
+import GHC.Generics (Generic)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph
 ----------------------------------------------------------------------------------------------------
 
 -- | A directed graph with vertices of type __a__ and set of pairs representing edges.
-data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)} deriving (Eq, Ord, Show, Read)
-
-instance NominalType a => Conditional (Graph a) where
-    cond c (Graph vs1 es1) (Graph vs2 es2) = Graph (cond c vs1 vs2) (cond c es1 es2)
-
-instance (Contextual a, Ord a) => Contextual (Graph a) where
-    when ctx (Graph vs es) = Graph (when ctx vs) (when ctx es)
-
-instance NominalType a => BareNominalType (Graph a) where
-    eq (Graph vs1 es1) (Graph vs2 es2) = eq vs1 vs2 /\ eq es1 es2
-    variants = variant
-    mapVariables f (Graph vs es) = Graph (mapVariables f vs) (mapVariables f es)
-    foldVariables f acc (Graph vs es) = foldVariables f (foldVariables f acc vs) es
+data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)}
+  deriving (Eq, Ord, Show, Read, Generic, BareNominalType, Conditional, Contextual)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph constructors

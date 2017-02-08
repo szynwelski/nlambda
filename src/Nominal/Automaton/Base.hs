@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Automaton.Base where
 
 import Nominal.Conditional
@@ -9,6 +10,7 @@ import Nominal.Set
 import Nominal.Type
 import Nominal.Variants (variant)
 import Prelude hiding (filter, map, not)
+import GHC.Generics (Generic)
 
 ----------------------------------------------------------------------------------------------------
 -- Definition of automaton
@@ -16,7 +18,8 @@ import Prelude hiding (filter, map, not)
 
 -- | An automaton with a set of state with type __q__ accepting\/rejecting words from an alphabet with type __a__.
 data Automaton q a = Automaton {states :: Set q, alphabet :: Set a, delta :: Set (q, a, q),
-                                initialStates :: Set q, finalStates :: Set q} deriving (Eq, Ord, Show, Read)
+                                initialStates :: Set q, finalStates :: Set q}
+  deriving (Eq, Ord, Show, Read, Generic, BareNominalType, Contextual, Conditional)
 
 -- | An automaton constructor.
 automaton :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a
@@ -30,25 +33,6 @@ automatonWithTrashCan q a d i f = onlyReachable $ Automaton q' a (d1 `union` d2)
           d2 = map (\(s1,l) -> (s1,l,Nothing)) (pairs q' a \\ map (\(s,l,_)-> (s,l)) d1)
           i' = map Just (intersection q i)
           f' = map Just (intersection q f)
-
-----------------------------------------------------------------------------------------------------
--- Instances
-----------------------------------------------------------------------------------------------------
-
-instance (Conditional q, NominalType q, NominalType a) => Conditional (Automaton q a) where
-    cond c (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) =
-        Automaton (cond c q1 q2) (cond c a1 a2) (cond c d1 d2) (cond c i1 i2) (cond c f1 f2)
-
-instance (Contextual q, Contextual a, Ord q, Ord a) => Contextual (Automaton q a) where
-    when ctx (Automaton q a d i f) = Automaton (when ctx q) (when ctx a) (when ctx d) (when ctx i) (when ctx f)
-
-instance (NominalType q, NominalType a) => BareNominalType (Automaton q a) where
-    eq (Automaton q1 a1 d1 i1 f1) (Automaton q2 a2 d2 i2 f2) = eq q1 q2 /\ eq a1 a2 /\ eq d1 d2 /\ eq i1 i2 /\ eq f1 f2
-    variants = variant
-    mapVariables fun (Automaton q a d i f) = Automaton (mapVariables fun q) (mapVariables fun a) (mapVariables fun d)
-                                                       (mapVariables fun i) (mapVariables fun f)
-    foldVariables fun acc (Automaton q a d i f) =
-        foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun (foldVariables fun acc q) a) d) i) f
 
 ----------------------------------------------------------------------------------------------------
 -- Automaton functions

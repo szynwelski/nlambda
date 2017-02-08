@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Set (
 Set,
 -- ** Construction
@@ -90,7 +89,6 @@ isClosed,
 isCompact) where
 
 import Control.Arrow ((***), first)
-import Control.DeepSeq (NFData)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
 import qualified Data.List as List ((\\), partition)
 import Data.List.Utils (join)
@@ -99,7 +97,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Word (Word)
-import GHC.Generics (Generic)
 import GHC.Read (expectP)
 import Nominal.Atoms
 import Nominal.Atoms.Logic (exclusiveConditions)
@@ -209,7 +206,7 @@ applyWithIdentifiers f (v, cond) =
 ----------------------------------------------------------------------------------------------------
 
 -- | The set of elements, can be infinite.
-newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord, Generic, NFData)
+newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
 
 instance Show a => Show (Set a) where
     show s = "{" ++ join ", " (fmap showSetElement (Map.assocs $ setElements s)) ++ "}"
