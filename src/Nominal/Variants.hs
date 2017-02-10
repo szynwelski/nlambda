@@ -7,9 +7,7 @@ toList,
 fromList,
 satisfying,
 Nominal.Variants.map,
-mapWithMono,
 prod,
-prodWithMono,
 readVariant,
 variantsRelation) where
 
@@ -92,10 +90,6 @@ satisfying f (Variants vs) = or $ Map.elems $ Map.filterWithKey (const . f) vs
 map :: Ord b => (a -> b) -> Variants a -> Variants b
 map f (Variants vs) = Variants (Map.mapKeysWith (\/) f vs)
 
--- unchecked! monotonic map
-mapWithMono :: (a -> b) -> Variants a -> Variants b
-mapWithMono f (Variants vs) = Variants (Map.mapKeysMonotonic f vs)
-
 -- Take the 'product' in a way.
 prod :: Variants a -> Variants b -> Variants (a, b)
 prod (Variants as) (Variants bs) = Variants . fromList $ merge <$> toList as <*> toList bs
@@ -108,10 +102,6 @@ prod (Variants as) (Variants bs) = Variants . fromList $ merge <$> toList as <*>
         -- we use this to avoid a constraint. Note that the pairing is
         -- monotone, so it is valid. (Depends on the order of <*>)
         fromList = Map.fromDistinctAscList
-
--- unchecked!
-prodWithMono :: (a -> b -> c) -> Variants a -> Variants b -> Variants c
-prodWithMono f as bs = mapWithMono (uncurry f) $ prod as bs
 
 -- | Returns value of a single variant.
 fromVariant :: Variants a -> a

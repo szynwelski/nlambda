@@ -1,6 +1,17 @@
-{-# LANGUAGE ConstraintKinds, DefaultSignatures, FlexibleContexts, CPP, TypeOperators #-}
+{-# LANGUAGE DefaultSignatures, FlexibleContexts, CPP, TypeOperators #-}
 
-module Nominal.Type where
+module Nominal.Type (
+Scope(..),
+MapVarFun,
+FoldVarFun,
+NominalType(..),
+neq,
+collectWith,
+getAllVariables,
+freeVariables,
+mapVariablesIf,
+replaceVariables
+)where
 
 import Data.Map (Map, findWithDefault)
 import Data.Set (Set, empty, insert)
