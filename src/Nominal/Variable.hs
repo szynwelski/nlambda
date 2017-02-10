@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Variable (
 Identifier,
 Variable,
@@ -17,8 +16,6 @@ changeIterationLevel,
 toParts,
 fromParts) where
 
-import Control.DeepSeq (NFData)
-import GHC.Generics (Generic)
 import GHC.Unicode (isAsciiLower)
 import Data.Map (Map, findWithDefault)
 import Data.Word (Word)
@@ -36,7 +33,7 @@ import Text.Read.Lex (readIntP)
 type Identifier = Word
 
 -- | Free variable in a 'Nominal.Formula' or iteration variable in a 'Nominal.Set' or constant.
-data Variable = Var String | IterationVariable Int Int (Maybe Identifier) | ConstantVar Constant deriving (Eq, Ord, Generic, NFData)
+data Variable = Var String | IterationVariable Int Int (Maybe Identifier) | ConstantVar Constant deriving (Eq, Ord)
 
 ----------------------------------------------------------------------------------------------------
 -- Constant

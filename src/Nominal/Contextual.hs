@@ -1,3 +1,7 @@
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
+
 module Nominal.Contextual where
 
 import Data.Map (Map, assocs, fromList)
@@ -6,16 +10,21 @@ import Nominal.Formula
 import Nominal.Formula.Operators
 import Nominal.Variable (Variable)
 import Prelude hiding (map, not)
+import GHC.Generics
 
 ----------------------------------------------------------------------------------------------------
 -- Contextual
 ----------------------------------------------------------------------------------------------------
 
 -- | Class of types of expressions to evaluating with a given context.
+-- This class can be derived using generics.
 class Contextual a where
     -- | Evaluates an expression in the context of a given formula.
     when :: Formula -> a -> a
-    when = const id
+
+    -- Default implementation when the type is generic
+    default when :: (Generic a, GContextual (Rep a)) => Formula -> a -> a
+    when f = to . gwhen f . from
 
 -- | Evaluates an expression in the context of a 'true' formula. In practice all formulas in expressions are solved.
 --
@@ -30,7 +39,9 @@ simplify = when true
 instance Contextual b => Contextual (a -> b) where
     when ctx f = when ctx . f
 
-instance Contextual Variable
+-- We do not do anything on variables. We could rename variables given the
+-- context... But currently we don't
+instance Contextual Variable where when = const id
 
 instance Contextual Formula where
     when ctx f
@@ -39,56 +50,53 @@ instance Contextual Formula where
         | isTrue (ctx ==> not f) = false
         | otherwise = simplifyFormula $ mapFormula (when ctx) f
 
-instance Contextual Bool
-
-instance Contextual Char
-
-instance Contextual Double
-
-instance Contextual Float
-
-instance Contextual Int
-
-instance Contextual Integer
-
-instance Contextual Ordering
-
-instance Contextual a => Contextual [a] where
-    when ctx = fmap (when ctx)
+-- Trivial instances, elements cannot be simplified in some context
+instance Contextual Bool where when = const id
+instance Contextual Char where when = const id
+instance Contextual Double where when = const id
+instance Contextual Float where when = const id
+instance Contextual Int where when = const id
+instance Contextual Integer where when = const id
+instance Contextual Ordering where when = const id
 
 instance Contextual ()
+instance (Contextual a, Contextual b) => Contextual (a,b)
+instance (Contextual a, Contextual b, Contextual c) => Contextual (a,b,c)
+instance (Contextual a, Contextual b, Contextual c, Contextual d) => Contextual (a,b,c,d)
+instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e) => Contextual (a,b,c,d,e)
+instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e, Contextual f) => Contextual (a,b,c,d,e,f)
+instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e, Contextual f, Contextual g) => Contextual (a,b,c,d,e,f,g)
 
-instance (Contextual a, Contextual b) => Contextual (a,b) where
-    when ctx (a,b) = (when ctx a, when ctx b)
-
-instance (Contextual a, Contextual b, Contextual c) => Contextual (a,b,c) where
-    when ctx (a,b,c) = (when ctx a, when ctx b, when ctx c)
-
-instance (Contextual a, Contextual b, Contextual c, Contextual d) => Contextual (a,b,c,d) where
-    when ctx (a,b,c,d) = (when ctx a, when ctx b, when ctx c, when ctx d)
-
-instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e) => Contextual (a,b,c,d,e) where
-    when ctx (a,b,c,d,e) = (when ctx a, when ctx b, when ctx c, when ctx d, when ctx e)
-
-instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e, Contextual f) => Contextual (a,b,c,d,e,f) where
-    when ctx (a,b,c,d,e,f) = (when ctx a, when ctx b, when ctx c, when ctx d, when ctx e, when ctx f)
-
-instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e, Contextual f, Contextual g) => Contextual (a,b,c,d,e,f,g) where
-    when ctx (a,b,c,d,e,f,g) = (when ctx a, when ctx b, when ctx c, when ctx d, when ctx e, when ctx f, when ctx g)
-
-instance (Contextual a, Contextual b, Contextual c, Contextual d, Contextual e, Contextual f, Contextual g, Contextual h) => Contextual (a,b,c,d,e,f,g,h) where
-    when ctx (a,b,c,d,e,f,g,h) = (when ctx a, when ctx b, when ctx c, when ctx d, when ctx e, when ctx f, when ctx g, when ctx h)
-
-instance Contextual a => Contextual (Maybe a) where
-    when ctx = fmap (when ctx)
-
-instance (Contextual a, Contextual b) => Contextual (Either a b) where
-    when ctx (Left v) = Left $ when ctx v
-    when ctx (Right v) = Right $ when ctx v
+instance Contextual a => Contextual [a]
+instance Contextual a => Contextual (Maybe a)
+instance (Contextual a, Contextual b) => Contextual (Either a b)
 
 instance (Contextual a, Ord a) => Contextual (Set a) where
     when ctx = map (when ctx)
 
-instance (Contextual k, Contextual v, Ord k, Ord v) => Contextual (Map k v) where
+instance (Contextual k, Contextual v, Ord k) => Contextual (Map k v) where
     when ctx = fromList . when ctx . assocs
 
+----------------------------------------------------------------------------------------------------
+-- Generics
+----------------------------------------------------------------------------------------------------
+
+class GContextual f where
+    gwhen :: Formula -> f a -> f a
+
+-- As always, the void and unit instances are easy
+instance GContextual V1 where gwhen f = id
+instance GContextual U1 where gwhen f = id
+
+-- Then the constant and constructor case
+instance Contextual c => GContextual (K1 i c) where
+    gwhen f = K1 . when f . unK1
+instance GContextual f => GContextual (M1 i c f) where
+    gwhen f = M1 . gwhen f . unM1
+
+-- Then the "interesting" cases: sum, product and composition
+instance (GContextual f, GContextual g) => GContextual (f :+: g) where
+    gwhen f (L1 x) = L1 (gwhen f x)
+    gwhen f (R1 x) = R1 (gwhen f x)
+instance (GContextual f, GContextual g) => GContextual (f :*: g) where
+    gwhen f (x :*: y) = gwhen f x :*: gwhen f y
