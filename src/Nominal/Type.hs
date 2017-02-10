@@ -1,17 +1,6 @@
 {-# LANGUAGE DefaultSignatures, FlexibleContexts, CPP, TypeOperators #-}
 
-module Nominal.Type (
-Scope(..),
-MapVarFun,
-FoldVarFun,
-NominalType(..),
-neq,
-collectWith,
-getAllVariables,
-freeVariables,
-mapVariablesIf,
-replaceVariables
-)where
+module Nominal.Type where
 
 import Data.Map (Map, findWithDefault)
 import Data.Set (Set, empty, insert)
@@ -39,7 +28,15 @@ type MapVarFun = (Scope, Variable -> Variable)
 type FoldVarFun b = (Scope, Variable -> b -> b)
 
 -- | Basic type in 'NLambda' required by most of functions in the module.
--- | The Ord instance is used for efficiency.
+-- The Ord instance is used for efficiency.
+-- By using generics, one can derive instances of this class for custom
+-- data types, like this:
+--
+-- > {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+-- > import GHC.Generics (Generic)
+-- >
+-- > data Foo = Foo1 Atom [Atom] | Foo2 (Set Atom)
+-- >   deriving (Eq, Ord, Generic, NominalType)
 class Ord a => NominalType a where
     -- | Checks equivalence of two given elements.
     eq :: a -> a -> Formula

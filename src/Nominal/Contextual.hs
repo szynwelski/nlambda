@@ -17,6 +17,7 @@ import GHC.Generics
 ----------------------------------------------------------------------------------------------------
 
 -- | Class of types of expressions to evaluating with a given context.
+-- This class can be derived using generics.
 class Contextual a where
     -- | Evaluates an expression in the context of a given formula.
     when :: Formula -> a -> a

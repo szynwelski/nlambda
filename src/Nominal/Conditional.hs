@@ -14,6 +14,7 @@ import GHC.Generics
 ----------------------------------------------------------------------------------------------------
 
 -- | Class of types implementing conditional statements.
+-- This class can be derived using generics.
 class Conditional a where
     -- | Join two values or returns two variants for undetermined condition in conditional statement.
     cond :: Formula -> a -> a -> a
