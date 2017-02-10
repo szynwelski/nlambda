@@ -108,7 +108,7 @@ import Nominal.Formula.Constructors (constraint)
 import Nominal.Formula.Operators (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
 import qualified Nominal.Text.Symbols as Symbols
-import Nominal.Type (FoldVarFun, MapVarFun, BareNominalType(..), NominalType(..), Scope(..), collectWith, freeVariables, getAllVariables, mapVariablesIf, neq, replaceVariables)
+import Nominal.Type (FoldVarFun, MapVarFun, NominalType(..), Scope(..), collectWith, freeVariables, getAllVariables, mapVariablesIf, neq, replaceVariables)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
 import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
@@ -273,7 +273,7 @@ foldSetVariables :: NominalType a => FoldVarFun b -> b -> (a, SetElementConditio
 foldSetVariables (All, f) acc se = foldVariables (All, f) acc se
 foldSetVariables (Free, f) acc (v, (vs, c)) = foldVariables (Free, foldWithout vs f) acc (v, (vs, c))
 
-instance NominalType a => BareNominalType (Set a) where
+instance NominalType a => NominalType (Set a) where
     eq s1 s2 = isSubsetOf s1 s2 /\ isSubsetOf s2 s1
     variants = variant
     mapVariables f (Set es) = Set $ Map.fromListWith sumCondition $ fmap (mapSetVariables f) (Map.assocs es)
@@ -283,13 +283,13 @@ instance NominalType a => BareNominalType (Set a) where
 -- Similar instances
 ----------------------------------------------------------------------------------------------------
 
-instance NominalType a => BareNominalType (Set.Set a) where
+instance NominalType a => NominalType (Set.Set a) where
     eq s1 s2 = eq (fromList $ Set.elems s1) (fromList $ Set.elems s2)
     variants = variant
     mapVariables f = Set.map (mapVariables f)
     foldVariables f acc = foldVariables f acc . Set.elems
 
-instance (NominalType k, NominalType a) => BareNominalType (Map k a) where
+instance (NominalType k, NominalType a) => NominalType (Map k a) where
     eq m1 m2 = eq (fromList $ Map.assocs m1) (fromList $ Map.assocs m2)
     variants = variant
     mapVariables f = Map.fromList . mapVariables f . Map.assocs

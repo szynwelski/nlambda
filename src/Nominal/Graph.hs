@@ -20,7 +20,7 @@ import GHC.Generics (Generic)
 
 -- | A directed graph with vertices of type __a__ and set of pairs representing edges.
 data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)}
-  deriving (Eq, Ord, Show, Read, Generic, BareNominalType, Conditional, Contextual)
+  deriving (Eq, Ord, Show, Read, Generic, NominalType, Conditional, Contextual)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph constructors

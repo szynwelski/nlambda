@@ -1,9 +1,6 @@
 {-# LANGUAGE CPP, MultiParamTypeClasses #-}
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Atoms.Signature where
 
-import Control.DeepSeq (NFData)
-import GHC.Generics (Generic)
 import Nominal.Text.Symbols
 import Text.ParserCombinators.ReadP (choice, string)
 import Text.Read (ReadPrec, (<++), lift, parens, readPrec, step)
@@ -20,7 +17,7 @@ import Text.Read.Lex (Lexeme(Symbol))
 ----------------------------------------------------------------------------------------------------
 -- Relation
 ----------------------------------------------------------------------------------------------------
-data Relation = LessThan | LessEquals | Equals | NotEquals | GreaterEquals | GreaterThan deriving (Eq, Ord, Enum, Generic, NFData)
+data Relation = LessThan | LessEquals | Equals | NotEquals | GreaterEquals | GreaterThan deriving (Eq, Ord, Enum)
 
 relations :: [Relation]
 relations = [LessThan ..]

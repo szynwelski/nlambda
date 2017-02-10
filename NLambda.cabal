@@ -18,7 +18,6 @@ Library
     bytestring,
     combinat,
     containers,
-    deepseq,
     directory,
     MissingH,
     mtl,
