@@ -6,6 +6,7 @@ variable,
 iterationVariable,
 iterationVariablesList,
 isConstant,
+isVariableChar,
 constantValue,
 setIdentifier,
 hasIdentifierEquals,
@@ -99,9 +100,12 @@ fromParts (Right (level, index, id)) = IterationVariable level index id
 constantVar :: Constant -> Variable
 constantVar = ConstantVar
 
+isVariableChar :: Char -> Bool
+isVariableChar c = isAlphaNum c || c == '_' || c == '-' || c == '.'
+
 -- | Creates a variable with a given name.
 variable :: String -> Variable
-variable (x:y) = if isLetter x && all isAlphaNum y
+variable (x:y) = if isLetter x && all isVariableChar y
                  then Var (x:y)
                  else error "variable name must be alphanumeric and start with a letter"
 variable _ = error "variable name is empty"

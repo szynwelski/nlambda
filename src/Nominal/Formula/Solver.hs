@@ -6,7 +6,7 @@ import Data.Attoparsec.ByteString.Lazy (Result(Done, Fail), parse)
 import Data.ByteString.Builder (Builder, char8, intDec, string8, toLazyByteString, wordDec)
 import qualified Data.ByteString.Char8 as S -- strict
 import qualified Data.ByteString.Lazy.Char8 as L -- lazy
-import Data.Char (isSpace, isLetter, isAlphaNum)
+import Data.Char (isSpace, isLetter)
 import Data.List (find)
 import Data.List.Utils (split)
 import Data.Map (Map, empty, fromList)
@@ -18,7 +18,7 @@ import Nominal.Atoms.Signature (Constant, Relation(..), readConstant, relationAs
 import Nominal.Formula.Constructors
 import Nominal.Formula.Definition
 import Nominal.Formula.Operators
-import Nominal.Variable (Variable, constantValue, constantVar, fromParts, isConstant, toParts)
+import Nominal.Variable (Variable, constantValue, constantVar, fromParts, isConstant, isVariableChar, toParts)
 import Prelude hiding (null, takeWhile)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (ExitSuccess, ExitFailure))
@@ -298,7 +298,7 @@ parseRelation = do
 parseVariable :: Parser Variable
 parseVariable = do
     x <- satisfy isLetter
-    y <- takeWhile isAlphaNum
+    y <- takeWhile isVariableChar
     return $ fromParts $ Left $ x : S.unpack y
 
 parseIterationVariable :: Parser Variable
