@@ -24,6 +24,7 @@ import Numeric (showIntAtBase)
 import Nominal.Atoms.Signature (Constant, readConstant, showConstant)
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Util.Read (skipSpaces)
+import Text.ParserCombinators.ReadP (munch, satisfy)
 import Text.Read (Lexeme(Ident), ReadPrec, (+++), (<++), lexP, lift, parens, readPrec)
 import Text.Read.Lex (readIntP)
 
@@ -76,8 +77,9 @@ instance Read Variable where
                            index <- Symbols.readSubscriptIndex
                            return $ iterationVariable level index
                         <++
-                        do Ident name <- lexP
-                           return $ Var name
+                        do x <- lift $ satisfy isLetter
+                           y <- lift $ munch isVariableChar
+                           return $ Var $ x:y
 
 ----------------------------------------------------------------------------------------------------
 -- Variable parts
@@ -107,7 +109,7 @@ isVariableChar c = isAlphaNum c || c == '_' || c == '-' || c == '.'
 variable :: String -> Variable
 variable (x:y) = if isLetter x && all isVariableChar y
                  then Var (x:y)
-                 else error "variable name must be alphanumeric and start with a letter"
+                 else error "variable name must start with a letter and contain only alphanumeric characters, dot, underscore or hyphen"
 variable _ = error "variable name is empty"
 
 iterationVariable :: Int -> Int -> Variable
