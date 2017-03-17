@@ -1,12 +1,12 @@
 module Nominal.Formula.Solver (isTrue, isFalse, lia, lra, model, simplifyFormula) where
 
 import Control.Applicative ((<|>), (*>), (<*))
-import Data.Attoparsec.ByteString.Char8 (Parser, char, digit, isDigit, letter_ascii, many1, sepBy, sepBy1, skipWhile, string, takeWhile, takeWhile1)
+import Data.Attoparsec.ByteString.Char8 (Parser, char, digit, isDigit, many1, satisfy, sepBy, sepBy1, skipWhile, string, takeWhile, takeWhile1)
 import Data.Attoparsec.ByteString.Lazy (Result(Done, Fail), parse)
 import Data.ByteString.Builder (Builder, char8, intDec, string8, toLazyByteString, wordDec)
 import qualified Data.ByteString.Char8 as S -- strict
 import qualified Data.ByteString.Lazy.Char8 as L -- lazy
-import Data.Char (isSpace)
+import Data.Char (isSpace, isLetter, isAlphaNum)
 import Data.List (find)
 import Data.List.Utils (split)
 import Data.Map (Map, empty, fromList)
@@ -297,8 +297,9 @@ parseRelation = do
 
 parseVariable :: Parser Variable
 parseVariable = do
-    x <- many1 letter_ascii
-    return $ fromParts (Left x)
+    x <- satisfy isLetter
+    y <- takeWhile isAlphaNum
+    return $ fromParts $ Left $ x : S.unpack y
 
 parseIterationVariable :: Parser Variable
 parseIterationVariable = do

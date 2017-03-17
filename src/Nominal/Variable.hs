@@ -16,7 +16,7 @@ changeIterationLevel,
 toParts,
 fromParts) where
 
-import GHC.Unicode (isAsciiLower)
+import Data.Char (isAlphaNum, isLetter, isLower)
 import Data.Map (Map, findWithDefault)
 import Data.Word (Word)
 import Numeric (showIntAtBase)
@@ -64,7 +64,7 @@ instance Show Variable where
 ----------------------------------------------------------------------------------------------------
 
 readLevelFromVariableNameBeforeIndex :: ReadPrec Int
-readLevelFromVariableNameBeforeIndex = lift $ readIntP 25 isAsciiLower ((+ (-97)) . fromEnum)
+readLevelFromVariableNameBeforeIndex = lift $ readIntP 25 isLower ((+ (-97)) . fromEnum)
 
 instance Read Variable where
     readPrec = parens $ do value <- readConstant
@@ -101,7 +101,10 @@ constantVar = ConstantVar
 
 -- | Creates a variable with a given name.
 variable :: String -> Variable
-variable = Var
+variable (x:y) = if isLetter x && all isAlphaNum y
+                 then Var (x:y)
+                 else error "variable name must be alphanumeric and start with a letter"
+variable _ = error "variable name is empty"
 
 iterationVariable :: Int -> Int -> Variable
 iterationVariable level index = IterationVariable level index Nothing
