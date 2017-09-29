@@ -44,13 +44,12 @@ pass :: HomeModInfo -> ModGuts -> CoreM ModGuts
 pass mod guts = do putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:") <+> (ppr $ mg_module guts)
                    -- vars maps
                    varMap <- mkVarMap guts
-                   let nameMap = getNameMap guts varMap
 
                    -- binds
-                   binds <- newBinds mod varMap nameMap (getDataCons guts) (mg_binds guts)
+                   binds <- newBinds mod varMap (getDataCons guts) (mg_binds guts)
 
                    -- exports
-                   let exps = newExports nameMap (mg_exports guts)
+                   let exps = newExports varMap
 
 
                    -- new guts
@@ -60,7 +59,7 @@ pass mod guts = do putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:
                    putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts')
 
 --                   modInfo "binds" mg_binds guts'
---                   modInfo "exports" mg_exports guts'
+                   modInfo "exports" mg_exports guts'
 --                   modInfo "type constructors" mg_tcs guts
 --                   modInfo "used names" mg_used_names guts
 --                   modInfo "global rdr env" mg_rdr_env guts
@@ -117,35 +116,27 @@ newName name =
           nameStr = occNameString occName
           newOccName = mkOccName (occNameSpace occName) (nameStr ++ "_nlambda")
 
-getNameMap :: ModGuts -> Map Var Var -> Map Name Name
-getNameMap guts varMap = Map.union (Map.fromList dataCons) nameMap
-    where nameMap = Map.mapKeys varName $ Map.map varName $ varMap
-          dataCons = fmap (\dc -> (dataConName dc, varName $ varMap Map.! dataConWorkId dc)) $ getDataCons guts
-
 ----------------------------------------------------------------------------------------
 -- Exports
 ----------------------------------------------------------------------------------------
 
-newExports :: Map Name Name -> Avails -> Avails
-newExports nameMap = concatMap change
-    where change (Avail nm) = [newAvail nm]
-          change (AvailTC nm nms) = fmap newAvail $ filter (`Map.member` nameMap) nms
-          newAvail nm = Avail (nameMap Map.! nm)
+newExports :: Map Var Var -> Avails
+newExports = fmap Avail . fmap varName . Map.elems
 
 ----------------------------------------------------------------------------------------
 -- Binds
 ----------------------------------------------------------------------------------------
 
-newBinds :: HomeModInfo -> Map Var Var -> Map Name Name -> [DataCon] -> CoreProgram -> CoreM CoreProgram
-newBinds mod varMap nameMap dcs bs = do bs' <- mapM (changeBind mod varMap nameMap) bs
-                                        bs'' <- mapM (dataBind mod varMap) dcs
-                                        return $ bs' ++ bs''
+newBinds :: HomeModInfo -> Map Var Var -> [DataCon] -> CoreProgram -> CoreM CoreProgram
+newBinds mod varMap dcs bs = do bs' <- mapM (changeBind mod varMap) bs
+                                bs'' <- mapM (dataBind mod varMap) dcs
+                                return $ bs' ++ bs''
 
-changeBind :: HomeModInfo -> Map Var Var -> Map Name Name -> Bind CoreBndr -> CoreM (Bind CoreBndr)
-changeBind mod varMap nameMap (NonRec b e) =
+changeBind :: HomeModInfo -> Map Var Var -> Bind CoreBndr -> CoreM (Bind CoreBndr)
+changeBind mod varMap (NonRec b e) =
     do newExpr <- changeExpr mod varMap e
-       return $ NonRec (changeBindType mod $ setVarName b $ (nameMap Map.!) $ varName b) newExpr
-changeBind mod varMap nameMap b = return b
+       return $ NonRec (changeBindType mod $ setVarName b $ varName $ varMap Map.! b) newExpr
+changeBind mod varMap b = return b
 
 dataBind :: HomeModInfo -> Map Var Var -> DataCon -> CoreM (Bind CoreBndr)
 dataBind mod varMap dc = do expr <- dataConExpr mod dc [] (dataConSourceArity dc)
