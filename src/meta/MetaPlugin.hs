@@ -106,13 +106,14 @@ mkBindVarMap guts mod = mkMapWithVars guts mod vars
           toVars (Rec bs) = fmap fst bs
 
 newBindVar :: HomeModInfo -> Var -> CoreM Var
-newBindVar mod v = changeVarName "_nlambda" $ mkLocalId (varName v) (newBindType mod v)
+newBindVar mod v = let var = mkLocalId (varName v) (newBindType mod v)
+                   in changeVarName "nlambda_" "" (if isExportedId v then setIdExported var else setIdNotExported var)
 
-changeVarName :: String -> Var -> CoreM Var
-changeVarName suffix v = do name <- newName $ varName v
-                            return $ setVarName v name
+changeVarName :: String -> String -> Var -> CoreM Var
+changeVarName prefix suffix v = do name <- newName $ varName v
+                                   return $ setVarName v name
     where newName name = do let occName = nameOccName name
-                            let newOccName = mkOccName (occNameSpace occName) (occNameString occName ++ suffix)
+                            let newOccName = mkOccName (occNameSpace occName) (prefix ++ occNameString occName ++ suffix)
                             uniq <- getUniqueM
                             return $ setNameLoc (setNameUnique (tidyNameOcc name newOccName) uniq) noSrcSpan
 
@@ -215,7 +216,7 @@ dataConExpr :: HomeModInfo -> DataCon -> [Var] -> Int -> CoreM (CoreExpr)
 dataConExpr mod dc xs argNumber =
     if argNumber == dataConSourceArity dc
     then do let revXs = reverse xs
-            xs' <- mapM (changeVarName "'") revXs
+            xs' <- mapM (changeVarName "" "'") revXs
             xValues <- mapM (valueExpr mod) (fmap Var $ xs')
             mkLetUnionExpr (emptyMetaV mod) revXs xs' $ mkCoreConApps dc xValues
     else do uniq <- getUniqueM
@@ -330,16 +331,13 @@ when c v = if c then text " " <> ppr v else text ""
 whenT c v = if c then text " " <> text v else text ""
 
 showBind :: CoreBind -> SDoc
-showBind (NonRec b e) =
-    if isInfixOf "_ok_nlambda" (showVarStr b)
-    then (text "")
-    else (text "===> " <+> showVar b
-                       <> text (if isInfixOf "_ok" (showVarStr b) then "     " else "")
-                       <+> text "::"
-                       <+> showType (varType b)
-                       <> text "\n"
-                       <+> showExpr e
-                       <> text "\n")
+showBind (NonRec b e) = text "===> "
+                        <+> showVar b
+                        <+> text "::"
+                        <+> showType (varType b)
+                        <> text "\n"
+                        <+> showExpr e
+                        <> text "\n"
 showBind b@(Rec _) = text "Rec [" <+> ppr b <+> text "]"
 
 showType :: Type -> SDoc
@@ -418,7 +416,7 @@ showVar = ppr
 --            <> (when (isId v) (idDetails v))
 --            <> (when (isId v) (cafInfo $ idInfo v))
 --            <> (when (isId v) (arityInfo $ idInfo v))
---            <> (when (isId v) (specInfo $ idInfo v))
+----            <> (when (isId v) (specInfo $ idInfo v))
 --            <> (when (isId v) (unfoldingInfo $ idInfo v))
 --            <> (when (isId v) (oneShotInfo $ idInfo v))
 --            <> (when (isId v) (inlinePragInfo $ idInfo v))
