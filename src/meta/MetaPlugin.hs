@@ -92,7 +92,7 @@ mkVarMap guts mod = do bindMap <- mkBindVarMap guts mod
                        return $ Map.union bindMap tyConMap
 
 mkMapWithVars :: ModGuts -> HomeModInfo -> [Var] -> CoreM (Map Var Var)
-mkMapWithVars guts mod vars = do newVars <- mapM (changeBindName mod) vars
+mkMapWithVars guts mod vars = do newVars <- mapM (newBindVar mod) vars
                                  return $ Map.fromList $ zip vars newVars
 
 mkTyConMap :: ModGuts -> HomeModInfo -> CoreM (Map Id Id)
@@ -105,9 +105,8 @@ mkBindVarMap guts mod = mkMapWithVars guts mod vars
           toVars (NonRec v _) = [v]
           toVars (Rec bs) = fmap fst bs
 
-changeBindName :: HomeModInfo -> Var -> CoreM Var
-changeBindName mod v = do v' <- changeVarName "_nlambda" v
-                          return $ changeBindType mod v'
+newBindVar :: HomeModInfo -> Var -> CoreM Var
+newBindVar mod v = changeVarName "_nlambda" $ mkLocalId (varName v) (newBindType mod v)
 
 changeVarName :: String -> Var -> CoreM Var
 changeVarName suffix v = do name <- newName $ varName v
@@ -136,7 +135,7 @@ newBinds mod varMap dcs bs = do bs' <- mapM (changeBind mod varMap) bs
 changeBind :: HomeModInfo -> Map Var Var -> CoreBind -> CoreM CoreBind
 changeBind mod varMap (NonRec b e) =
     do newExpr <- changeExpr mod varMap e
-       return $ NonRec (changeBindType mod $ setVarName b $ varName $ varMap Map.! b) newExpr
+       return $ NonRec (varMap Map.! b) newExpr
 changeBind mod varMap b = return b
 
 dataBind :: HomeModInfo -> Map Var Var -> DataCon -> CoreM CoreBind
@@ -147,8 +146,8 @@ dataBind mod varMap dc = do expr <- dataConExpr mod dc [] 0
 -- Type
 ----------------------------------------------------------------------------------------
 
-changeBindType :: HomeModInfo -> CoreBndr -> CoreBndr
-changeBindType mod b = setVarType b (changeType mod $ varType b)
+newBindType :: HomeModInfo -> CoreBndr -> Type
+newBindType mod = changeType mod . varType
 
 changeType :: HomeModInfo -> Type -> Type
 changeType mod t | (Just (tv, t')) <- splitForAllTy_maybe t
@@ -336,6 +335,7 @@ showBind (NonRec b e) =
     then (text "")
     else (text "===> " <+> showVar b
                        <> text (if isInfixOf "_ok" (showVarStr b) then "     " else "")
+                       <+> text "::"
                        <+> showType (varType b)
                        <> text "\n"
                        <+> showExpr e
