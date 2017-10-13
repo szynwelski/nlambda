@@ -156,7 +156,7 @@ changeType mod t | (Just (tv, t')) <- splitForAllTy_maybe t
 changeType mod t | (Just (funArg, funRes)) <- splitFunTy_maybe t
                  , isPredTy funArg
                  = mkFunTy funArg (changeType mod funRes)
-changeType mod t = mkTyConApp (withMetaC mod) [changeTypeRec mod t]
+changeType mod t = withMetaType mod $ changeTypeRec mod t
 
 changeTypeRec :: HomeModInfo -> Type -> Type
 changeTypeRec mod t | (Just (funArg, funRes)) <- splitFunTy_maybe t
@@ -197,8 +197,6 @@ changeExpr mod varMap e = newExpr e
                                  emptyExpr mod (Lam x e')
           newExpr e = return e
 
-
-
 --    where newExpr (Var v) | Map.member v varMap = Var (varMap Map.! v)
 --          newExpr (Var v) = emptyV mod
 --          newExpr (Lit l) = emptyV mod
@@ -223,7 +221,7 @@ dataConExpr mod dc xs argNumber =
             mkLetUnionExpr (emptyMetaV mod) revXs xs' $ mkCoreConApps dc xValues
     else do uniq <- getUniqueM
             let xnm = mkInternalName uniq (mkVarOcc $ "x" ++ show argNumber) noSrcSpan
-            let ty = dataConOrigArgTys dc !! argNumber
+            let ty = withMetaType mod $ dataConOrigArgTys dc !! argNumber
             let x = mkLocalId xnm ty
             expr <- dataConExpr mod dc (x : xs) (succ argNumber)
             emptyExpr mod $ Lam x expr
@@ -231,7 +229,7 @@ dataConExpr mod dc xs argNumber =
           mkLetUnionExpr meta (x:xs) (x':xs') expr = do union <- unionExpr mod (Var x) meta
                                                         meta' <- metaExpr mod (Var x')
                                                         expr' <- mkLetUnionExpr meta' xs xs' expr
-                                                        return $ Let (NonRec x' union) expr'
+                                                        return $ bindNonRec x' union expr'
           mkLetUnionExpr meta [] [] expr = createExpr mod expr meta
 
 ----------------------------------------------------------------------------------------
@@ -271,6 +269,9 @@ valueV mod = Var $ getVar mod "value"
 createV mod = Var $ getVar mod "create"
 withMetaC mod = getTyCon mod "WithMeta"
 
+withMetaType :: HomeModInfo -> Type -> Type
+withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
+
 mkPredVar :: (Class, [Type]) -> CoreM DictId
 mkPredVar (cls, tys) = do uniq <- getUniqueM
                           let name = mkSystemName uniq (mkDictOcc (getOccName cls))
@@ -280,6 +281,7 @@ makeTyVarUnique :: TyVar -> CoreM TyVar
 makeTyVarUnique v = do uniq <- getUniqueM
                        return $ mkTyVar (setNameUnique (tyVarName v) uniq) (tyVarKind v)
 
+splitType :: CoreExpr -> CoreM ([TyVar], [DictId], Type)
 splitType e =
     do let ty = exprType e
        let (tyVars, preds, ty') = tcSplitSigmaTy ty
@@ -292,10 +294,13 @@ splitType e =
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
     do (tyVars, predVars, ty) <- splitType e
+       let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
+       let subst = fromJust $ tcUnifyTy (funArgTy funTy) ty
+       let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
        return $
          mkCoreLams tyVars $ mkCoreLams predVars $
             mkCoreApp
-                (mkCoreApp fun $ Type ty)
+                (mkCoreApps fun $ funTyVarSubstExprs)
                 (mkCoreApps
                     (mkCoreApps e $ fmap Type $ mkTyVarTys tyVars)
                     (fmap Var predVars))
@@ -336,7 +341,6 @@ showBind (NonRec b e) =
                        <+> showExpr e
                        <> text "\n")
 showBind b@(Rec _) = text "Rec [" <+> ppr b <+> text "]"
-
 
 showType :: Type -> SDoc
 --showType = ppr

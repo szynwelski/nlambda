@@ -4,10 +4,10 @@ module Sample where
 --empty :: ()
 --empty = ()
 
-data Data = X | Y Int
+data Data = X | Y Data
 
 --x = X
---y = Y 0
+y = Y X
 
 --newtype NewType a = NewType a
 --newtyp = NewType X
