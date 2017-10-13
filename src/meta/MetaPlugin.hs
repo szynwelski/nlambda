@@ -18,6 +18,7 @@ import TcType (tcSplitSigmaTy)
 import TyCon
 import Unify
 import CoreSubst
+import Data.Foldable
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -137,7 +138,7 @@ changeBind :: HomeModInfo -> Map Var Var -> CoreBind -> CoreM CoreBind
 changeBind mod varMap (NonRec b e) =
     do newExpr <- changeExpr mod varMap e
        return $ NonRec (varMap Map.! b) newExpr
-changeBind mod varMap b = return b
+changeBind mod varMap b = return b -- TODO
 
 dataBind :: HomeModInfo -> Map Var Var -> DataCon -> CoreM CoreBind
 dataBind mod varMap dc = do expr <- dataConExpr mod dc [] 0
@@ -178,15 +179,12 @@ isInternalVar = isSuffixOf "#" . getVarNameStr
 isDictVar :: Var -> Bool
 isDictVar = isPrefixOf "$" . getVarNameStr
 
-getExprFromBind :: CoreBind -> CoreExpr
-getExprFromBind (NonRec b e) = e
-getExprFromBind (Rec bs) = head $ fmap snd bs -- FIXME
-
 changeExpr :: HomeModInfo -> Map Var Var -> CoreExpr -> CoreM CoreExpr
 changeExpr mod varMap e = newExpr e
     where newExpr (Var v) | Map.member v varMap = return $ Var (varMap Map.! v)
           newExpr (Var v) | isLocalVar v = return $ Var v
           newExpr (Lit l) = emptyExpr mod (Lit l)
+          newExpr a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
           newExpr (App f (Type t)) = do f' <- newExpr f
                                         return $ App f' (Type t)
           newExpr (App f x) = do f' <- newExpr f
@@ -195,7 +193,15 @@ changeExpr mod varMap e = newExpr e
                                  return $ mkCoreApp f'' x'
           newExpr (Lam x e) = do e' <- newExpr e
                                  emptyExpr mod (Lam x e')
+          newExpr (Let b e) = do b' <- changeLetBind b
+                                 e' <- newExpr e
+                                 return $ Let b' e'
           newExpr e = return e
+          changeLetBind (NonRec b e) = do e' <- newExpr e
+                                          return $ NonRec b e'
+          changeLetBind (Rec bs) = do bs' <- mapM (\(b,e) -> do {e' <- newExpr e; return (b,e')}) bs
+                                      return $ Rec bs'
+
 
 --    where newExpr (Var v) | Map.member v varMap = Var (varMap Map.! v)
 --          newExpr (Var v) = emptyV mod
@@ -218,7 +224,8 @@ dataConExpr mod dc xs argNumber =
     then do let revXs = reverse xs
             xs' <- mapM (changeVarName "" "'") revXs
             xValues <- mapM (valueExpr mod) (fmap Var $ xs')
-            mkLetUnionExpr (emptyMetaV mod) revXs xs' $ mkCoreConApps dc xValues
+            expr <- applyExprs (Var $ dataConWorkId dc) xValues
+            mkLetUnionExpr (emptyMetaV mod) revXs xs' expr
     else do uniq <- getUniqueM
             let xnm = mkInternalName uniq (mkVarOcc $ "x" ++ show argNumber) noSrcSpan
             let ty = withMetaType mod $ dataConOrigArgTys dc !! argNumber
@@ -231,6 +238,40 @@ dataConExpr mod dc xs argNumber =
                                                         expr' <- mkLetUnionExpr meta' xs xs' expr
                                                         return $ bindNonRec x' union expr'
           mkLetUnionExpr meta [] [] expr = createExpr mod expr meta
+
+----------------------------------------------------------------------------------------
+-- Apply expression
+----------------------------------------------------------------------------------------
+
+
+splitType :: CoreExpr -> CoreM ([TyVar], [DictId], Type)
+splitType e =
+    do let ty = exprType e
+       let (tyVars, preds, ty') = tcSplitSigmaTy ty
+       tyVars' <- mapM makeTyVarUnique tyVars
+       let preds' = filter isClassPred preds
+       let classTys = map getClassPredTys preds'
+       predVars <- mapM mkPredVar classTys
+       return (tyVars', predVars, ty')
+
+applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
+applyExpr fun e | pprTrace "applyExpr" (ppr fun <+> ppr e) False = undefined
+applyExpr fun e =
+    do (tyVars, predVars, ty) <- splitType e
+       let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
+       let subst = fromJust $ tcUnifyTy (funArgTy funTy) ty
+       let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
+       let res = mkCoreLams tyVars $ mkCoreLams predVars $
+            mkCoreApp
+                (mkCoreApps fun $ funTyVarSubstExprs)
+                (mkCoreApps
+                    (mkCoreApps e $ fmap Type $ mkTyVarTys tyVars)
+                    (fmap Var predVars))
+       putMsg $ ppr res
+       return res
+
+applyExprs :: CoreExpr -> [CoreExpr] -> CoreM CoreExpr
+applyExprs = foldlM applyExpr
 
 ----------------------------------------------------------------------------------------
 -- Meta
@@ -280,30 +321,6 @@ mkPredVar (cls, tys) = do uniq <- getUniqueM
 makeTyVarUnique :: TyVar -> CoreM TyVar
 makeTyVarUnique v = do uniq <- getUniqueM
                        return $ mkTyVar (setNameUnique (tyVarName v) uniq) (tyVarKind v)
-
-splitType :: CoreExpr -> CoreM ([TyVar], [DictId], Type)
-splitType e =
-    do let ty = exprType e
-       let (tyVars, preds, ty') = tcSplitSigmaTy ty
-       tyVars' <- mapM makeTyVarUnique tyVars
-       let preds' = filter isClassPred preds
-       let classTys = map getClassPredTys preds'
-       predVars <- mapM mkPredVar classTys
-       return (tyVars', predVars, ty')
-
-applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
-applyExpr fun e =
-    do (tyVars, predVars, ty) <- splitType e
-       let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
-       let subst = fromJust $ tcUnifyTy (funArgTy funTy) ty
-       let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
-       return $
-         mkCoreLams tyVars $ mkCoreLams predVars $
-            mkCoreApp
-                (mkCoreApps fun $ funTyVarSubstExprs)
-                (mkCoreApps
-                    (mkCoreApps e $ fmap Type $ mkTyVarTys tyVars)
-                    (fmap Var predVars))
 
 emptyExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
 emptyExpr mod e = applyExpr (emptyV mod) e
