@@ -87,20 +87,22 @@ getDataCons = concatMap tyConDataCons . filter isAlgTyCon . mg_tcs
 -- Variables / names map
 ----------------------------------------------------------------------------------------
 
-mkVarMap :: ModGuts -> HomeModInfo -> CoreM (Map Var Var)
+type VarMap = Map Var Var
+
+mkVarMap :: ModGuts -> HomeModInfo -> CoreM VarMap
 mkVarMap guts mod = do bindMap <- mkBindVarMap guts mod
                        tyConMap <- mkTyConMap guts mod
                        return $ Map.union bindMap tyConMap
 
-mkMapWithVars :: ModGuts -> HomeModInfo -> [Var] -> CoreM (Map Var Var)
+mkMapWithVars :: ModGuts -> HomeModInfo -> [Var] -> CoreM VarMap
 mkMapWithVars guts mod vars = do newVars <- mapM (newBindVar mod) vars
                                  return $ Map.fromList $ zip vars newVars
 
-mkTyConMap :: ModGuts -> HomeModInfo -> CoreM (Map Id Id)
+mkTyConMap :: ModGuts -> HomeModInfo -> CoreM VarMap
 mkTyConMap guts mod = mkMapWithVars guts mod vars
     where vars = fmap dataConWorkId $ getDataCons guts
 
-mkBindVarMap :: ModGuts -> HomeModInfo -> CoreM (Map CoreBndr CoreBndr)
+mkBindVarMap :: ModGuts -> HomeModInfo -> CoreM VarMap
 mkBindVarMap guts mod = mkMapWithVars guts mod vars
     where vars = concatMap toVars (mg_binds guts)
           toVars (NonRec v _) = [v]
@@ -122,25 +124,25 @@ changeVarName prefix suffix v = do name <- newName $ varName v
 -- Exports
 ----------------------------------------------------------------------------------------
 
-newExports :: Map Var Var -> Avails
+newExports :: VarMap -> Avails
 newExports = fmap Avail . fmap varName . Map.elems
 
 ----------------------------------------------------------------------------------------
 -- Binds
 ----------------------------------------------------------------------------------------
 
-newBinds :: HomeModInfo -> Map Var Var -> [DataCon] -> CoreProgram -> CoreM CoreProgram
+newBinds :: HomeModInfo -> VarMap -> [DataCon] -> CoreProgram -> CoreM CoreProgram
 newBinds mod varMap dcs bs = do bs' <- mapM (changeBind mod varMap) bs
                                 bs'' <- mapM (dataBind mod varMap) dcs
                                 return $ bs' ++ bs''
 
-changeBind :: HomeModInfo -> Map Var Var -> CoreBind -> CoreM CoreBind
+changeBind :: HomeModInfo -> VarMap -> CoreBind -> CoreM CoreBind
 changeBind mod varMap (NonRec b e) =
     do newExpr <- changeExpr mod varMap e
        return $ NonRec (varMap Map.! b) newExpr
 changeBind mod varMap b = return b -- TODO
 
-dataBind :: HomeModInfo -> Map Var Var -> DataCon -> CoreM CoreBind
+dataBind :: HomeModInfo -> VarMap -> DataCon -> CoreM CoreBind
 dataBind mod varMap dc = do expr <- dataConExpr mod dc [] 0
                             return $ NonRec (varMap Map.! dataConWorkId dc) expr
 
@@ -150,6 +152,9 @@ dataBind mod varMap dc = do expr <- dataConExpr mod dc [] 0
 
 newBindType :: HomeModInfo -> CoreBndr -> Type
 newBindType mod = changeType mod . varType
+
+changeBindType :: HomeModInfo -> CoreBndr -> CoreBndr
+changeBindType mod x = setVarType x $ newBindType mod x
 
 changeType :: HomeModInfo -> Type -> Type
 changeType mod t | (Just (tv, t')) <- splitForAllTy_maybe t
@@ -179,44 +184,55 @@ isInternalVar = isSuffixOf "#" . getVarNameStr
 isDictVar :: Var -> Bool
 isDictVar = isPrefixOf "$" . getVarNameStr
 
-changeExpr :: HomeModInfo -> Map Var Var -> CoreExpr -> CoreM CoreExpr
-changeExpr mod varMap e = newExpr e
-    where newExpr (Var v) | Map.member v varMap = return $ Var (varMap Map.! v)
-          newExpr (Var v) | isLocalVar v = return $ Var v
-          newExpr (Lit l) = emptyExpr mod (Lit l)
-          newExpr a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
-          newExpr (App f (Type t)) = do f' <- newExpr f
-                                        return $ App f' (Type t)
-          newExpr (App f x) = do f' <- newExpr f
-                                 f'' <- valueExpr mod f'
-                                 x' <- newExpr x
-                                 return $ mkCoreApp f'' x'
-          newExpr (Lam x e) = do e' <- newExpr e
-                                 emptyExpr mod (Lam x e')
-          newExpr (Let b e) = do b' <- changeLetBind b
-                                 e' <- newExpr e
-                                 return $ Let b' e'
-          newExpr e = return e
-          changeLetBind (NonRec b e) = do e' <- newExpr e
-                                          return $ NonRec b e'
-          changeLetBind (Rec bs) = do bs' <- mapM (\(b,e) -> do {e' <- newExpr e; return (b,e')}) bs
-                                      return $ Rec bs'
-
-
---    where newExpr (Var v) | Map.member v varMap = Var (varMap Map.! v)
---          newExpr (Var v) = emptyV mod
---          newExpr (Lit l) = emptyV mod
---          newExpr (App f (Type t)) = newExpr f
---          newExpr (App f (Var v)) | isDictVar v = newExpr f
---          newExpr (App (Var v) x) | isDictVar v = newExpr x
---          newExpr (App f x) = unionExpr mod (newExpr f) (newExpr x)
---          newExpr (Lam x e) = newExpr e
---          newExpr (Let b e) = unionExpr mod (getExprFromBind b) e
---          newExpr (Case e b t as) = emptyV mod
---          newExpr (Cast e c) = emptyV mod
---          newExpr (Tick t e) = emptyV mod
---          newExpr (Type t) = emptyV mod
---          newExpr (Coercion c) = emptyV mod
+changeExpr :: HomeModInfo -> VarMap -> CoreExpr -> CoreM CoreExpr
+changeExpr mod varMap e = newExpr varMap e
+    where newExpr varMap (Var v) | Map.member v varMap = return $ Var (varMap Map.! v)
+          newExpr varMap (Lit l) = emptyExpr mod (Lit l)
+          newExpr varMap a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
+          newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
+                                               return $ App f' (Type t)
+          newExpr varMap (App f x) = do f' <- newExpr varMap f
+                                        f'' <- valueExpr mod f'
+                                        x' <- newExpr varMap x
+                                        return $ mkCoreApp f'' x'
+          newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
+                                                    return $ Lam x e'
+          newExpr varMap (Lam x e) = do let x' = changeBindType mod x
+                                        e' <- newExpr (Map.insert x x' varMap) e
+                                        emptyExpr mod (Lam x' e')
+          newExpr varMap (Let b e) = do (b', varMap') <- changeLetBind b varMap
+                                        e' <- newExpr varMap' e
+                                        return $ Let b' e'
+          newExpr varMap (Case e b t as) = do e' <- newExpr varMap e
+                                              e'' <- valueExpr mod e'
+                                              m <- metaExpr mod e'
+                                              as' <- mapM (changeAlternative varMap m) as
+                                              return $ Case e'' b t as'
+          newExpr varMap (Cast e c) = do e' <- newExpr varMap e
+                                         return $ Cast e' c -- ???
+          newExpr varMap (Tick t e) = do e' <- newExpr varMap e
+                                         return $ Tick t e'
+          newExpr varMap (Type t) = return $ Type t -- ???
+          newExpr varMap (Coercion c) = return $ Coercion c -- ???
+          changeLetBind (NonRec b e) varMap = do let b' = changeBindType mod b
+                                                 let varMap' = Map.insert b b' varMap
+                                                 e' <- newExpr varMap' e
+                                                 return (NonRec b' e', varMap')
+          changeLetBind (Rec bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
+                                             return (Rec bs', varMap')
+          changeRecBinds ((b, e):bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
+                                                 let b' = changeBindType mod b
+                                                 let varMap'' = Map.insert b b' varMap'
+                                                 e' <- newExpr varMap'' e
+                                                 return ((b',e'):bs', varMap'')
+          changeRecBinds [] varMap = return ([], varMap)
+          changeAlternative varMap m (DataAlt con, xs, e) = do let xs' = fmap (changeBindType mod) xs -- TODO comment
+                                                               e' <- newExpr (Map.union varMap $ Map.fromList $ zip xs xs') e
+                                                               xs'' <- mapM (\x -> createExpr mod (Var x) m) xs
+                                                               let subst = extendSubstList emptySubst (zip xs' xs'')
+                                                               let e'' = substExpr (ppr subst) subst e'
+                                                               return (DataAlt con, xs, e'')
+          changeAlternative varMap m (alt, [], e) = do {e' <- newExpr varMap e; return (alt, [], e')}
 
 dataConExpr :: HomeModInfo -> DataCon -> [Var] -> Int -> CoreM (CoreExpr)
 dataConExpr mod dc xs argNumber =
@@ -255,20 +271,17 @@ splitType e =
        return (tyVars', predVars, ty')
 
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
-applyExpr fun e | pprTrace "applyExpr" (ppr fun <+> ppr e) False = undefined
 applyExpr fun e =
     do (tyVars, predVars, ty) <- splitType e
        let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
        let subst = fromJust $ tcUnifyTy (funArgTy funTy) ty
        let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
-       let res = mkCoreLams tyVars $ mkCoreLams predVars $
-            mkCoreApp
-                (mkCoreApps fun $ funTyVarSubstExprs)
-                (mkCoreApps
-                    (mkCoreApps e $ fmap Type $ mkTyVarTys tyVars)
-                    (fmap Var predVars))
-       putMsg $ ppr res
-       return res
+       return $ mkCoreLams tyVars $ mkCoreLams predVars $
+                  mkCoreApp
+                    (mkCoreApps fun $ funTyVarSubstExprs)
+                    (mkCoreApps
+                      (mkCoreApps e $ fmap Type $ mkTyVarTys tyVars)
+                      (fmap Var predVars))
 
 applyExprs :: CoreExpr -> [CoreExpr] -> CoreM CoreExpr
 applyExprs = foldlM applyExpr
@@ -463,14 +476,17 @@ showExpr (Lit l) = text "Lit" <+> pprLiteral id l
 showExpr (App e (Type t)) = showExpr e <+> text "@{" <+> showType t <> text "}"
 showExpr (App e a) = text "(" <> showExpr e <> text " $ " <> showExpr a <> text ")"
 showExpr (Lam b e) = text "(" <> showVar b <> text " -> " <> showExpr e <> text ")"
-showExpr (Let b e) = text "Let" <+> ppr b <+> ppr e
-showExpr (Case e b t as) = text "Case" <+> ppr e {-<+> ppr b <+> ppr t-} <+> vcat (showAlt <$> as)
+showExpr (Let b e) = text "Let" <+> showLetBind b <+> text "in" <+> showExpr e
+showExpr (Case e b t as) = text "Case" <+> showExpr e {-<+> ppr b <+> ppr t-} <+> vcat (showAlt <$> as)
 showExpr (Cast e c) = text "Cast" <+> ppr e <+> ppr c
 showExpr (Tick t e) = text "Tick" <+> ppr t <+> ppr e
 showExpr (Type t) = text "Type" <+> ppr t
 showExpr (Coercion c) = text "Coercion" <+> ppr c
 
-showAlt (_, bs, e) = ppr bs <+> showExpr e
+showLetBind (NonRec b e) = showVar b <+> text "=" <+> showExpr e
+showLetBind (Rec bs) = hcat $ fmap (\(b,e) -> showVar b <+> text "=" <+> showExpr e) bs
+
+showAlt (con, bs, e) = ppr con <+> hcat (fmap showVar bs) <+> showExpr e
 
 showExprStr :: CoreExpr -> String
 showExprStr (Var i) = showVarStr i

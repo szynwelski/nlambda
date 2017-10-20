@@ -3,7 +3,7 @@
 module Sample where
 --import Prelude (Int)
 
-data Data = X | Y Data
+--data Data = X | Y Data
 ----
 --x = X
 --y = Y X
@@ -22,15 +22,14 @@ data Data = X | Y Data
 --
 --id x = x
 
-data W a = W a
+--data W a = W a
+--wx = W X
+--showW (W a) = "W"
 
-wx = W X
-
-showW (W a) = "W"
-
---data Pair a b = Pair a b
---fst (Pair x _) = x
---snd (Pair _ x) = x
-
-
---letx = let x = Pair 1 x in fst x
+data Pair a b = Pair a b
+fst (Pair x _) = x
+snd (Pair _ x) = x
+--
+--one'' = fst (Pair 1 2)
+--two'' = snd (Pair 1 2)
+letx = let x = Pair 1 2 in fst x
