@@ -1,3 +1,5 @@
+{-# LANGUAGE CPP #-}
+
 module Nominal.Formula.Solver (isTrue, isFalse, lia, lra, model, simplifyFormula) where
 
 import Control.Applicative ((<|>), (*>), (<*))
@@ -59,8 +61,23 @@ parseRatio = do
     char ')'
     return $ x ++ "/" ++ y
 
+
+#if TOTAL_ORDER
+
+signed2 :: Parser String -> Parser Variable
+signed2 parser = do
+    n <- (('-' :) <$> (text "(-" *> spaces *> parser <* spaces <* char ')')) <|> parser
+    return $ constantVar $ toRational (read n :: Double)
+
+#else
+
+signed2 :: Parser String -> Parser Variable
+signed2 = signed
+
+#endif
+
 lra :: SmtLogic
-lra = SmtLogic "Real" "LRA" ratioToSmt (signed ((many1 digit <* text ".0") <|> parseRatio))
+lra = SmtLogic "Real" "LRA" ratioToSmt (signed2 ((many1 digit <* text ".0") <|> parseRatio))
 
 ----------------------------------------------------------------------------------------------------
 -- SMT Solver
