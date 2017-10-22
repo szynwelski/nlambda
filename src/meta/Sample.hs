@@ -1,14 +1,13 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 module Sample where
---import Prelude (Int)
 
 --data Data = X | Y Data
-----
+--
 --x = X
 --y = Y X
 --
---showData :: Data -> String
+----showData :: Data -> String
 --showData X = "X"
 --showData (Y _) = "Y"
 
@@ -26,10 +25,16 @@ module Sample where
 --wx = W X
 --showW (W a) = "W"
 
-data Pair a b = Pair a b
-fst (Pair x _) = x
-snd (Pair _ x) = x
+--data Pair a b = Pair a b
+--fst (Pair x _) = x
+--snd (Pair _ x) = x
 --
 --one'' = fst (Pair 1 2)
 --two'' = snd (Pair 1 2)
-letx = let x = Pair 1 2 in fst x
+--letx = let x = Pair 1 2 in fst x
+
+--data Bool = False | True
+data  Maybe a  =  Nothing | Just a
+
+showMaybe Nothing = "Nothing"
+showMaybe (Just _) = "Just ?"

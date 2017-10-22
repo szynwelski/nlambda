@@ -259,7 +259,6 @@ dataConExpr mod dc xs argNumber =
 -- Apply expression
 ----------------------------------------------------------------------------------------
 
-
 splitType :: CoreExpr -> CoreM ([TyVar], [DictId], Type)
 splitType e =
     do let ty = exprType e
@@ -268,7 +267,9 @@ splitType e =
        let preds' = filter isClassPred preds
        let classTys = map getClassPredTys preds'
        predVars <- mapM mkPredVar classTys
-       return (tyVars', predVars, ty')
+       let subst = extendTvSubstList emptySubst (zip tyVars $ fmap TyVarTy tyVars')
+       let ty'' = substTy subst ty'
+       return (tyVars', predVars, ty'')
 
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
@@ -346,11 +347,11 @@ metaExpr mod e = applyExpr (metaV mod) e
 
 unionExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 unionExpr mod e1 e2 = do e <- applyExpr (unionV mod) e1
-                         return $ mkCoreApp e e2
+                         applyExpr e e2
 
 createExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 createExpr mod e1 e2 = do e <- applyExpr (createV mod) e1
-                          return $ mkCoreApp e e2
+                          applyExpr e e2
 
 
 ----------------------------------------------------------------------------------------
