@@ -19,6 +19,7 @@ Library
     combinat,
     containers,
     directory,
+    hslogger,
     MissingH,
     mtl,
     multimap,
@@ -46,6 +47,7 @@ Library
     Nominal.Formula.Operators
     Nominal.Formula.Quantification
     Nominal.Formula.Solver
+    Nominal.Formula.SmtLogger
     Nominal.Graph,
     Nominal.Maybe,
     Nominal.Orbit,

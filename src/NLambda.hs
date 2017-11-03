@@ -27,6 +27,7 @@ import Nominal.Formula as Export
 #else
 import Nominal.Formula as Export hiding (lessThan, lessEquals, greaterThan, greaterEquals)
 #endif
+import Nominal.Formula.SmtLogger as Export
 #if TOTAL_ORDER
 import Nominal.Graph as Export
 #else
@@ -43,4 +44,3 @@ import Nominal.Type as Export (NominalType(..), Scope, MapVarFun, FoldVarFun, ne
 import Nominal.Variable as Export (Variable, variable)
 import Nominal.Variants as Export (Variants, variant, fromVariant, iteV)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
-

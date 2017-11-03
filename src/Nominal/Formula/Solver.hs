@@ -18,6 +18,7 @@ import Nominal.Atoms.Signature (Constant, Relation(..), readConstant, relationAs
 import Nominal.Formula.Constructors
 import Nominal.Formula.Definition
 import Nominal.Formula.Operators
+import Nominal.Formula.SmtLogger
 import Nominal.Variable (Variable, constantValue, constantVar, fromParts, isConstant, isVariableChar, toParts)
 import Prelude hiding (null, takeWhile)
 import System.Directory (findExecutable)
@@ -84,8 +85,9 @@ type SmtResult = L.ByteString
 
 runSolver :: SmtSolver -> SmtScript -> SmtResult
 runSolver solver script = unsafePerformIO $ do
-    (exit, out, err) <- readProcessWithExitCode (executable solver) (options solver)
-                          (toLazyByteString $ mconcat (fmap string8 (smtOptions solver)) <> script)
+    let input = toLazyByteString $ mconcat (fmap string8 (smtOptions solver)) <> script
+    (exit, out, err) <- readProcessWithExitCode (executable solver) (options solver) input
+    smtInfo $ show $ L.pack "SMT INPUT: " <> input <> L.pack " SMT OUTPUT: " <> out
     return $ case exit of
                ExitSuccess      -> out
                ExitFailure code -> error $ unlines ["SMT Solver " ++ show (executable solver) ++ " exits with code: " ++ show code,
