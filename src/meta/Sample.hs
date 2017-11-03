@@ -2,6 +2,8 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 module Sample where
 
+import Prelude (String)
+
 --data Data = X | Y Data
 --
 --x = X
@@ -33,8 +35,43 @@ module Sample where
 --two'' = snd (Pair 1 2)
 --letx = let x = Pair 1 2 in fst x
 
---data Bool = False | True
-data  Maybe a  =  Nothing | Just a
 
-showMaybe Nothing = "Nothing"
-showMaybe (Just _) = "Just ?"
+-- Bool
+
+data Bool = False | True
+
+--showBool True = "True"
+--showBool False = "False"
+--
+data  Maybe a = Nothing | Just a
+----
+----showMaybe Nothing = "Nothing"
+----showMaybe (Just _) = "Just ?"
+--
+--data List a = Empty | List a (List a)
+--
+--showList Empty = "Empty"
+--showList (List _ _) = "List"
+--
+--isEmpty Empty = True
+--isEmpty (List _ _) = False
+--
+--test1 = showList Empty
+--test2 = showList (List 1 Empty)
+--test3 = showList (List 1 (List 2 Empty))
+--test4 = showBool (isEmpty Empty)
+--test5 = showBool (isEmpty (List 1 Empty))
+
+class Show a where
+    show :: a -> String
+
+instance Show Bool where
+    show True = "True"
+    show False = "False"
+
+instance Show (Maybe a) where
+    show Nothing = "Nothing"
+    show (Just _) = "Just"
+--
+test :: Show a => a -> String
+test = show

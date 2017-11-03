@@ -19,6 +19,9 @@ import TyCon
 import Unify
 import CoreSubst
 import Data.Foldable
+import InstEnv
+import Class
+import MkId
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -45,12 +48,13 @@ pass :: HomeModInfo -> ModGuts -> CoreM ModGuts
 pass mod guts = do putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:") <+> (ppr $ mg_module guts)
                    -- vars maps
                    varMap <- mkVarMap guts mod
+--                   putMsg $ vcat (concatMap (\(x,y) -> [showVar x, showVar y]) $ Map.toList varMap)
 
                    -- binds
                    binds <- newBinds mod varMap (getDataCons guts) (mg_binds guts)
 
                    -- exports
-                   let exps = newExports varMap
+                   let exps = newExports (mg_exports guts) (getNameMap guts varMap)
 
                    -- new guts
                    let guts' = guts {mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
@@ -58,30 +62,52 @@ pass mod guts = do putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:
                    -- show info
                    putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts')
 
+--                   modInfo "module" mg_module guts'
 --                   modInfo "binds" mg_binds guts'
                    modInfo "exports" mg_exports guts'
---                   modInfo "type constructors" mg_tcs guts
---                   modInfo "used names" mg_used_names guts
---                   modInfo "global rdr env" mg_rdr_env guts
---                   modInfo "fixities" mg_fix_env guts
---                   modInfo "class instances" mg_insts guts
---                   modInfo "family instances" mg_fam_insts guts
---                   modInfo "pattern synonyms" mg_patsyns guts
---                   modInfo "core rules" mg_rules guts
---                   modInfo "vect decls" mg_vect_decls guts
---                   modInfo "vect info" mg_vect_info guts
---                   modInfo "files" mg_dependent_files guts
-
-                   putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:") <+> (ppr $ mg_module guts)
+--                   modInfo "type constructors" mg_tcs guts'
+--                   modInfo "used names" mg_used_names guts'
+--                   modInfo "global rdr env" mg_rdr_env guts'
+--                   modInfo "fixities" mg_fix_env guts'
+--                   modInfo "class instances" mg_insts guts'
+--                   modInfo "family instances" mg_fam_insts guts'
+--                   modInfo "pattern synonyms" mg_patsyns guts'
+--                   modInfo "core rules" mg_rules guts'
+--                   modInfo "vect decls" mg_vect_decls guts'
+--                   modInfo "vect info" mg_vect_info guts'
+--                   modInfo "files" mg_dependent_files guts'
+--                   modInfo "classes" getClasses guts'
+                   modInfo "implicit binds" getImplicitBinds guts'
+                   putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:") <+> (ppr $ mg_module guts')
                    return guts'
 
+----------------------------------------------------------------------------------------
+-- Implicit Binds - copy from compiler/main/TidyPgm.hs
+----------------------------------------------------------------------------------------
+
+getClasses :: ModGuts -> [Class]
+getClasses = fmap fromJust . filter isJust . fmap tyConClass_maybe . mg_tcs
+
+getImplicitBinds :: ModGuts -> [CoreBind]
+getImplicitBinds guts = (concatMap getClassImplicitBinds $ getClasses guts) ++ (concatMap getTyConImplicitBinds $ mg_tcs guts)
+
+getClassImplicitBinds :: Class -> [CoreBind]
+getClassImplicitBinds cls
+  = [ NonRec op (mkDictSelRhs cls val_index)
+    | (op, val_index) <- classAllSelIds cls `zip` [0..] ]
+
+getTyConImplicitBinds :: TyCon -> [CoreBind]
+getTyConImplicitBinds tc = map get_defn (mapMaybe dataConWrapId_maybe (tyConDataCons tc))
+
+get_defn :: Id -> CoreBind
+get_defn id = NonRec id (unfoldingTemplate (realIdUnfolding id))
 
 ----------------------------------------------------------------------------------------
--- Type constructors
+-- Data constructors
 ----------------------------------------------------------------------------------------
 
 getDataCons :: ModGuts -> [DataCon]
-getDataCons = concatMap tyConDataCons . filter isAlgTyCon . mg_tcs
+getDataCons = concatMap tyConDataCons . filter (not . isClassTyCon) .filter isAlgTyCon . mg_tcs
 
 ----------------------------------------------------------------------------------------
 -- Variables / names map
@@ -104,7 +130,7 @@ mkTyConMap guts mod = mkMapWithVars guts mod vars
 
 mkBindVarMap :: ModGuts -> HomeModInfo -> CoreM VarMap
 mkBindVarMap guts mod = mkMapWithVars guts mod vars
-    where vars = concatMap toVars (mg_binds guts)
+    where vars = concatMap toVars (mg_binds guts ++ getImplicitBinds guts)
           toVars (NonRec v _) = [v]
           toVars (Rec bs) = fmap fst bs
 
@@ -120,12 +146,23 @@ changeVarName prefix suffix v = do name <- newName $ varName v
                             uniq <- getUniqueM
                             return $ setNameLoc (setNameUnique (tidyNameOcc name newOccName) uniq) noSrcSpan
 
+type NameMap = Map Name Name
+
+getNameMap :: ModGuts -> VarMap -> NameMap
+getNameMap guts varMap = Map.union varNameMap dataConNameMap
+    where varNameMap = Map.mapKeys varName $ Map.map varName varMap
+          dataConNameMap = Map.fromList $ fmap (\dc -> (dataConName dc, varNameMap Map.! (idName $ dataConWorkId dc))) (getDataCons guts)
+
 ----------------------------------------------------------------------------------------
 -- Exports
 ----------------------------------------------------------------------------------------
 
-newExports :: VarMap -> Avails
-newExports = fmap Avail . fmap varName . Map.elems
+newExports :: Avails -> NameMap -> Avails
+newExports avls nameMap = concatMap go avls
+    where go (Avail n) = [Avail $ getNewName n]
+          go (AvailTC nm nms) = fmap (Avail . getNewName) (drop 1 nms)
+          getNewName n | isJust $ Map.lookup n nameMap = nameMap Map.! n
+          getNewName n = pprPanic "can't find export variable" (showName n)
 
 ----------------------------------------------------------------------------------------
 -- Binds
@@ -179,10 +216,7 @@ getVarNameStr :: Var -> String
 getVarNameStr = occNameString . nameOccName . varName
 
 isInternalVar :: Var -> Bool
-isInternalVar = isSuffixOf "#" . getVarNameStr
-
-isDictVar :: Var -> Bool
-isDictVar = isPrefixOf "$" . getVarNameStr
+isInternalVar = isSuffixOf "#" . getVarNameStr -- FIXME use isPrimOpId ??
 
 changeExpr :: HomeModInfo -> VarMap -> CoreExpr -> CoreM CoreExpr
 changeExpr mod varMap e = newExpr varMap e
@@ -214,6 +248,9 @@ changeExpr mod varMap e = newExpr varMap e
                                          return $ Tick t e'
           newExpr varMap (Type t) = return $ Type t -- ???
           newExpr varMap (Coercion c) = return $ Coercion c -- ???
+          newExpr varMap e = pprPanic "unknown variable: " (case e of
+                                                              (Var v) -> showVar v
+                                                              _       -> ppr e)
           changeLetBind (NonRec b e) varMap = do let b' = changeBindType mod b
                                                  let varMap' = Map.insert b b' varMap
                                                  e' <- newExpr varMap' e
@@ -275,7 +312,8 @@ applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
     do (tyVars, predVars, ty) <- splitType e
        let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
-       let subst = fromJust $ tcUnifyTy (funArgTy funTy) ty
+       let subst = maybe (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> ppr ty <+> text "for apply:" <+> ppr fun <+> ppr e))
+                         id $ tcUnifyTy (funArgTy funTy) ty
        let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
        return $ mkCoreLams tyVars $ mkCoreLams predVars $
                   mkCoreApp
@@ -395,18 +433,17 @@ showTyCon tc = text "'" <> text (occNameString $ nameOccName $ tyConName tc) <> 
 --    <> (whenT (isAlgTyCon tc) "Alg,")
 --    <> (whenT (isClassTyCon tc) "Class,")
 --    <> (whenT (isFamInstTyCon tc) "FamInst,")
---    <> (whenT (isFunTyCon tc) "Fun,")
---    <> (whenT (isPrimTyCon tc) "Prim,")
---    <> (whenT (isTupleTyCon tc) "Tuple,")
---    <> (whenT (isUnboxedTupleTyCon tc) "UnboxedTyple,")
---    <> (whenT (isBoxedTupleTyCon tc) "BoxedTyple,")
---    <> (whenT (isTypeSynonymTyCon tc) "TypeSynonym,")
---    <> (whenT (isDecomposableTyCon tc) "Decomposable,")
---    <> (whenT (isPromotedDataCon tc) "PromotedDataCon,")
---    <> (whenT (isPromotedTyCon tc) "Promoted")
+--    <> (whenT (isFunTyCon tc) "Fun, ")
+--    <> (whenT (isPrimTyCon tc) "Prim, ")
+--    <> (whenT (isTupleTyCon tc) "Tuple, ")
+--    <> (whenT (isUnboxedTupleTyCon tc) "UnboxedTyple, ")
+--    <> (whenT (isBoxedTupleTyCon tc) "BoxedTyple, ")
+--    <> (whenT (isTypeSynonymTyCon tc) "TypeSynonym, ")
+--    <> (whenT (isDecomposableTyCon tc) "Decomposable, ")
+--    <> (whenT (isPromotedDataCon tc) "PromotedDataCon, ")
+--    <> (whenT (isPromotedTyCon tc) "Promoted, ")
+--    <> (text "dataConNames:" <+> (vcat $ fmap showName $ fmap dataConName $ tyConDataCons tc))
 --    <> text "}"
---    <> (vcat $ fmap showName $ fmap dataConName $ tyConDataCons tc)
---    <> (ppr $ fmap dataConWorkId $ tyConDataCons tc)
 
 showTyConStr :: TyCon -> String
 showTyConStr tc = "'" ++ (occNameString $ nameOccName $ tyConName tc) ++ "'"
@@ -427,16 +464,33 @@ showTyConStr tc = "'" ++ (occNameString $ nameOccName $ tyConName tc) ++ "'"
 
 
 showName :: Name -> SDoc
-showName = ppr
---showName n = text "<"
---             <> ppr (nameOccName n)
---             <+> ppr (nameUnique n)
---             <+> text "("
---             <> ppr (nameModule_maybe n)
---             <> text ")"
---             <+> ppr (nameSrcLoc n)
---             <+> ppr (nameSrcSpan n)
---             <> text ">"
+--showName = ppr
+showName n = text "<"
+             <> ppr (nameOccName n)
+             <+> ppr (nameUnique n)
+             <+> text "("
+             <> ppr (nameModule_maybe n)
+             <> text ")"
+             <+> ppr (nameSrcLoc n)
+             <+> ppr (nameSrcSpan n)
+             <+> whenT (isInternalName n) "internal"
+             <+> whenT (isExternalName n) "external"
+             <+> whenT (isSystemName n) "system"
+             <+> whenT (isWiredInName n) "wired in"
+             <> text ">"
+
+showOccName :: OccName -> SDoc
+showOccName n = text "<"
+                <> ppr n
+                <+> pprNameSpace (occNameSpace n)
+                <> whenT (isVarOcc n) " VarOcc"
+                <> whenT (isTvOcc n) " TvOcc"
+                <> whenT (isTcOcc n) " TcOcc"
+                <> whenT (isDataOcc n) " DataOcc"
+                <> whenT (isDataSymOcc n) " DataSymOcc"
+                <> whenT (isSymOcc n) " SymOcc"
+                <> whenT (isValOcc n) " ValOcc"
+                <> text ">"
 
 showVar :: Var -> SDoc
 showVar = ppr
@@ -444,10 +498,10 @@ showVar = ppr
 --            <> showName (varName v)
 --            <+> ppr (varUnique v)
 --            <+> showType (varType v)
+--            <+> showOccName (nameOccName $ varName v)
 --            <> (when (isId v) (idDetails v))
 --            <> (when (isId v) (cafInfo $ idInfo v))
 --            <> (when (isId v) (arityInfo $ idInfo v))
-----            <> (when (isId v) (specInfo $ idInfo v))
 --            <> (when (isId v) (unfoldingInfo $ idInfo v))
 --            <> (when (isId v) (oneShotInfo $ idInfo v))
 --            <> (when (isId v) (inlinePragInfo $ idInfo v))
