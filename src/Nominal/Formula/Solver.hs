@@ -41,27 +41,26 @@ signed parser = do
 lia :: SmtLogic
 lia = SmtLogic "Int" "LIA" (string8 . show) (signed $ many1 digit)
 
-ratioToSmt :: Constant -> SmtScript
-ratioToSmt c = let r = show c
-                   rs = split "%" r
-               in if length rs == 1
-                  then string8 r
-                  else string8 "(/ " <> string8 (head rs) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'
-
-parseRatio :: Parser String
-parseRatio = do
-    text "(/"
-    spaces
-    x <- many1 digit
-    text ".0"
-    spaces
-    y <- many1 digit
-    text ".0"
-    char ')'
-    return $ x ++ "/" ++ y
-
 lra :: SmtLogic
-lra = SmtLogic "Real" "LRA" ratioToSmt (signed ((many1 digit <* text ".0") <|> parseRatio))
+lra = SmtLogic "Real" "LRA" ratioToSmt (signed (parseIntAsRatio <|> parseRatio))
+    where ratioToSmt c =
+              let r = show c
+                  rs = split "%" r
+              in if length rs == 1
+                 then string8 r
+                 else string8 "(/ " <> string8 (head rs) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'
+          parseInt = many1 digit <* text ".0"
+          parseIntAsRatio = do
+              x <- parseInt
+              return $ x ++ "%1"
+          parseRatio = do
+              text "(/"
+              spaces
+              x <- parseInt
+              spaces
+              y <- parseInt
+              char ')'
+              return $ x ++ "%" ++ y
 
 ----------------------------------------------------------------------------------------------------
 -- SMT Solver
