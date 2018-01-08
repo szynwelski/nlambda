@@ -2,7 +2,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 module Sample where
 
-import Prelude (String)
+import Prelude (String, Int, Char)
 
 --data Data = X | Y Data
 --
@@ -43,7 +43,7 @@ data Bool = False | True
 --showBool True = "True"
 --showBool False = "False"
 --
-data  Maybe a = Nothing | Just a
+--data  Maybe a = Nothing | Just a
 ----
 ----showMaybe Nothing = "Nothing"
 ----showMaybe (Just _) = "Just ?"
@@ -64,14 +64,32 @@ data  Maybe a = Nothing | Just a
 
 class Show a where
     show :: a -> String
+    show _ = "!"
+--    number :: a -> Int
+--    mark :: a -> Char
+
+--class Eq a where
+--    eq :: a -> a -> Bool
 
 instance Show Bool where
     show True = "True"
     show False = "False"
+--    number True = 1
+--    number False = 0
+--    mark True = 'y'
+--    mark False = 'n'
 
-instance Show (Maybe a) where
-    show Nothing = "Nothing"
-    show (Just _) = "Just"
+--instance Show (Maybe a) where
+--    show Nothing = "Nothing"
+--    show (Just _) = "Just"
 --
-test :: Show a => a -> String
-test = show
+test :: String
+test = show True
+--
+--test1 :: Int
+--test1 = number True
+--
+--test2 :: Char
+--test2 = mark True
+--
+--test3 = show Nothing

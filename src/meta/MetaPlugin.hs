@@ -44,27 +44,38 @@ install _ todo = do
 
 modInfo label fun guts = putMsg $ text label <> text ": " <> (ppr $ fun guts)
 
+showMap map showElem = putMsg $ doubleQuotes $ vcat (concatMap (\(x,y) -> [showElem x <+> text "->" <+> showElem y]) $ Map.toList map)
+
 pass :: HomeModInfo -> ModGuts -> CoreM ModGuts
 pass mod guts = do putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:") <+> (ppr $ mg_module guts)
+
+                   -- classes
+                   clsNameMap <- mkClassNameMap guts mod
+--                   showMap clsNameMap showName
+                   tcMap <- mkTyConMap mod clsNameMap (mg_tcs guts)
+--                   showMap tcMap showTyCon
+
                    -- vars maps
-                   varMap <- mkVarMap guts mod
---                   putMsg $ vcat (concatMap (\(x,y) -> [showVar x, showVar y]) $ Map.toList varMap)
+                   varMap <- mkVarMap guts mod tcMap
+                   let tcMap' = updateDefaultMethods varMap tcMap
+--                   showMap varMap showVar
 
                    -- binds
-                   binds <- newBinds mod varMap (getDataCons guts) (mg_binds guts)
+                   binds <- newBinds mod varMap tcMap' (getDataCons guts) (mg_binds guts)
 
                    -- exports
                    let exps = newExports (mg_exports guts) (getNameMap guts varMap)
 
                    -- new guts
-                   let guts' = guts {mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
+                   let guts' = guts {mg_tcs = mg_tcs guts ++ Map.elems tcMap', mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
 
                    -- show info
-                   putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts')
+                   putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
+                   putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --                   modInfo "module" mg_module guts'
 --                   modInfo "binds" mg_binds guts'
-                   modInfo "exports" mg_exports guts'
+--                   modInfo "exports" mg_exports guts'
 --                   modInfo "type constructors" mg_tcs guts'
 --                   modInfo "used names" mg_used_names guts'
 --                   modInfo "global rdr env" mg_rdr_env guts'
@@ -77,16 +88,13 @@ pass mod guts = do putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:
 --                   modInfo "vect info" mg_vect_info guts'
 --                   modInfo "files" mg_dependent_files guts'
 --                   modInfo "classes" getClasses guts'
-                   modInfo "implicit binds" getImplicitBinds guts'
+--                   modInfo "implicit binds" getImplicitBinds guts'
                    putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:") <+> (ppr $ mg_module guts')
                    return guts'
 
 ----------------------------------------------------------------------------------------
 -- Implicit Binds - copy from compiler/main/TidyPgm.hs
 ----------------------------------------------------------------------------------------
-
-getClasses :: ModGuts -> [Class]
-getClasses = fmap fromJust . filter isJust . fmap tyConClass_maybe . mg_tcs
 
 getImplicitBinds :: ModGuts -> [CoreBind]
 getImplicitBinds guts = (concatMap getClassImplicitBinds $ getClasses guts) ++ (concatMap getTyConImplicitBinds $ mg_tcs guts)
@@ -115,43 +123,55 @@ getDataCons = concatMap tyConDataCons . filter (not . isClassTyCon) .filter isAl
 
 type VarMap = Map Var Var
 
-mkVarMap :: ModGuts -> HomeModInfo -> CoreM VarMap
-mkVarMap guts mod = do bindMap <- mkBindVarMap guts mod
-                       tyConMap <- mkTyConMap guts mod
-                       return $ Map.union bindMap tyConMap
+newVar :: VarMap -> Var -> Var
+newVar = (Map.!)
 
-mkMapWithVars :: ModGuts -> HomeModInfo -> [Var] -> CoreM VarMap
-mkMapWithVars guts mod vars = do newVars <- mapM (newBindVar mod) vars
-                                 return $ Map.fromList $ zip vars newVars
+mkVarMap :: ModGuts -> HomeModInfo -> TyConMap -> CoreM VarMap
+mkVarMap guts mod tcMap = do let classMap = mkClassVarMap tcMap
+                             dataMap <- mkDataConVarMap guts mod tcMap
+                             bindMap <- mkBindVarMap guts mod tcMap
+                             return $ Map.unions [classMap, dataMap, bindMap]
 
-mkTyConMap :: ModGuts -> HomeModInfo -> CoreM VarMap
-mkTyConMap guts mod = mkMapWithVars guts mod vars
-    where vars = fmap dataConWorkId $ getDataCons guts
+mkMapWithVars :: ModGuts -> HomeModInfo -> TyConMap -> [Var] -> CoreM VarMap
+mkMapWithVars guts mod tcMap vars = do newVars <- mapM (newBindVar mod tcMap) vars
+                                       return $ Map.fromList $ zip vars newVars
 
-mkBindVarMap :: ModGuts -> HomeModInfo -> CoreM VarMap
-mkBindVarMap guts mod = mkMapWithVars guts mod vars
-    where vars = concatMap toVars (mg_binds guts ++ getImplicitBinds guts)
+mkClassVarMap :: TyConMap -> VarMap
+mkClassVarMap tcMap = Map.fromList $ concatMap classVarMap $ Map.toList tcMap
+    where classVarMap (tc1, tc2) = zip (classMethods $ tyConClass tc1) (classMethods $ tyConClass tc2)
+
+mkDataConVarMap :: ModGuts -> HomeModInfo -> TyConMap -> CoreM VarMap
+mkDataConVarMap guts mod tcMap = mkMapWithVars guts mod tcMap $ fmap dataConWorkId $ getDataCons guts
+
+mkBindVarMap :: ModGuts -> HomeModInfo -> TyConMap -> CoreM VarMap
+mkBindVarMap guts mod tcMap = mkMapWithVars guts mod tcMap vars
+    where vars = concatMap toVars (mg_binds guts)
           toVars (NonRec v _) = [v]
           toVars (Rec bs) = fmap fst bs
 
-newBindVar :: HomeModInfo -> Var -> CoreM Var
-newBindVar mod v = let var = mkLocalId (varName v) (newBindType mod v)
-                   in changeVarName "nlambda_" "" (if isExportedId v then setIdExported var else setIdNotExported var)
+newBindVar :: HomeModInfo -> TyConMap -> Var -> CoreM Var
+newBindVar mod tcMap v = let var = mkLocalId (varName v) (newBindType mod tcMap v)
+                         in changeVarName "nlambda_" "" (if isExportedId v then setIdExported var else setIdNotExported var)
 
 changeVarName :: String -> String -> Var -> CoreM Var
-changeVarName prefix suffix v = do name <- newName $ varName v
+changeVarName prefix suffix v = do name <- newName prefix suffix $ varName v
                                    return $ setVarName v name
-    where newName name = do let occName = nameOccName name
-                            let newOccName = mkOccName (occNameSpace occName) (prefix ++ occNameString occName ++ suffix)
-                            uniq <- getUniqueM
-                            return $ setNameLoc (setNameUnique (tidyNameOcc name newOccName) uniq) noSrcSpan
+
+newName :: String -> String -> Name -> CoreM Name
+newName prefix suffix name = do let occName = nameOccName name
+                                let newOccName = mkOccName (occNameSpace occName) (prefix ++ occNameString occName ++ suffix)
+                                uniq <- getUniqueM
+                                return $ setNameLoc (setNameUnique (tidyNameOcc name newOccName) uniq) noSrcSpan
 
 type NameMap = Map Name Name
+
+newVarName :: NameMap -> Name -> Name
+newVarName = (Map.!)
 
 getNameMap :: ModGuts -> VarMap -> NameMap
 getNameMap guts varMap = Map.union varNameMap dataConNameMap
     where varNameMap = Map.mapKeys varName $ Map.map varName varMap
-          dataConNameMap = Map.fromList $ fmap (\dc -> (dataConName dc, varNameMap Map.! (idName $ dataConWorkId dc))) (getDataCons guts)
+          dataConNameMap = Map.fromList $ fmap (\dc -> (dataConName dc, newVarName varNameMap (idName $ dataConWorkId dc))) (getDataCons guts)
 
 ----------------------------------------------------------------------------------------
 -- Exports
@@ -161,52 +181,122 @@ newExports :: Avails -> NameMap -> Avails
 newExports avls nameMap = concatMap go avls
     where go (Avail n) = [Avail $ getNewName n]
           go (AvailTC nm nms) = fmap (Avail . getNewName) (drop 1 nms)
-          getNewName n | isJust $ Map.lookup n nameMap = nameMap Map.! n
+          getNewName n | isJust $ Map.lookup n nameMap = newVarName nameMap n
           getNewName n = pprPanic "can't find export variable" (showName n)
+
+----------------------------------------------------------------------------------------
+-- Classes
+----------------------------------------------------------------------------------------
+
+getClasses :: ModGuts -> [Class]
+getClasses = fmap fromJust . filter isJust . fmap tyConClass_maybe . mg_tcs
+
+type ClassNameMap = Map Name Name
+
+newClassName :: ClassNameMap -> Name -> Name
+newClassName = (Map.!)
+
+mkClassNameMap :: ModGuts -> HomeModInfo -> CoreM ClassNameMap
+mkClassNameMap guts mod = do let cls = fmap className $ getClasses guts
+                             newCls <- mapM (newName "NLambda" "") cls
+                             return $ Map.fromList $ zip cls newCls
+
+type TyConMap = Map TyCon TyCon
+
+newTyCon :: TyConMap -> TyCon -> TyCon
+newTyCon = (Map.!)
+
+mkTyConMap :: HomeModInfo -> ClassNameMap -> [TyCon] -> CoreM TyConMap
+mkTyConMap mod clsNameMap tcs =
+    do let ctcs = filter isClassTyCon tcs
+       ctcs' <- mapM (newTyConClass mod clsNameMap Map.empty) ctcs
+       let tcMap = Map.fromList $ zip ctcs ctcs'
+       ctcs'' <- mapM (newTyConClass mod clsNameMap tcMap) ctcs
+       return $ Map.fromList $ zip ctcs ctcs''
+
+tyConClass :: TyCon -> Class
+tyConClass = fromJust . tyConClass_maybe
+
+newTyConClass :: HomeModInfo -> ClassNameMap -> TyConMap-> TyCon -> CoreM TyCon
+newTyConClass mod clsNameMap tcMap tc =
+    do let name = newClassName clsNameMap $ tyConName tc
+       cls' <- createClass mod tcMap $ updateTyConClass name (tyConClass tc) tc
+       return $ updateTyConClass name cls' tc
+
+updateTyConClass :: Name -> Class -> TyCon -> TyCon
+updateTyConClass nm cls tc = mkClassTyCon
+                               nm
+                               (tyConKind tc)
+                               (tyConTyVars tc)
+                               (tyConRoles tc)
+                               (algTyConRhs tc) -- TODO update data constructor!
+                               cls
+                               (if isRecursiveTyCon tc then Recursive else NonRecursive)
+
+createClass :: HomeModInfo -> TyConMap -> TyCon -> CoreM Class
+createClass mod tcMap tc =
+    do scSels' <- mapM (newBindVar mod tcMap) scSels
+       opStuff' <- mapM (\(v, dm) -> do {v' <- newBindVar mod tcMap v; return (v', dm)}) opStuff
+       return $ mkClass tyVars funDeps scTheta scSels' ats opStuff' (classMinimalDef cls) tc
+    where cls = tyConClass tc
+          (tyVars, funDeps, scTheta, scSels, ats, opStuff) = classExtraBigSig cls
+
+updateDefaultMethods :: VarMap -> TyConMap -> TyConMap
+updateDefaultMethods varMap = Map.map updateTc
+    where updateTc tc = updateTyConClass (tyConName tc) (updateCl $ tyConClass tc) tc
+          updateCl cl = let (tyVars, funDeps, scTheta, scSels, ats, opStuff) = classExtraBigSig cl
+                            opStuff' = fmap (\(v, dm) -> (v, updateDm dm)) opStuff
+                        in mkClass tyVars funDeps scTheta scSels ats opStuff' (classMinimalDef cl) (classTyCon cl)
+          varNameMap = Map.mapKeys varName $ Map.map varName varMap
+          updateDm NoDefMeth = NoDefMeth
+          updateDm (DefMeth nm) = DefMeth $ newVarName varNameMap nm
+          updateDm (GenDefMeth nm) = GenDefMeth $ newVarName varNameMap nm
 
 ----------------------------------------------------------------------------------------
 -- Binds
 ----------------------------------------------------------------------------------------
 
-newBinds :: HomeModInfo -> VarMap -> [DataCon] -> CoreProgram -> CoreM CoreProgram
-newBinds mod varMap dcs bs = do bs' <- mapM (changeBind mod varMap) bs
-                                bs'' <- mapM (dataBind mod varMap) dcs
-                                return $ bs' ++ bs''
+newBinds :: HomeModInfo -> VarMap -> TyConMap -> [DataCon] -> CoreProgram -> CoreM CoreProgram
+newBinds mod varMap tcMap dcs bs = do bs' <- mapM (changeBind mod varMap tcMap) bs
+                                      bs'' <- mapM (dataBind mod varMap) dcs
+                                      return $ bs' ++ bs''
 
-changeBind :: HomeModInfo -> VarMap -> CoreBind -> CoreM CoreBind
-changeBind mod varMap (NonRec b e) =
-    do newExpr <- changeExpr mod varMap e
-       return $ NonRec (varMap Map.! b) newExpr
-changeBind mod varMap b = return b -- TODO
+changeBind :: HomeModInfo -> VarMap -> TyConMap -> CoreBind -> CoreM CoreBind
+changeBind mod varMap tcMap (NonRec b e) =
+    do newExpr <- changeExpr mod varMap tcMap e
+       return $ NonRec (newVar varMap b) newExpr
+changeBind mod varMap tcMap b = return b -- TODO !!!
 
 dataBind :: HomeModInfo -> VarMap -> DataCon -> CoreM CoreBind
 dataBind mod varMap dc = do expr <- dataConExpr mod dc [] 0
-                            return $ NonRec (varMap Map.! dataConWorkId dc) expr
+                            return $ NonRec (newVar varMap $ dataConWorkId dc) expr
 
 ----------------------------------------------------------------------------------------
 -- Type
 ----------------------------------------------------------------------------------------
 
-newBindType :: HomeModInfo -> CoreBndr -> Type
-newBindType mod = changeType mod . varType
+newBindType :: HomeModInfo -> TyConMap -> CoreBndr -> Type
+newBindType mod tcMap = changeType mod tcMap . varType
+--newBindType mod tcMap b | pprTrace "newBindType" (showVar b <+> text " :: " <+> ppr (varType b) <+> (text " ~~~~>> ") <+> (ppr $ changeType mod tcMap $ varType b)) False = undefined
+--newBindType mod tcMap b = changeType mod tcMap $ varType b
 
-changeBindType :: HomeModInfo -> CoreBndr -> CoreBndr
-changeBindType mod x = setVarType x $ newBindType mod x
+changeBindType :: HomeModInfo -> TyConMap -> CoreBndr -> CoreBndr
+changeBindType mod tcMap x = setVarType x $ newBindType mod tcMap x
 
-changeType :: HomeModInfo -> Type -> Type
-changeType mod t | (Just (tv, t')) <- splitForAllTy_maybe t
-                 = mkForAllTy tv (changeType mod t')
-changeType mod t | (Just (funArg, funRes)) <- splitFunTy_maybe t
-                 , isPredTy funArg
-                 = mkFunTy funArg (changeType mod funRes)
-changeType mod t = withMetaType mod $ changeTypeRec mod t
+changeType :: HomeModInfo -> TyConMap -> Type -> Type
+changeType mod tcMap t | isPredTy t = changePredType tcMap t -- probably without meta
+changeType mod tcMap t | (Just (tv, t')) <- splitForAllTy_maybe t
+                       = mkForAllTy tv (changeType mod tcMap t')
+changeType mod tcMap t | (Just (t1, t2)) <- splitFunTy_maybe t, isPredTy t1
+                       = mkFunTy (changePredType tcMap t1) (changeType mod tcMap t2)
+changeType mod tcMap t | (Just (t1, t2)) <- splitFunTy_maybe t
+                       = withMetaType mod $ mkFunTy (changeType mod tcMap t1) (changeType mod tcMap t2)
+changeType mod tcMap t = withMetaType mod t -- ???
 
-changeTypeRec :: HomeModInfo -> Type -> Type
-changeTypeRec mod t | (Just (funArg, funRes)) <- splitFunTy_maybe t
-                    = mkFunTy (changeType mod funArg) (changeType mod funRes)
-changeTypeRec mod t | (Just (t1, t2)) <- splitAppTy_maybe t
-                    = mkAppTy t1 (changeTypeRec mod t2)
-changeTypeRec mod t = t
+changePredType :: TyConMap -> PredType -> PredType
+changePredType tcMap t | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc
+                       = mkTyConApp (newTyCon tcMap tc) ts
+changePredType _ t = t
 
 ----------------------------------------------------------------------------------------
 -- Expr
@@ -218,20 +308,23 @@ getVarNameStr = occNameString . nameOccName . varName
 isInternalVar :: Var -> Bool
 isInternalVar = isSuffixOf "#" . getVarNameStr -- FIXME use isPrimOpId ??
 
-changeExpr :: HomeModInfo -> VarMap -> CoreExpr -> CoreM CoreExpr
-changeExpr mod varMap e = newExpr varMap e
-    where newExpr varMap (Var v) | Map.member v varMap = return $ Var (varMap Map.! v)
+changeExpr :: HomeModInfo -> VarMap -> TyConMap -> CoreExpr -> CoreM CoreExpr
+changeExpr mod varMap tcMap e = newExpr varMap e
+    where -- newExpr varMap e | pprTrace "newExpr" (showExpr e) False = undefined
+          newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
           newExpr varMap (Lit l) = emptyExpr mod (Lit l)
           newExpr varMap a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
-                                               return $ App f' (Type t)
+                                               return $ App f' (Type t) -- without changing type
           newExpr varMap (App f x) = do f' <- newExpr varMap f
-                                        f'' <- valueExpr mod f'
+                                        f'' <- if isPredTy (exprType x)
+                                               then return f'
+                                               else valueExpr mod f'
                                         x' <- newExpr varMap x
                                         return $ mkCoreApp f'' x'
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
                                                     return $ Lam x e'
-          newExpr varMap (Lam x e) = do let x' = changeBindType mod x
+          newExpr varMap (Lam x e) = do let x' = changeBindType mod tcMap x
                                         e' <- newExpr (Map.insert x x' varMap) e
                                         emptyExpr mod (Lam x' e')
           newExpr varMap (Let b e) = do (b', varMap') <- changeLetBind b varMap
@@ -243,27 +336,27 @@ changeExpr mod varMap e = newExpr varMap e
                                               as' <- mapM (changeAlternative varMap m) as
                                               return $ Case e'' b t as'
           newExpr varMap (Cast e c) = do e' <- newExpr varMap e
-                                         return $ Cast e' c -- ???
+                                         return $ Cast e' (changeCoercion mod tcMap c)
           newExpr varMap (Tick t e) = do e' <- newExpr varMap e
                                          return $ Tick t e'
-          newExpr varMap (Type t) = return $ Type t -- ???
-          newExpr varMap (Coercion c) = return $ Coercion c -- ???
+          newExpr varMap (Type t) = return $ Type t -- without changing type
+          newExpr varMap (Coercion c) = return $ Coercion $ changeCoercion mod tcMap c
           newExpr varMap e = pprPanic "unknown variable: " (case e of
                                                               (Var v) -> showVar v
                                                               _       -> ppr e)
-          changeLetBind (NonRec b e) varMap = do let b' = changeBindType mod b
+          changeLetBind (NonRec b e) varMap = do let b' = changeBindType mod tcMap b
                                                  let varMap' = Map.insert b b' varMap
                                                  e' <- newExpr varMap' e
                                                  return (NonRec b' e', varMap')
           changeLetBind (Rec bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
                                              return (Rec bs', varMap')
           changeRecBinds ((b, e):bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
-                                                 let b' = changeBindType mod b
+                                                 let b' = changeBindType mod tcMap b
                                                  let varMap'' = Map.insert b b' varMap'
                                                  e' <- newExpr varMap'' e
                                                  return ((b',e'):bs', varMap'')
           changeRecBinds [] varMap = return ([], varMap)
-          changeAlternative varMap m (DataAlt con, xs, e) = do let xs' = fmap (changeBindType mod) xs -- TODO comment
+          changeAlternative varMap m (DataAlt con, xs, e) = do let xs' = fmap (changeBindType mod tcMap) xs -- TODO comment
                                                                e' <- newExpr (Map.union varMap $ Map.fromList $ zip xs xs') e
                                                                xs'' <- mapM (\x -> createExpr mod (Var x) m) xs
                                                                let subst = extendSubstList emptySubst (zip xs' xs'')
@@ -271,7 +364,28 @@ changeExpr mod varMap e = newExpr varMap e
                                                                return (DataAlt con, xs, e'')
           changeAlternative varMap m (alt, [], e) = do {e' <- newExpr varMap e; return (alt, [], e')}
 
+--mkCoreApp1 f x | pprTrace "mkCoreApp1" (ppr f <+> text "and" <+> ppr x) False = undefined
+--mkCoreApp1 f x = mkCoreApp f x
+
+changeCoercion :: HomeModInfo -> TyConMap -> Coercion -> Coercion
+changeCoercion mod tcMap c = change c
+    where change (Refl r t) = Refl r t
+          change (TyConAppCo r tc cs) = TyConAppCo r (newTyCon tcMap tc) (change <$> cs)
+          change (AppCo c1 c2) = AppCo (change c1) (change c2)
+          change (ForAllCo tv c) = ForAllCo tv (change c)
+          change (CoVarCo cv) = CoVarCo cv
+          change (AxiomInstCo a i cs) = AxiomInstCo a i (change <$> cs)
+          change (UnivCo n r t1 t2) = UnivCo n r (changeType mod tcMap t1) (changeType mod tcMap t2)
+          change (SymCo c) = SymCo $ change c
+          change (TransCo c1 c2) = TransCo (change c1) (change c2)
+          change (AxiomRuleCo a ts cs) = AxiomRuleCo a (changeType mod tcMap <$> ts) (change <$> cs)
+          change (NthCo i c) = NthCo i $ change c
+          change (LRCo lr c) = LRCo lr $ change c
+          change (InstCo c t) = InstCo (change c) (changeType mod tcMap t)
+          change (SubCo c) = SubCo $ change c
+
 dataConExpr :: HomeModInfo -> DataCon -> [Var] -> Int -> CoreM (CoreExpr)
+--dataConExpr mod dc xs argNumber | pprTrace "dataConExpr" (ppr dc <+> ppr xs <+> ppr argNumber) False = undefined
 dataConExpr mod dc xs argNumber =
     if argNumber == dataConSourceArity dc
     then do let revXs = reverse xs
@@ -297,6 +411,7 @@ dataConExpr mod dc xs argNumber =
 ----------------------------------------------------------------------------------------
 
 splitType :: CoreExpr -> CoreM ([TyVar], [DictId], Type)
+--splitType e | pprTrace "splitType" (ppr e <+> text "preds:" <+> ppr (let (tyVars, preds, ty') = tcSplitSigmaTy (exprType e) in preds)) False = undefined
 splitType e =
     do let ty = exprType e
        let (tyVars, preds, ty') = tcSplitSigmaTy ty
@@ -306,21 +421,24 @@ splitType e =
        predVars <- mapM mkPredVar classTys
        let subst = extendTvSubstList emptySubst (zip tyVars $ fmap TyVarTy tyVars')
        let ty'' = substTy subst ty'
-       return (tyVars', predVars, ty'')
+       return (tyVars', [], ty'') -- FIXME predVars ???
 
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
+--applyExpr fun e | pprTrace "applyExpr" (ppr fun <+> text "and" <+> ppr e) False = undefined
 applyExpr fun e =
     do (tyVars, predVars, ty) <- splitType e
        let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
-       let subst = maybe (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> ppr ty <+> text "for apply:" <+> ppr fun <+> ppr e))
+       let subst = maybe (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
                          id $ tcUnifyTy (funArgTy funTy) ty
        let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
-       return $ mkCoreLams tyVars $ mkCoreLams predVars $
+       let res = mkCoreLams tyVars $ mkCoreLams predVars $
                   mkCoreApp
                     (mkCoreApps fun $ funTyVarSubstExprs)
                     (mkCoreApps
                       (mkCoreApps e $ fmap Type $ mkTyVarTys tyVars)
                       (fmap Var predVars))
+--       putMsg $ text "applyExpr" <+> ppr fun <+> text "and" <+> ppr e <+> text ">>>" <+> ppr res <+> text "::" <+> ppr (exprType res)
+       return $ res
 
 applyExprs :: CoreExpr -> [CoreExpr] -> CoreM CoreExpr
 applyExprs = foldlM applyExpr
@@ -378,16 +496,20 @@ emptyExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
 emptyExpr mod e = applyExpr (emptyV mod) e
 
 valueExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
+--valueExpr mod e | pprTrace "valueExpr" (ppr e) False = undefined
 valueExpr mod e = applyExpr (valueV mod) e
 
 metaExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
+--metaExpr mod e | pprTrace "metaExpr" (ppr e) False = undefined
 metaExpr mod e = applyExpr (metaV mod) e
 
 unionExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
+--unionExpr mod e1 e2 | pprTrace "unionExpr" (ppr e1 <+> ppr e2) False = undefined
 unionExpr mod e1 e2 = do e <- applyExpr (unionV mod) e1
                          applyExpr e e2
 
 createExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
+--createExpr mod e1 e2 | pprTrace "createExpr" (ppr e1 <+> ppr e2) False = undefined
 createExpr mod e1 e2 = do e <- applyExpr (createV mod) e1
                           applyExpr e e2
 
@@ -407,7 +529,7 @@ showBind (NonRec b e) = text "===> "
                         <> text "\n"
                         <+> showExpr e
                         <> text "\n"
-showBind b@(Rec _) = text "Rec [" <+> ppr b <+> text "]"
+showBind b@(Rec _) = text "Rec [" {-<+> ppr b-} <+> text "]\n" -- TODO
 
 showType :: Type -> SDoc
 --showType = ppr
@@ -418,18 +540,10 @@ showType (FunTy t1 t2) = text "FunTy(" <> showType t1 <+> showType t2 <> text ")
 showType (ForAllTy v t) = text "ForAllTy(" <> showVar v <+> showType t <> text ")"
 showType (LitTy tl) = text "LitTy(" <> ppr tl <> text ")"
 
-showTypeStr :: Type -> String
-showTypeStr (TyVarTy v) = showVarStr v
-showTypeStr (AppTy t1 t2) = showTypeStr t1 ++ "<" ++ showTypeStr t2 ++ ">"
-showTypeStr (TyConApp tc ts) = showTyConStr tc ++ (if null ts then "" else ("{" ++ concatMap showTypeStr ts) ++ "}")
-showTypeStr (FunTy t1 t2) = showTypeStr t1 ++ " -> " ++ showTypeStr t2
-showTypeStr (ForAllTy v t) = "forall " ++ showVarStr v ++ ". " ++ showTypeStr t
-showTypeStr (LitTy tl) = "LitTy"
-
-
 showTyCon :: TyCon -> SDoc
 showTyCon tc = text "'" <> text (occNameString $ nameOccName $ tyConName tc) <> text "'"
---    <> text "{"
+    <> text "{"
+    <> ppr (nameUnique $ tyConName tc)
 --    <> (whenT (isAlgTyCon tc) "Alg,")
 --    <> (whenT (isClassTyCon tc) "Class,")
 --    <> (whenT (isFamInstTyCon tc) "FamInst,")
@@ -443,41 +557,23 @@ showTyCon tc = text "'" <> text (occNameString $ nameOccName $ tyConName tc) <> 
 --    <> (whenT (isPromotedDataCon tc) "PromotedDataCon, ")
 --    <> (whenT (isPromotedTyCon tc) "Promoted, ")
 --    <> (text "dataConNames:" <+> (vcat $ fmap showName $ fmap dataConName $ tyConDataCons tc))
---    <> text "}"
-
-showTyConStr :: TyCon -> String
-showTyConStr tc = "'" ++ (occNameString $ nameOccName $ tyConName tc) ++ "'"
---    ++ "{"
---    ++ (if isAlgTyCon tc then "Alg," else "")
---    ++ (if isClassTyCon tc then "Class," else "")
---    ++ (if isFamInstTyCon tc then "FamInst," else "")
---    ++ (if isFunTyCon tc then "Fun," else "")
---    ++ (if isPrimTyCon tc then "Prim," else "")
---    ++ (if isTupleTyCon tc then "Tuple," else "")
---    ++ (if isUnboxedTupleTyCon tc then "UnboxedTyple," else "")
---    ++ (if isBoxedTupleTyCon tc then "BoxedTyple," else "")
---    ++ (if isTypeSynonymTyCon tc then "TypeSynonym," else "")
---    ++ (if isDecomposableTyCon tc then "Decomposable," else "")
---    ++ (if isPromotedDataCon tc then "PromotedDataCon," else "")
---    ++ (if isPromotedTyCon tc then "Promoted" else "")
---    ++ "}"
-
+    <> text "}"
 
 showName :: Name -> SDoc
---showName = ppr
-showName n = text "<"
-             <> ppr (nameOccName n)
-             <+> ppr (nameUnique n)
-             <+> text "("
-             <> ppr (nameModule_maybe n)
-             <> text ")"
-             <+> ppr (nameSrcLoc n)
-             <+> ppr (nameSrcSpan n)
-             <+> whenT (isInternalName n) "internal"
-             <+> whenT (isExternalName n) "external"
-             <+> whenT (isSystemName n) "system"
-             <+> whenT (isWiredInName n) "wired in"
-             <> text ">"
+showName = ppr
+--showName n = text "<"
+--             <> ppr (nameOccName n)
+--             <+> ppr (nameUnique n)
+--             <+> text "("
+--             <> ppr (nameModule_maybe n)
+--             <> text ")"
+--             <+> ppr (nameSrcLoc n)
+--             <+> ppr (nameSrcSpan n)
+--             <+> whenT (isInternalName n) "internal"
+--             <+> whenT (isExternalName n) "external"
+--             <+> whenT (isSystemName n) "system"
+--             <+> whenT (isWiredInName n) "wired in"
+--             <> text ">"
 
 showOccName :: OccName -> SDoc
 showOccName n = text "<"
@@ -493,10 +589,10 @@ showOccName n = text "<"
                 <> text ">"
 
 showVar :: Var -> SDoc
-showVar = ppr
---showVar v = text "["
---            <> showName (varName v)
---            <+> ppr (varUnique v)
+--showVar = ppr
+showVar v = text "["
+            <> showName (varName v)
+            <+> ppr (varUnique v)
 --            <+> showType (varType v)
 --            <+> showOccName (nameOccName $ varName v)
 --            <> (when (isId v) (idDetails v))
@@ -517,13 +613,7 @@ showVar = ppr
 --            <> (whenT (isLocalId v) "LocalId")
 --            <> (whenT (isGlobalId v) "GlobalId")
 --            <> (whenT (isExportedId v) "ExportedId")
---            <> text "]"
-
-showVarStr :: Var -> String
-showVarStr v =
-             (occNameString $ nameOccName $ varName v)
---             ++ "[" ++ (show $ varUnique v) ++ "]"
---             ++ "{" ++ (showTypeStr $ varType v) ++ "}"
+            <> text "]"
 
 showExpr :: CoreExpr -> SDoc
 showExpr (Var i) = text "<" <> showVar i <> text ">"
@@ -532,26 +622,58 @@ showExpr (App e (Type t)) = showExpr e <+> text "@{" <+> showType t <> text "}"
 showExpr (App e a) = text "(" <> showExpr e <> text " $ " <> showExpr a <> text ")"
 showExpr (Lam b e) = text "(" <> showVar b <> text " -> " <> showExpr e <> text ")"
 showExpr (Let b e) = text "Let" <+> showLetBind b <+> text "in" <+> showExpr e
-showExpr (Case e b t as) = text "Case" <+> showExpr e {-<+> ppr b <+> ppr t-} <+> vcat (showAlt <$> as)
-showExpr (Cast e c) = text "Cast" <+> ppr e <+> ppr c
-showExpr (Tick t e) = text "Tick" <+> ppr t <+> ppr e
-showExpr (Type t) = text "Type" <+> ppr t
-showExpr (Coercion c) = text "Coercion" <+> ppr c
+showExpr (Case e b t as) = text "Case" <+> showExpr e <+> showVar b <+> text "::{" <+> showType t <> text "}" <+> hcat (showAlt <$> as)
+showExpr (Cast e c) = text "Cast" <+> showExpr e <+> showCoercion c
+showExpr (Tick t e) = text "Tick" <+> ppr t <+> showExpr e
+showExpr (Type t) = text "Type" <+> showType t
+showExpr (Coercion c) = text "Coercion" <+> text "`" <> showCoercion c <> text "`"
 
 showLetBind (NonRec b e) = showVar b <+> text "=" <+> showExpr e
 showLetBind (Rec bs) = hcat $ fmap (\(b,e) -> showVar b <+> text "=" <+> showExpr e) bs
 
-showAlt (con, bs, e) = ppr con <+> hcat (fmap showVar bs) <+> showExpr e
+showCoercion :: Coercion -> SDoc
+showCoercion c = text "`" <> show c <> text "`"
+    where show (Refl role typ) = text "Refl" <+> ppr role <+> showType typ
+          show (TyConAppCo role tyCon cs) = text "TyConAppCo"
+          show (AppCo c1 c2) = text "AppCo"
+          show (ForAllCo tyVar c) = text "ForAllCo"
+          show (CoVarCo coVar) = text "CoVarCo"
+          show (AxiomInstCo coAxiom branchIndex cs) = text "AxiomInstCo" <+> ppr coAxiom <+> ppr branchIndex <+> ppr cs
+          show (UnivCo fastString role type1 type2) = text "UnivCo"
+          show (SymCo c) = text "SymCo" <+> show c
+          show (TransCo c1 c2) = text "TransCo"
+          show (AxiomRuleCo coAxiomRule types cs) = text "AxiomRuleCo"
+          show (NthCo int c) = text "NthCo"
+          show (LRCo leftOrRight c) = text "LRCo"
+          show (InstCo c typ) = text "InstCo"
+          show (SubCo c) = text "SubCo"
 
-showExprStr :: CoreExpr -> String
-showExprStr (Var i) = showVarStr i
-showExprStr (Lit l) = "Lit"
-showExprStr (App e (Type t)) = showExprStr e ++ "@{" ++ showTypeStr t ++ "}"
-showExprStr (App e a) = "(" ++ showExprStr e ++  " $ " ++ showExprStr a ++ ")"
-showExprStr (Lam b e) = "(" ++ showVarStr b ++ "-> " ++ showExprStr e ++ ")"
-showExprStr (Let b e) = "Let"
-showExprStr (Case e b t as) = "Case"
-showExprStr (Cast e c) = "Cast"
-showExprStr (Tick t e) = "Tick"
-showExprStr (Type t) = "Type"
-showExprStr (Coercion c) = "Coercion"
+showAlt (con, bs, e) = text "|" <> ppr con <+> hcat (fmap showVar bs) <+> showExpr e <> text "|"
+
+showClass :: Class -> SDoc
+--showClass = ppr
+showClass cls =
+    let (tyVars, funDeps, scTheta, scSels, ats, opStuff) = classExtraBigSig cls
+    in  text "Class{"
+        <+> showName (className cls)
+        <+> ppr (classKey cls)
+        <+> ppr tyVars
+        <+> brackets (fsep (punctuate comma (map (\(m,c) -> parens (sep [showVar m <> comma, ppr c])) opStuff)))
+        <+> ppr (classMinimalDef cls)
+        <+> ppr funDeps
+        <+> ppr scTheta
+        <+> ppr scSels
+        <+> text "}"
+
+showDataCon :: DataCon -> SDoc
+showDataCon dc =
+    text "DataCon{"
+    <+> showName (dataConName dc)
+--    <+> ppr (dataConFullSig dc)
+--    <+> ppr (dataConFieldLabels dc)
+--    <+> ppr (dataConTyCon dc)
+--    <+> ppr (dataConTheta dc)
+--    <+> ppr (dataConStupidTheta dc)
+--    <+> ppr (dataConWorkId dc)
+--    <+> ppr (dataConWrapId dc)
+    <+> text "}"
