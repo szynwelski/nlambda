@@ -1,7 +1,5 @@
 module Meta where
 
-import Data.Functor ((<$>))
-
 data WithMeta a = WithMeta {value :: a, meta :: Meta} deriving Show
 
 type Meta = Int

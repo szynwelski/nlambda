@@ -35,61 +35,47 @@ import Prelude (String, Int, Char)
 --two'' = snd (Pair 1 2)
 --letx = let x = Pair 1 2 in fst x
 
-
--- Bool
-
-data Bool = False | True
-
---showBool True = "True"
---showBool False = "False"
---
---data  Maybe a = Nothing | Just a
-----
-----showMaybe Nothing = "Nothing"
-----showMaybe (Just _) = "Just ?"
---
---data List a = Empty | List a (List a)
---
---showList Empty = "Empty"
---showList (List _ _) = "List"
---
---isEmpty Empty = True
---isEmpty (List _ _) = False
---
---test1 = showList Empty
---test2 = showList (List 1 Empty)
---test3 = showList (List 1 (List 2 Empty))
---test4 = showBool (isEmpty Empty)
---test5 = showBool (isEmpty (List 1 Empty))
-
+-- Show
 class Show a where
     show :: a -> String
     show _ = "!"
---    number :: a -> Int
---    mark :: a -> Char
 
+---- Eq
 --class Eq a where
 --    eq :: a -> a -> Bool
+--
+---- Bool
+data Bool = False | True
 
 instance Show Bool where
     show True = "True"
     show False = "False"
---    number True = 1
---    number False = 0
---    mark True = 'y'
---    mark False = 'n'
-
---instance Show (Maybe a) where
+--
+---- Maybe
+--data  Maybe a = Nothing | Just a
+--
+--instance Show a => Show (Maybe a) where
 --    show Nothing = "Nothing"
---    show (Just _) = "Just"
---
+--    show (Just x) = show x
+
+-- List
+data List a = Empty | List a (List a)
+
+isEmpty :: List a -> Bool
+isEmpty Empty = True
+isEmpty (List _ _) = False
+
+empty :: List a
+empty = Empty
+
+singleton :: a -> List a
+singleton x = List x Empty
+
+
+
+
 test :: String
-test = show True
---
---test1 :: Int
---test1 = number True
---
---test2 :: Char
---test2 = mark True
---
---test3 = show Nothing
+test = show (isEmpty empty)
+
+test1 :: String
+test1 = show (isEmpty (singleton True))

@@ -110,6 +110,33 @@ getTyConImplicitBinds tc = map get_defn (mapMaybe dataConWrapId_maybe (tyConData
 get_defn :: Id -> CoreBind
 get_defn id = NonRec id (unfoldingTemplate (realIdUnfolding id))
 
+
+--mkDictSelRhs' :: Class
+--             -> Int         -- 0-indexed selector among (superclasses ++ methods)
+--             -> CoreExpr
+--mkDictSelRhs' clas val_index
+--  = mkLams tyvars (Lam dict_id rhs_body)
+--  where
+--    tycon          = pprTrace "tycon" (ppr $ classTyCon clas) classTyCon clas
+--    new_tycon      = pprTrace "new_tycon" (ppr $ isNewTyCon tycon) isNewTyCon tycon
+--    [data_con]     = pprTrace "[data_con]" (ppr $ tyConDataCons tycon) tyConDataCons tycon
+--    tyvars         = pprTrace "tyvars" (ppr $ dataConUnivTyVars data_con) dataConUnivTyVars data_con
+--    arg_tys        = pprTrace "arg_tys" (ppr $ dataConRepArgTys data_con) dataConRepArgTys data_con
+--
+--    the_arg_id     = pprTrace "the_arg_id" (ppr $ getNth arg_ids val_index) getNth arg_ids val_index
+--    pred           = pprTrace "pred" (ppr $ mkClassPred clas (mkTyVarTys tyvars)) mkClassPred clas (mkTyVarTys tyvars)
+--    dict_id        = pprTrace "dict_id" (ppr $ mkTemplateLocal 1 pred) mkTemplateLocal 1 pred
+--    arg_ids        = mkTemplateLocalsNum 2 arg_tys
+--
+--    rhs_body | new_tycon = unwrapNewTypeBody tycon (map mkTyVarTy tyvars) (Var dict_id)
+--             | otherwise = Case (Var dict_id) dict_id (idType the_arg_id)
+--                                [(DataAlt data_con, arg_ids, varToCoreExpr the_arg_id)]
+--                                -- varToCoreExpr needed for equality superclass selectors
+--                                --   sel a b d = case x of { MkC _ (g:a~b) _ -> CO g }
+--
+--getNth :: Outputable a => [a] -> Int -> a
+--getNth xs n = xs !! n
+
 ----------------------------------------------------------------------------------------
 -- Data constructors
 ----------------------------------------------------------------------------------------
@@ -291,7 +318,7 @@ changeType mod tcMap t | (Just (t1, t2)) <- splitFunTy_maybe t, isPredTy t1
                        = mkFunTy (changePredType tcMap t1) (changeType mod tcMap t2)
 changeType mod tcMap t | (Just (t1, t2)) <- splitFunTy_maybe t
                        = withMetaType mod $ mkFunTy (changeType mod tcMap t1) (changeType mod tcMap t2)
-changeType mod tcMap t = withMetaType mod t -- ???
+changeType mod tcMap t = withMetaType mod t -- FIXME other cases?, maybe use makeTyVarUnique?
 
 changePredType :: TyConMap -> PredType -> PredType
 changePredType tcMap t | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc
@@ -323,6 +350,9 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                         x' <- newExpr varMap x
                                         return $ mkCoreApp f'' x'
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
+                                                    return $ Lam x e'
+          newExpr varMap (Lam x e) | isEvVar x = do let x' = changeBindType mod tcMap x
+                                                    e' <- newExpr (Map.insert x x' varMap) e
                                                     return $ Lam x e'
           newExpr varMap (Lam x e) = do let x' = changeBindType mod tcMap x
                                         e' <- newExpr (Map.insert x x' varMap) e
@@ -542,8 +572,8 @@ showType (LitTy tl) = text "LitTy(" <> ppr tl <> text ")"
 
 showTyCon :: TyCon -> SDoc
 showTyCon tc = text "'" <> text (occNameString $ nameOccName $ tyConName tc) <> text "'"
-    <> text "{"
-    <> ppr (nameUnique $ tyConName tc)
+--    <> text "{"
+--    <> ppr (nameUnique $ tyConName tc)
 --    <> (whenT (isAlgTyCon tc) "Alg,")
 --    <> (whenT (isClassTyCon tc) "Class,")
 --    <> (whenT (isFamInstTyCon tc) "FamInst,")
@@ -557,10 +587,10 @@ showTyCon tc = text "'" <> text (occNameString $ nameOccName $ tyConName tc) <> 
 --    <> (whenT (isPromotedDataCon tc) "PromotedDataCon, ")
 --    <> (whenT (isPromotedTyCon tc) "Promoted, ")
 --    <> (text "dataConNames:" <+> (vcat $ fmap showName $ fmap dataConName $ tyConDataCons tc))
-    <> text "}"
+--    <> text "}"
 
 showName :: Name -> SDoc
-showName = ppr
+showName = ppr . nameOccName
 --showName n = text "<"
 --             <> ppr (nameOccName n)
 --             <+> ppr (nameUnique n)
@@ -592,7 +622,7 @@ showVar :: Var -> SDoc
 --showVar = ppr
 showVar v = text "["
             <> showName (varName v)
-            <+> ppr (varUnique v)
+--            <+> ppr (varUnique v)
 --            <+> showType (varType v)
 --            <+> showOccName (nameOccName $ varName v)
 --            <> (when (isId v) (idDetails v))
@@ -606,6 +636,7 @@ showVar v = text "["
 --            <> (when (isId v) (strictnessInfo $ idInfo v))
 --            <> (when (isId v) (callArityInfo $ idInfo v))
 --            <> (whenT (isId v) "Id")
+--            <> (whenT (isDictId v) "DictId")
 --            <> (whenT (isTKVar v) "TKVar")
 --            <> (whenT (isTyVar v) "TyVar")
 --            <> (whenT (isTcTyVar v) "TcTyVar")
@@ -613,6 +644,14 @@ showVar v = text "["
 --            <> (whenT (isLocalId v) "LocalId")
 --            <> (whenT (isGlobalId v) "GlobalId")
 --            <> (whenT (isExportedId v) "ExportedId")
+--            <> (whenT (isEvVar v) "EvVar")
+--            <> (whenT (isId v && (isJust $ isClassOpId_maybe v)) "ClassOpId")
+--            <> (whenT (isId v && isDFunId v) "DFunId")
+--            <> (whenT (isId v && isPrimOpId v) "PrimOpId")
+--            <> (whenT (isId v && isConLikeId v) "ConLikeId")
+--            <> (whenT (isId v && isRecordSelector v) "RecordSelector")
+--            <> (whenT (isId v && isFCallId v) "FCallId")
+--            <> (whenT (isId v && hasNoBinding v) "NoBinding")
             <> text "]"
 
 showExpr :: CoreExpr -> SDoc
@@ -638,7 +677,7 @@ showCoercion c = text "`" <> show c <> text "`"
           show (AppCo c1 c2) = text "AppCo"
           show (ForAllCo tyVar c) = text "ForAllCo"
           show (CoVarCo coVar) = text "CoVarCo"
-          show (AxiomInstCo coAxiom branchIndex cs) = text "AxiomInstCo" <+> ppr coAxiom <+> ppr branchIndex <+> ppr cs
+          show (AxiomInstCo coAxiom branchIndex cs) = text "AxiomInstCo" <+> ppr coAxiom <+> ppr branchIndex <+> vcat (fmap showCoercion cs)
           show (UnivCo fastString role type1 type2) = text "UnivCo"
           show (SymCo c) = text "SymCo" <+> show c
           show (TransCo c1 c2) = text "TransCo"
