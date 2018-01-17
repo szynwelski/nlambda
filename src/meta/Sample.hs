@@ -38,7 +38,7 @@ import Prelude (String, Int, Char)
 -- Show
 class Show a where
     show :: a -> String
-    show _ = "!"
+    show _ = ""
 
 ---- Eq
 --class Eq a where
@@ -48,9 +48,9 @@ class Show a where
 data Bool = False | True
 
 instance Show Bool where
-    show True = "True"
-    show False = "False"
---
+--    show True = "True"
+--    show False = "False"
+
 ---- Maybe
 --data  Maybe a = Nothing | Just a
 --
@@ -59,23 +59,32 @@ instance Show Bool where
 --    show (Just x) = show x
 
 -- List
-data List a = Empty | List a (List a)
-
-isEmpty :: List a -> Bool
-isEmpty Empty = True
-isEmpty (List _ _) = False
-
-empty :: List a
-empty = Empty
-
-singleton :: a -> List a
-singleton x = List x Empty
-
-
+--data List a = Empty | List a (List a)
+--
+--instance Show a => Show (List a) where
+--    show Empty = "[]"
+--    show (List x l) = "[x]"
+--
+--isEmpty :: List a -> Bool
+--isEmpty Empty = True
+--isEmpty (List _ _) = False
+--
+--empty :: List a
+--empty = Empty
+--
+--singleton :: a -> List a
+--singleton x = List x Empty
+--
+--reverse :: List a -> List a
+--reverse l = go l Empty
+--    where go (List x l1) l2 = go l1 (List x l2)
+--          go Empty l = l
+--
+--(++) :: List a -> List a -> List a
+--(++) l1 l2 = go (reverse l1) l2
+--    where go Empty l = l
+--          go (List x l1) l2 = go l1 (List x l2)
 
 
 test :: String
-test = show (isEmpty empty)
-
-test1 :: String
-test1 = show (isEmpty (singleton True))
+test = show True

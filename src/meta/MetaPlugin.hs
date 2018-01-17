@@ -289,10 +289,14 @@ newBinds mod varMap tcMap dcs bs = do bs' <- mapM (changeBind mod varMap tcMap) 
                                       return $ bs' ++ bs''
 
 changeBind :: HomeModInfo -> VarMap -> TyConMap -> CoreBind -> CoreM CoreBind
-changeBind mod varMap tcMap (NonRec b e) =
-    do newExpr <- changeExpr mod varMap tcMap e
-       return $ NonRec (newVar varMap b) newExpr
-changeBind mod varMap tcMap b = return b -- TODO !!!
+changeBind mod varMap tcMap (NonRec b e) = do (b',e') <- changeBindExpr mod varMap tcMap (b, e)
+                                              return (NonRec b' e')
+changeBind mod varMap tcMap (Rec bs) = do bs' <- mapM (changeBindExpr mod varMap tcMap) bs
+                                          return (Rec bs')
+
+changeBindExpr :: HomeModInfo -> VarMap -> TyConMap -> (CoreBndr, CoreExpr) -> CoreM (CoreBndr, CoreExpr)
+changeBindExpr mod varMap tcMap (b, e) = do newExpr <- changeExpr mod varMap tcMap e
+                                            return (newVar varMap b, newExpr)
 
 dataBind :: HomeModInfo -> VarMap -> DataCon -> CoreM CoreBind
 dataBind mod varMap dc = do expr <- dataConExpr mod dc [] 0
@@ -304,8 +308,6 @@ dataBind mod varMap dc = do expr <- dataConExpr mod dc [] 0
 
 newBindType :: HomeModInfo -> TyConMap -> CoreBndr -> Type
 newBindType mod tcMap = changeType mod tcMap . varType
---newBindType mod tcMap b | pprTrace "newBindType" (showVar b <+> text " :: " <+> ppr (varType b) <+> (text " ~~~~>> ") <+> (ppr $ changeType mod tcMap $ varType b)) False = undefined
---newBindType mod tcMap b = changeType mod tcMap $ varType b
 
 changeBindType :: HomeModInfo -> TyConMap -> CoreBndr -> CoreBndr
 changeBindType mod tcMap x = setVarType x $ newBindType mod tcMap x
@@ -335,10 +337,14 @@ getVarNameStr = occNameString . nameOccName . varName
 isInternalVar :: Var -> Bool
 isInternalVar = isSuffixOf "#" . getVarNameStr -- FIXME use isPrimOpId ??
 
+isValueVar :: Var -> Bool
+isValueVar v = let (_,_,ty) = tcSplitSigmaTy (varType v) in not $ isFunTy ty
+
 changeExpr :: HomeModInfo -> VarMap -> TyConMap -> CoreExpr -> CoreM CoreExpr
 changeExpr mod varMap tcMap e = newExpr varMap e
     where -- newExpr varMap e | pprTrace "newExpr" (showExpr e) False = undefined
           newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
+          newExpr varMap (Var v) | isValueVar v = emptyExpr mod (Var v)
           newExpr varMap (Lit l) = emptyExpr mod (Lit l)
           newExpr varMap a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
