@@ -2,89 +2,105 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 module Sample where
 
-import Prelude (String, Int, Char)
+import Prelude (Bool(True, False), String)
 
---data Data = X | Y Data
---
---x = X
---y = Y X
---
-----showData :: Data -> String
---showData X = "X"
---showData (Y _) = "Y"
+id :: a -> a
+id x = x
 
+const :: a -> b -> a
+const x _ =  x
 
---newtype NewType a = NewType a
---newtyp = NewType X
-
---one :: Int
---one = 1
---one' = id one
---
---id x = x
-
---data W a = W a
---wx = W X
---showW (W a) = "W"
-
---data Pair a b = Pair a b
---fst (Pair x _) = x
---snd (Pair _ x) = x
---
---one'' = fst (Pair 1 2)
---two'' = snd (Pair 1 2)
---letx = let x = Pair 1 2 in fst x
-
+----------------------------------------------------------------------------
 -- Show
+----------------------------------------------------------------------------
 class Show a where
     show :: a -> String
-    show _ = ""
 
----- Eq
---class Eq a where
---    eq :: a -> a -> Bool
---
----- Bool
-data Bool = False | True
+----------------------------------------------------------------------------
+-- Bool
+----------------------------------------------------------------------------
 
 instance Show Bool where
---    show True = "True"
---    show False = "False"
+    show True = "True"
+    show False = "False"
 
----- Maybe
---data  Maybe a = Nothing | Just a
---
---instance Show a => Show (Maybe a) where
---    show Nothing = "Nothing"
---    show (Just x) = show x
+not :: Bool -> Bool
+not True = False
+not False = True
 
+(&&) :: Bool -> Bool -> Bool
+False && _ = False
+_ && False = False
+_ && _ = True
+
+(||) :: Bool -> Bool -> Bool
+True || _ = True
+_ || True = True
+_ || _ = False
+
+----------------------------------------------------------------------------
+-- Maybe
+----------------------------------------------------------------------------
+data Maybe a = Nothing | Just a
+
+instance Show a => Show (Maybe a) where
+    show Nothing = "Nothing"
+    show (Just x) = "Just " ++ show x
+
+----------------------------------------------------------------------------
+-- Pair
+----------------------------------------------------------------------------
+
+instance (Show a, Show b) => Show (a, b) where
+    show (x, y) = "(" ++ show x ++ "," ++ show y ++ ")"
+
+fst :: (a, b) -> a
+fst (x, _) = x
+
+snd :: (a, b) -> b
+snd (_, x) = x
+
+----------------------------------------------------------------------------
 -- List
---data List a = Empty | List a (List a)
---
---instance Show a => Show (List a) where
---    show Empty = "[]"
---    show (List x l) = "[x]"
---
---isEmpty :: List a -> Bool
---isEmpty Empty = True
---isEmpty (List _ _) = False
---
---empty :: List a
---empty = Empty
---
---singleton :: a -> List a
---singleton x = List x Empty
---
---reverse :: List a -> List a
---reverse l = go l Empty
---    where go (List x l1) l2 = go l1 (List x l2)
---          go Empty l = l
---
---(++) :: List a -> List a -> List a
---(++) l1 l2 = go (reverse l1) l2
---    where go Empty l = l
---          go (List x l1) l2 = go l1 (List x l2)
+----------------------------------------------------------------------------
+instance Show a => Show [a] where
+    show [] = "[]"
+    show (x:l) = "[" ++ show x ++ showTail l
+        where showTail [] = "]"
+              showTail (x:l) = "," ++ show x ++ showTail l
 
+null :: [a] -> Bool
+null [] = True
+null _ = False
+
+reverse :: [a] -> [a]
+reverse l = go l []
+    where go (x:l1) l2 = go l1 (x:l2)
+          go [] l = l
+
+(++) :: [a] -> [a] -> [a]
+(++) [] l = l
+(++) (x:l1) l2 = x:(l1 ++ l2)
+
+map :: (a -> b) -> [a] -> [b]
+map _ [] = []
+map f (x:l) = (f x) : (map f l)
+
+filter :: (a -> Bool) -> [a] -> [a]
+filter f [] = []
+filter f (x:l) = let fl = filter f l in if f x then x:fl else fl
+
+head :: [a] -> Maybe a
+head [] = Nothing
+head (x:_) = Just x
+
+tail :: [a] -> Maybe [a]
+tail [] = Nothing
+tail (_:l) = Just l
+
+----------------------------------------------------------------------------
+-- Test
+----------------------------------------------------------------------------
 
 test :: String
-test = show True
+test = show (True, False)

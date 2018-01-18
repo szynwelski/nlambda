@@ -22,6 +22,7 @@ import Data.Foldable
 import InstEnv
 import Class
 import MkId
+import CoAxiom
 
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -89,6 +90,7 @@ pass mod guts = do putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:
 --                   modInfo "files" mg_dependent_files guts'
 --                   modInfo "classes" getClasses guts'
 --                   modInfo "implicit binds" getImplicitBinds guts'
+--                   modInfo "annotations" mg_anns guts'
                    putMsg $ (text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:") <+> (ppr $ mg_module guts')
                    return guts'
 
@@ -341,9 +343,11 @@ isValueVar :: Var -> Bool
 isValueVar v = let (_,_,ty) = tcSplitSigmaTy (varType v) in not $ isFunTy ty
 
 changeExpr :: HomeModInfo -> VarMap -> TyConMap -> CoreExpr -> CoreM CoreExpr
+--changeExpr mod varMap tcMap e | pprTrace "changeExpr" (showExpr e) False = undefined
 changeExpr mod varMap tcMap e = newExpr varMap e
-    where -- newExpr varMap e | pprTrace "newExpr" (showExpr e) False = undefined
-          newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
+    where newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
+          newExpr varMap (Var v) | isInternalVar v = return $ Var v
+          newExpr varMap (Var v) | isMetaEquivalent v = return $ getMetaEquivalent mod v
           newExpr varMap (Var v) | isValueVar v = emptyExpr mod (Var v)
           newExpr varMap (Lit l) = emptyExpr mod (Lit l)
           newExpr varMap a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
@@ -405,12 +409,12 @@ changeExpr mod varMap tcMap e = newExpr varMap e
 
 changeCoercion :: HomeModInfo -> TyConMap -> Coercion -> Coercion
 changeCoercion mod tcMap c = change c
-    where change (Refl r t) = Refl r t
+    where change (Refl r t) = Refl r t -- FIXME not changeType ?
           change (TyConAppCo r tc cs) = TyConAppCo r (newTyCon tcMap tc) (change <$> cs)
           change (AppCo c1 c2) = AppCo (change c1) (change c2)
           change (ForAllCo tv c) = ForAllCo tv (change c)
           change (CoVarCo cv) = CoVarCo cv
-          change (AxiomInstCo a i cs) = AxiomInstCo a i (change <$> cs)
+          change (AxiomInstCo a i cs) = AxiomInstCo (changeCoAxiom tcMap a) i (change <$> cs)
           change (UnivCo n r t1 t2) = UnivCo n r (changeType mod tcMap t1) (changeType mod tcMap t2)
           change (SymCo c) = SymCo $ change c
           change (TransCo c1 c2) = TransCo (change c1) (change c2)
@@ -419,6 +423,9 @@ changeCoercion mod tcMap c = change c
           change (LRCo lr c) = LRCo lr $ change c
           change (InstCo c t) = InstCo (change c) (changeType mod tcMap t)
           change (SubCo c) = SubCo $ change c
+
+changeCoAxiom :: TyConMap -> CoAxiom a -> CoAxiom a
+changeCoAxiom tcMap (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon tcMap tc) bs i
 
 dataConExpr :: HomeModInfo -> DataCon -> [Var] -> Int -> CoreM (CoreExpr)
 --dataConExpr mod dc xs argNumber | pprTrace "dataConExpr" (ppr dc <+> ppr xs <+> ppr argNumber) False = undefined
@@ -508,12 +515,15 @@ isTyThingTyCon _          = False
 getTyCon :: HomeModInfo -> String -> GHC.TyCon
 getTyCon mod nm = getTyThing mod nm isTyThingTyCon tyThingTyCon tyConName
 
-emptyV mod = Var $ getVar mod "empty"
-emptyMetaV mod = Var $ getVar mod "emptyMeta"
-unionV mod = Var $ getVar mod $ "union"
-metaV mod = Var $ getVar mod "meta"
-valueV mod = Var $ getVar mod "value"
-createV mod = Var $ getVar mod "create"
+getMetaVar :: HomeModInfo -> String -> CoreExpr
+getMetaVar mod = Var . getVar mod
+
+emptyV mod = getMetaVar mod "empty"
+emptyMetaV mod = getMetaVar mod "emptyMeta"
+unionV mod = getMetaVar mod "union"
+metaV mod = getMetaVar mod "meta"
+valueV mod = getMetaVar mod "value"
+createV mod = getMetaVar mod "create"
 withMetaC mod = getTyCon mod "WithMeta"
 
 withMetaType :: HomeModInfo -> Type -> Type
@@ -549,6 +559,14 @@ createExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 createExpr mod e1 e2 = do e <- applyExpr (createV mod) e1
                           applyExpr e e2
 
+metaEquivalents :: Map.Map String String
+metaEquivalents = Map.fromList [(":", "metaColon"), ("(,)", "metaPair"), ("==", "metaEq")]
+
+isMetaEquivalent :: Var -> Bool
+isMetaEquivalent v = Map.member (getVarNameStr v) metaEquivalents
+
+getMetaEquivalent :: HomeModInfo -> Var -> CoreExpr
+getMetaEquivalent mod v = getMetaVar mod (metaEquivalents Map.! getVarNameStr v)
 
 ----------------------------------------------------------------------------------------
 -- Show
@@ -558,14 +576,17 @@ when c v = if c then text " " <> ppr v else text ""
 whenT c v = if c then text " " <> text v else text ""
 
 showBind :: CoreBind -> SDoc
-showBind (NonRec b e) = text "===> "
+showBind (NonRec b e) = showBindExpr (b, e)
+showBind (Rec bs) = hcat $ map showBindExpr bs
+
+showBindExpr :: (CoreBndr, CoreExpr) -> SDoc
+showBindExpr (b,e) = text "===> "
                         <+> showVar b
                         <+> text "::"
                         <+> showType (varType b)
                         <> text "\n"
                         <+> showExpr e
                         <> text "\n"
-showBind b@(Rec _) = text "Rec [" {-<+> ppr b-} <+> text "]\n" -- TODO
 
 showType :: Type -> SDoc
 --showType = ppr
@@ -632,14 +653,15 @@ showVar v = text "["
 --            <+> showType (varType v)
 --            <+> showOccName (nameOccName $ varName v)
 --            <> (when (isId v) (idDetails v))
---            <> (when (isId v) (cafInfo $ idInfo v))
 --            <> (when (isId v) (arityInfo $ idInfo v))
+--            <> (when (isId v) (specInfo $ idInfo v))
 --            <> (when (isId v) (unfoldingInfo $ idInfo v))
+--            <> (when (isId v) (cafInfo $ idInfo v))
 --            <> (when (isId v) (oneShotInfo $ idInfo v))
 --            <> (when (isId v) (inlinePragInfo $ idInfo v))
 --            <> (when (isId v) (occInfo $ idInfo v))
---            <> (when (isId v) (demandInfo $ idInfo v))
 --            <> (when (isId v) (strictnessInfo $ idInfo v))
+--            <> (when (isId v) (demandInfo $ idInfo v))
 --            <> (when (isId v) (callArityInfo $ idInfo v))
 --            <> (whenT (isId v) "Id")
 --            <> (whenT (isDictId v) "DictId")
@@ -685,7 +707,7 @@ showCoercion c = text "`" <> show c <> text "`"
           show (CoVarCo coVar) = text "CoVarCo"
           show (AxiomInstCo coAxiom branchIndex cs) = text "AxiomInstCo" <+> ppr coAxiom <+> ppr branchIndex <+> vcat (fmap showCoercion cs)
           show (UnivCo fastString role type1 type2) = text "UnivCo"
-          show (SymCo c) = text "SymCo" <+> show c
+          show (SymCo c) = text "SymCo" <+> showCoercion c
           show (TransCo c1 c2) = text "TransCo"
           show (AxiomRuleCo coAxiomRule types cs) = text "AxiomRuleCo"
           show (NthCo int c) = text "NthCo"
