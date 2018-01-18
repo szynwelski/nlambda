@@ -2,7 +2,7 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 module Sample where
 
-import Prelude (Bool(True, False), String)
+import Prelude (Bool(..), String)
 
 
 infixr 9  .
@@ -28,6 +28,7 @@ flip f x y = f y x
 ----------------------------------------------------------------------------
 -- Show
 ----------------------------------------------------------------------------
+
 class Show a where
     show :: a -> String
 
@@ -59,6 +60,7 @@ _ || _ = False
 ----------------------------------------------------------------------------
 -- Maybe
 ----------------------------------------------------------------------------
+
 data Maybe a = Nothing | Just a
 
 instance Show a => Show (Maybe a) where
@@ -81,6 +83,7 @@ snd (_, x) = x
 ----------------------------------------------------------------------------
 -- List
 ----------------------------------------------------------------------------
+
 instance Show a => Show [a] where
     show [] = "[]"
     show (x:l) = "[" ++ show x ++ showTail l
@@ -129,5 +132,5 @@ tail (_:l) = Just l
 -- Test
 ----------------------------------------------------------------------------
 
-test :: String
-test = show $ (id . flip (,) True) $ const False True
+test :: Bool
+test = not $ (id const) True False

@@ -112,33 +112,6 @@ getTyConImplicitBinds tc = map get_defn (mapMaybe dataConWrapId_maybe (tyConData
 get_defn :: Id -> CoreBind
 get_defn id = NonRec id (unfoldingTemplate (realIdUnfolding id))
 
-
---mkDictSelRhs' :: Class
---             -> Int         -- 0-indexed selector among (superclasses ++ methods)
---             -> CoreExpr
---mkDictSelRhs' clas val_index
---  = mkLams tyvars (Lam dict_id rhs_body)
---  where
---    tycon          = pprTrace "tycon" (ppr $ classTyCon clas) classTyCon clas
---    new_tycon      = pprTrace "new_tycon" (ppr $ isNewTyCon tycon) isNewTyCon tycon
---    [data_con]     = pprTrace "[data_con]" (ppr $ tyConDataCons tycon) tyConDataCons tycon
---    tyvars         = pprTrace "tyvars" (ppr $ dataConUnivTyVars data_con) dataConUnivTyVars data_con
---    arg_tys        = pprTrace "arg_tys" (ppr $ dataConRepArgTys data_con) dataConRepArgTys data_con
---
---    the_arg_id     = pprTrace "the_arg_id" (ppr $ getNth arg_ids val_index) getNth arg_ids val_index
---    pred           = pprTrace "pred" (ppr $ mkClassPred clas (mkTyVarTys tyvars)) mkClassPred clas (mkTyVarTys tyvars)
---    dict_id        = pprTrace "dict_id" (ppr $ mkTemplateLocal 1 pred) mkTemplateLocal 1 pred
---    arg_ids        = mkTemplateLocalsNum 2 arg_tys
---
---    rhs_body | new_tycon = unwrapNewTypeBody tycon (map mkTyVarTy tyvars) (Var dict_id)
---             | otherwise = Case (Var dict_id) dict_id (idType the_arg_id)
---                                [(DataAlt data_con, arg_ids, varToCoreExpr the_arg_id)]
---                                -- varToCoreExpr needed for equality superclass selectors
---                                --   sel a b d = case x of { MkC _ (g:a~b) _ -> CO g }
---
---getNth :: Outputable a => [a] -> Int -> a
---getNth xs n = xs !! n
-
 ----------------------------------------------------------------------------------------
 -- Data constructors
 ----------------------------------------------------------------------------------------
@@ -179,7 +152,7 @@ mkBindVarMap guts mod tcMap = mkMapWithVars guts mod tcMap vars
           toVars (Rec bs) = fmap fst bs
 
 newBindVar :: HomeModInfo -> TyConMap -> Var -> CoreM Var
-newBindVar mod tcMap v = let var = mkLocalId (varName v) (newBindType mod tcMap v)
+newBindVar mod tcMap v = let var = mkLocalId (varName v) (newBindType mod tcMap v) -- FIXME mkLocalIdWithInfo ??
                          in changeVarName "nlambda_" "" (if isExportedId v then setIdExported var else setIdNotExported var)
 
 changeVarName :: String -> String -> Var -> CoreM Var
@@ -318,10 +291,10 @@ changeType :: HomeModInfo -> TyConMap -> Type -> Type
 changeType mod tcMap t | isPredTy t = changePredType tcMap t -- probably without meta
 changeType mod tcMap t | (Just (tv, t')) <- splitForAllTy_maybe t
                        = mkForAllTy tv (changeType mod tcMap t')
-changeType mod tcMap t | (Just (t1, t2)) <- splitFunTy_maybe t, isPredTy t1
+changeType mod tcMap t | (Just (t1, t2)) <- splitFunTy_maybe t, isPredTy t1 -- FIXME to remove?
                        = mkFunTy (changePredType tcMap t1) (changeType mod tcMap t2)
 changeType mod tcMap t | (Just (t1, t2)) <- splitFunTy_maybe t
-                       = withMetaType mod $ mkFunTy (changeType mod tcMap t1) (changeType mod tcMap t2)
+                       = mkFunTy (changeType mod tcMap t1) (changeType mod tcMap t2)
 changeType mod tcMap t = withMetaType mod t -- FIXME other cases?, maybe use makeTyVarUnique?
 
 changePredType :: TyConMap -> PredType -> PredType
@@ -339,8 +312,8 @@ getVarNameStr = occNameString . nameOccName . varName
 isInternalVar :: Var -> Bool
 isInternalVar = isSuffixOf "#" . getVarNameStr -- FIXME use isPrimOpId ??
 
-isValueVar :: Var -> Bool
-isValueVar v = let (_,_,ty) = tcSplitSigmaTy (varType v) in not $ isFunTy ty
+isValueType :: Type -> Bool
+isValueType t = let (_,_,ty) = tcSplitSigmaTy t in not $ isFunTy ty
 
 changeExpr :: HomeModInfo -> VarMap -> TyConMap -> CoreExpr -> CoreM CoreExpr
 --changeExpr mod varMap tcMap e | pprTrace "changeExpr" (showExpr e) False = undefined
@@ -348,25 +321,25 @@ changeExpr mod varMap tcMap e = newExpr varMap e
     where newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
           newExpr varMap (Var v) | isInternalVar v = return $ Var v
           newExpr varMap (Var v) | isMetaEquivalent v = return $ getMetaEquivalent mod v
-          newExpr varMap (Var v) | isValueVar v = emptyExpr mod (Var v)
+          newExpr varMap (Var v) | isValueType $ varType v = emptyExpr mod (Var v)
           newExpr varMap (Lit l) = emptyExpr mod (Lit l)
           newExpr varMap a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
-                                               return $ App f' (Type t) -- without changing type
+                                               return $ App f' $ Type (if isValueType t then t else changeType mod tcMap t)
           newExpr varMap (App f x) = do f' <- newExpr varMap f
-                                        f'' <- if isPredTy (exprType x)
-                                               then return f'
-                                               else valueExpr mod f'
+                                        f'' <- if isWithMetaType mod $ exprType f'
+                                               then valueExpr mod f'
+                                               else return f'
                                         x' <- newExpr varMap x
-                                        return $ mkCoreApp f'' x'
+                                        x'' <- if (isWithMetaType mod $ funArgTy $ exprType f'') && (not $ isWithMetaType mod $ exprType x')
+                                               then emptyExpr mod x'
+                                               else return x'
+                                        return $ mkCoreApp f'' x''
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
-                                                    return $ Lam x e'
-          newExpr varMap (Lam x e) | isEvVar x = do let x' = changeBindType mod tcMap x
-                                                    e' <- newExpr (Map.insert x x' varMap) e
                                                     return $ Lam x e'
           newExpr varMap (Lam x e) = do let x' = changeBindType mod tcMap x
                                         e' <- newExpr (Map.insert x x' varMap) e
-                                        emptyExpr mod (Lam x' e')
+                                        return $ Lam x e'
           newExpr varMap (Let b e) = do (b', varMap') <- changeLetBind b varMap
                                         e' <- newExpr varMap' e
                                         return $ Let b' e'
@@ -404,7 +377,7 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                                                return (DataAlt con, xs, e'')
           changeAlternative varMap m (alt, [], e) = do {e' <- newExpr varMap e; return (alt, [], e')}
 
---mkCoreApp1 f x | pprTrace "mkCoreApp1" (ppr f <+> text "and" <+> ppr x) False = undefined
+--mkCoreApp1 f x | pprTrace "mkCoreApp1" (ppr f <+> text "::" <+> ppr (exprType f) <+> text "\nand\n" <+> ppr x <+> text "::" <+> ppr (exprType x)) False = undefined
 --mkCoreApp1 f x = mkCoreApp f x
 
 changeCoercion :: HomeModInfo -> TyConMap -> Coercion -> Coercion
@@ -528,6 +501,11 @@ withMetaC mod = getTyCon mod "WithMeta"
 
 withMetaType :: HomeModInfo -> Type -> Type
 withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
+
+isWithMetaType :: HomeModInfo -> Type -> Bool
+isWithMetaType mod t = let (_, _, ty) = tcSplitSigmaTy t in go ty
+    where go ty | Just (tc, _) <- splitTyConApp_maybe ty = tc == withMetaC mod
+                | otherwise = False
 
 mkPredVar :: (Class, [Type]) -> CoreM DictId
 mkPredVar (cls, tys) = do uniq <- getUniqueM
