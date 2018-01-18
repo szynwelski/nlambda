@@ -4,11 +4,26 @@ module Sample where
 
 import Prelude (Bool(True, False), String)
 
+
+infixr 9  .
+infixr 0  $
+
+{-# INLINE (.) #-}
+(.)    :: (b -> c) -> (a -> b) -> a -> c
+(.) f g = \x -> f (g x)
+
+{-# INLINE ($) #-}
+($) :: (a -> b) -> a -> b
+f $ x = f x
+
 id :: a -> a
 id x = x
 
 const :: a -> b -> a
 const x _ =  x
+
+flip :: (a -> b -> c) -> b -> a -> c
+flip f x y = f y x
 
 ----------------------------------------------------------------------------
 -- Show
@@ -23,6 +38,9 @@ class Show a where
 instance Show Bool where
     show True = "True"
     show False = "False"
+
+otherwise :: Bool
+otherwise = True
 
 not :: Bool -> Bool
 not True = False
@@ -78,17 +96,26 @@ reverse l = go l []
     where go (x:l1) l2 = go l1 (x:l2)
           go [] l = l
 
+
 (++) :: [a] -> [a] -> [a]
+{-# NOINLINE [1] (++) #-}
 (++) [] l = l
 (++) (x:l1) l2 = x:(l1 ++ l2)
 
 map :: (a -> b) -> [a] -> [b]
+{-# NOINLINE [0] map #-}
 map _ [] = []
 map f (x:l) = (f x) : (map f l)
 
 filter :: (a -> Bool) -> [a] -> [a]
 filter f [] = []
 filter f (x:l) = let fl = filter f l in if f x then x:fl else fl
+
+foldr :: (a -> b -> b) -> b -> [a] -> b
+{-# INLINE [0] foldr #-}
+foldr k z = go
+    where go []     = z
+          go (y:ys) = y `k` go ys
 
 head :: [a] -> Maybe a
 head [] = Nothing
@@ -103,4 +130,4 @@ tail (_:l) = Just l
 ----------------------------------------------------------------------------
 
 test :: String
-test = show (True, False)
+test = show $ (id . flip (,) True) $ const False True
