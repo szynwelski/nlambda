@@ -27,3 +27,12 @@ metaPair (WithMeta x m) (WithMeta y m') = create (x,y) (unionMeta m m')
 
 metaEq :: Eq a => WithMeta a -> WithMeta a -> WithMeta Bool
 metaEq x y = empty $ x == y
+
+metaShow :: Show a => WithMeta a -> WithMeta String
+metaShow (WithMeta x _) = empty $ show x
+
+metaPlus :: Num a => WithMeta a -> WithMeta a -> WithMeta a
+metaPlus (WithMeta x _) (WithMeta y _) = empty (x+y)
+
+metaMinus :: Num a => WithMeta a -> WithMeta a -> WithMeta a
+metaMinus (WithMeta x _) (WithMeta y _) = empty (x-y)
