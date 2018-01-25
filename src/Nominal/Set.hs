@@ -49,12 +49,17 @@ triples,
 triplesWith,
 triplesWithFilter,
 atomsTriples,
-mapList,
 -- ** Replicate
+mapList,
+mapFilterList,
 replicateSet,
+replicateDifferentSet,
 replicateSetUntil,
+replicateDifferentSetUntil,
 replicateAtoms,
+replicateDifferentAtoms,
 replicateAtomsUntil,
+replicateDifferentAtomsUntil,
 -- ** Size
 hasSizeLessThan,
 hasSize,
@@ -90,7 +95,7 @@ isCompact) where
 
 import Control.Arrow ((***), first)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
-import qualified Data.List as List ((\\), partition)
+import qualified Data.List as List ((\\), partition, tails)
 import Data.List.Utils (join)
 import qualified Data.Maybe as Maybe
 import Data.Map (Map)
@@ -366,7 +371,7 @@ insertAll es s = foldl (flip insert) s es
 fromList :: NominalType a => [a] -> Set a
 fromList es = insertAll es empty
 
--- | Applies function to all elements of a set and extract value from 'Just' results and remove elements with 'Nothing' results.
+-- | Applies function to all elements of a set, extract value from 'Just' results and remove elements with 'Nothing' results.
 mapFilter :: (NominalType a, NominalType b) => (a -> NominalMaybe b) -> Set a -> Set b
 mapFilter f = map fromVariant . map fromJust . filter isJust . map f
 
@@ -498,12 +503,26 @@ atomsTriples = triples atoms atoms atoms
 mapList :: (NominalType a, NominalType b) => ([a] -> b) -> [Set a] -> Set b
 mapList f sets = map f $ foldr (pairsWith (:)) (singleton []) sets
 
+-- | Applies a function to all lists of elements from a list of sets, extract value from 'Just' results and remove elements with 'Nothing' results, e.g.
+--
+-- >>> mapFilterList (\l -> maybeIf (eq a $ head l) l) [atoms, atoms]
+-- {[a,a₁] : for a₁ ∊ 𝔸}
+mapFilterList :: (NominalType a, NominalType b) => ([a] -> NominalMaybe b) -> [Set a] -> Set b
+mapFilterList f sets = mapFilter f $ foldr (pairsWith (:)) (singleton []) sets
+
 -- | Creates a set of lists of a given length of elements from a set, e.g.
 --
 -- >>> replicateSet 3 atoms
 -- {[a₁,a₂,a₃] : for a₁,a₂,a₃ ∊ 𝔸}
 replicateSet :: NominalType a => Int -> Set a -> Set [a]
 replicateSet n s = mapList id (replicate n s)
+
+-- | Creates a set of lists of a given length of different elements from a set, e.g.
+--
+-- >>> replicateDifferentSet 3 atoms
+-- {[a₁,a₂,a₃] : a₁ ≠ a₂ ∧ a₁ ≠ a₃ ∧ a₂ ≠ a₃ for a₁,a₂,a₃ ∊ 𝔸}
+replicateDifferentSet :: NominalType a => Int -> Set a -> Set [a]
+replicateDifferentSet n s = mapFilterList (\l -> maybeIf (and [neq a b | (a:as) <- List.tails l, b <- as]) l) (replicate n s)
 
 -- | Creates a set of lists up to a given length of elements from a set, e.g.
 --
@@ -512,15 +531,32 @@ replicateSet n s = mapList id (replicate n s)
 replicateSetUntil :: NominalType a => Int -> Set a -> Set [a]
 replicateSetUntil n s = unions $ fmap (`replicateSet` s) [0..n]
 
+-- | Creates a set of lists up to a given length of different elements from a set, e.g.
+--
+-- >>> replicateDifferentSetUntil 3 atoms
+-- {[], [a₁] : for a₁ ∊ 𝔸, [a₁,a₂] : a₁ ≠ a₂ for a₁,a₂ ∊ 𝔸, [a₁,a₂,a₃] : a₁ ≠ a₂ ∧ a₁ ≠ a₃ ∧ a₂ ≠ a₃ for a₁,a₂,a₃ ∊ 𝔸}
+replicateDifferentSetUntil :: NominalType a => Int -> Set a -> Set [a]
+replicateDifferentSetUntil n s = unions $ fmap (`replicateDifferentSet` s) [0..n]
+
 -- |
 -- > replicateAtoms n = replicateSet n atoms
 replicateAtoms :: Int -> Set [Atom]
 replicateAtoms n = replicateSet n atoms
 
 -- |
+-- > replicateDifferentAtoms n = replicateDifferentSet n atoms
+replicateDifferentAtoms :: Int -> Set [Atom]
+replicateDifferentAtoms n = replicateDifferentSet n atoms
+
+-- |
 -- > replicateAtomsUntil n = replicateSetUntil n atoms
 replicateAtomsUntil :: Int -> Set [Atom]
 replicateAtomsUntil n = replicateSetUntil n atoms
+
+-- |
+-- > replicateDifferentAtomsUntil n = replicateDifferentSetUntil n atoms
+replicateDifferentAtomsUntil :: Int -> Set [Atom]
+replicateDifferentAtomsUntil n = replicateDifferentSetUntil n atoms
 
 ----------------------------------------------------------------------------------------------------
 -- Size of the set
