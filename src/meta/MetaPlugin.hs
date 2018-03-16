@@ -10,7 +10,7 @@ import Annotations
 import GHC hiding (exprType)
 import Control.Monad (unless)
 import Data.Data (Data)
-import Data.List (find, isInfixOf, isPrefixOf, isSuffixOf, intersperse)
+import Data.List (find, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub)
 import Data.Maybe (fromJust)
 import TypeRep
 import Maybes
@@ -47,8 +47,8 @@ install _ todo = do
   env <- getHscEnv
   let metaPlug = CoreDoPluginPass "MetaPlugin" (pass (getMetaModule env) False)
   let showPlug = CoreDoPluginPass "ShowPlugin" (pass (getMetaModule env) True)
---  return $ showPlug:todo
-  return $ metaPlug:todo
+  return $ showPlug:todo
+--  return $ metaPlug:todo
 --  return $ metaPlug:todo ++ [showPlug]
 
 
@@ -82,11 +82,11 @@ pass mod onlyShow guts =
                                     return $ guts {mg_tcs = mg_tcs guts ++ Map.elems tcMap', mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
 
                    -- show info
---                   putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
+                   putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
 --                   putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --                   modInfo "module" mg_module guts'
-                   modInfo "binds" mg_binds guts'
+--                   modInfo "binds" mg_binds guts'
 --                   modInfo "exports" mg_exports guts'
 --                   modInfo "type constructors" mg_tcs guts'
 --                   modInfo "used names" mg_used_names guts'
@@ -163,7 +163,8 @@ mkBindVarMap guts mod tcMap = mkMapWithVars guts mod tcMap vars
           toVars (Rec bs) = fmap fst bs
 
 newBindVar :: HomeModInfo -> TyConMap -> Var -> CoreM Var
-newBindVar mod tcMap v = let var = mkLocalId (varName v) (newBindType mod tcMap v) -- FIXME mkLocalIdWithInfo ??
+newBindVar mod tcMap v = let newIdInfo = setInlinePragInfo vanillaIdInfo (inlinePragInfo $ idInfo v)
+                             var = mkLocalIdWithInfo (varName v) (newBindType mod tcMap v) newIdInfo
                          in changeVarName "nlambda_" "" (if isExportedId v then setIdExported var else setIdNotExported var)
 
 changeVarName :: String -> String -> Var -> CoreM Var
@@ -324,6 +325,32 @@ isValueType = not . isFunTy . getMainType
 
 isInternalType :: Type -> Bool
 isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPrimitiveType t' || isUnLiftedType t'
+
+----------------------------------------------------------------------------------------
+-- Checking type contains atoms
+----------------------------------------------------------------------------------------
+
+noAtomsType :: Type -> Bool
+noAtomsType t = noAtomsTypeVars [] [] t
+
+noAtomsTypeVars :: [TyCon] -> [TyVar] -> Type -> Bool
+noAtomsTypeVars tcs vs t | Just t' <- coreView t = noAtomsTypeVars tcs vs t'
+noAtomsTypeVars tcs vs (TyVarTy v) = elem v vs
+noAtomsTypeVars tcs vs (AppTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
+noAtomsTypeVars tcs vs (TyConApp tc ts) = noAtomsTypeCon tcs tc (length ts) && (and $ fmap (noAtomsTypeVars tcs vs) ts)
+noAtomsTypeVars tcs vs (FunTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
+noAtomsTypeVars tcs vs (ForAllTy _ _) = False
+noAtomsTypeVars tcs vs (LitTy _ ) = True
+
+noAtomsTypeCon :: [TyCon] -> TyCon -> Int -> Bool
+noAtomsTypeCon tcs tc _ | elem tc tcs = True
+noAtomsTypeCon _ tc _| isAtomsTypeName tc = False
+noAtomsTypeCon _ tc _| isPrimTyCon tc = True
+noAtomsTypeCon tcs tc n| isDataTyCon tc = and $ fmap (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc) $ concatMap dataConOrigArgTys $ tyConDataCons tc
+noAtomsTypeCon _ _ _ = True
+
+isAtomsTypeName :: TyCon -> Bool
+isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"]
 
 ----------------------------------------------------------------------------------------
 -- Expr
@@ -580,6 +607,7 @@ showBindExpr (b,e) = text "===> "
                         <+> showVar b
                         <+> text "::"
                         <+> showType (varType b)
+                        <+> (if noAtomsType $ varType b then text "[no atoms]" else text "[atoms]")
                         <> text "\n"
                         <+> showExpr e
                         <> text "\n"
