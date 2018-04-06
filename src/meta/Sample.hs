@@ -2,12 +2,14 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 module Sample where
 
-import Prelude (Int, String, (+), (-), show)
+--import Prelude (Bool(True, False), Int, String, (+), (-), Show, show)
 --import Prelude (Bool(..), Int, String, Show, show, (+), (-))
+import Prelude (Show, show)
+
 
 --infixr 9  .
 --infixr 0  $
---
+
 --{-# INLINE (.) #-}
 --(.)    :: (b -> c) -> (a -> b) -> a -> c
 --(.) f g = \x -> f (g x)
@@ -69,7 +71,7 @@ import Prelude (Int, String, (+), (-), show)
 ------------------------------------------------------------------------------
 ---- List
 ------------------------------------------------------------------------------
---
+
 --null :: [a] -> Bool
 --null [] = True
 --null _ = False
@@ -99,7 +101,7 @@ import Prelude (Int, String, (+), (-), show)
 --foldr k z = go
 --    where go []     = z
 --          go (y:ys) = y `k` go ys
---
+
 --head :: [a] -> Maybe a
 --head [] = Nothing
 --head (x:_) = Just x
@@ -107,26 +109,56 @@ import Prelude (Int, String, (+), (-), show)
 --tail :: [a] -> Maybe [a]
 --tail [] = Nothing
 --tail (_:l) = Just l
---
+
 ----------------------------------------------------------------------------
 -- Recursive
 ----------------------------------------------------------------------------
 
-fib1 :: Int -> Int
-fib1 0 = 0
-fib1 1 = 1
-fib1 n = fib1 (n-1) + fib1 (n-2)
+--fib1 :: Int -> Int
+--fib1 0 = 0
+--fib1 1 = 1
+--fib1 n = fib1 (n-1) + fib1 (n-2)
 
-fib2 :: Int -> Int
-fib2 n = go n 0 1
-  where
-    go :: Int -> Int -> Int -> Int
-    go 0 a b = a
-    go n a b = go (n-1) b (a+b)
+--fib2 :: Int -> Int
+--fib2 n = go n 0 1
+--  where
+--    go :: Int -> Int -> Int -> Int
+--    go 0 a b = a
+--    go n a b = go (n-1) b (a+b)
 
 ----------------------------------------------------------------------------
 -- Test
 ----------------------------------------------------------------------------
 
-test :: String
-test = show (fib1 30)
+data Atom = A
+
+--instance Show Atom where
+--    show A = "A"
+--
+data Bool = True | False
+--
+--instance Show Bool where
+--    show True = "True"
+--    show False = "False"
+
+data Maybe a = Nothing | Just a
+--
+----instance Show a => Show (Maybe a) where
+----    show Nothing = "Nothing"
+----    show (Just x) = "Just"
+--
+class Class a where
+    method1 :: a -> Atom
+    method1 _ = A
+    method2 :: a -> Atom
+    method2 _ = A
+
+instance Class Atom where
+    method1 x = x
+
+instance Class Bool
+
+instance Class (Maybe a)
+
+test :: Atom
+test = A

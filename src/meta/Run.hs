@@ -7,4 +7,4 @@ main = do args <- getArgs
           output args
 
 output [] = print test
-output _ = print nlambda_test
+output _ = print test_nlambda
