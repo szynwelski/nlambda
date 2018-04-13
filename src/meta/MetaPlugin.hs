@@ -10,7 +10,7 @@ import Annotations
 import GHC hiding (exprType)
 import Control.Monad (unless)
 import Data.Data (Data)
-import Data.List (find, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub)
+import Data.List (find, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub, partition)
 import Data.Maybe (fromJust)
 import TypeRep
 import Maybes
@@ -46,8 +46,8 @@ install :: [CommandLineOption] -> [CoreToDo] -> CoreM [CoreToDo]
 install _ todo = do
   reinitializeGlobals
   env <- getHscEnv
-  let metaPlug = CoreDoPluginPass "MetaPlugin" (pass (getMetaModule env) False)
-  let showPlug = CoreDoPluginPass "ShowPlugin" (pass (getMetaModule env) True)
+  let metaPlug = CoreDoPluginPass "MetaPlugin" $ pass env False
+  let showPlug = CoreDoPluginPass "ShowPlugin" $ pass env True
 --  return $ showPlug:todo
   return $ metaPlug:todo
 --  return $ metaPlug:todo ++ [showPlug]
@@ -58,19 +58,24 @@ modInfo label fun guts = putMsg $ text label <> text ": " <> (ppr $ fun guts)
 showMap :: String -> Map a a -> (a -> SDoc) -> CoreM ()
 showMap header map showElem = putMsg $ text (header ++ ":") <+> (doubleQuotes $ vcat (concatMap (\(x,y) -> [showElem x <+> text "->" <+> showElem y]) $ Map.toList map))
 
-pass :: HomeModInfo -> Bool -> ModGuts -> CoreM ModGuts
-pass mod onlyShow guts =
+pass :: HscEnv -> Bool -> ModGuts -> CoreM ModGuts
+pass env onlyShow guts =
                 do putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:"
                             <+> (ppr $ mg_module guts)
                             <+> if onlyShow then text "[only show]" else text ""
 
+                   let mod = getMetaModule env
+                   let (impNameMap, impVarMap, impTcMap) = getImportedMaps env guts
+
                    -- names
-                   nameMap <- mkNamesMap guts
+                   nameMap <- mkNamesMap guts impNameMap
                    showMap "Names" nameMap showName
 
                    -- classes and vars
-                   let tcMap = mkTyConMap mod nameMap varMap (mg_tcs guts)
-                       varMap = mkVarMap guts mod nameMap tcMap
+                   let modTcMap = mkTyConMap mod nameMap modVarMap (mg_tcs guts)
+                       modVarMap = mkVarMap guts mod nameMap modTcMap
+                       tcMap = Map.union modTcMap impTcMap
+                       varMap = Map.union modVarMap impVarMap
                    showMap "TyCons" tcMap showTyCon
                    showMap "Vars" varMap showVar
 
@@ -78,15 +83,17 @@ pass mod onlyShow guts =
                             then return guts
                             else do binds <- newBinds mod varMap tcMap (getDataCons guts) (mg_binds guts)
                                     let exps = newExports (mg_exports guts) nameMap
-                                    return $ guts {mg_tcs = mg_tcs guts ++ Map.elems tcMap, mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
+                                    return $ guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap, mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
 
                    -- show info
-                   putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
---                   putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
+--                   putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
+                   putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --                   modInfo "module" mg_module guts'
                    modInfo "binds" mg_binds guts'
---                   modInfo "exports" mg_exports guts'
+--                   modInfo "dependencies" (dep_mods . mg_deps) guts'
+--                   modInfo "imported" getImportedModules guts'
+                   modInfo "exports" mg_exports guts'
 --                   modInfo "type constructors" mg_tcs guts'
 --                   modInfo "used names" mg_used_names guts'
 --                   modInfo "global rdr env" mg_rdr_env guts'
@@ -99,7 +106,7 @@ pass mod onlyShow guts =
 --                   modInfo "vect info" mg_vect_info guts'
 --                   modInfo "files" mg_dependent_files guts'
 --                   modInfo "classes" getClasses guts'
-                   modInfo "implicit binds" getImplicitBinds guts'
+--                   modInfo "implicit binds" getImplicitBinds guts'
 --                   modInfo "annotations" mg_anns guts'
                    putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:" <+> (ppr $ mg_module guts')
                    return guts'
@@ -128,14 +135,21 @@ get_defn id = NonRec id (unfoldingTemplate (realIdUnfolding id))
 
 type NameMap = Map Name Name
 
+getNameStr :: Name -> String
+getNameStr = occNameString . nameOccName
+
 newName :: NameMap -> Name -> Name
 newName map name = Map.findWithDefault (pprPanic "unknown name: " (showName name <+> vcat (showName <$> Map.keys map))) name map
 
-mkNamesMap :: ModGuts -> CoreM NameMap
-mkNamesMap guts = mkSuffixNamesMap (getDataConsNames guts ++ getBindsNames guts ++ getClassesNames guts)
+mkNamesMap :: ModGuts -> NameMap -> CoreM NameMap
+mkNamesMap guts impNameMap = do nameMap <- mkSuffixNamesMap (getDataConsNames guts ++ getBindsNames guts ++ getClassesNames guts)
+                                return $ Map.union nameMap impNameMap
+
+name_suffix :: String
+name_suffix = "_nlambda"
 
 mkSuffixNamesMap :: [Name] -> CoreM NameMap
-mkSuffixNamesMap names = do names' <- mapM (createNewName "_nlambda") names
+mkSuffixNamesMap names = do names' <- mapM (createNewName name_suffix) names
                             return $ Map.fromList $ zip names names'
 
 createNewName :: String -> Name -> CoreM Name
@@ -161,7 +175,7 @@ getDataConsNames :: ModGuts -> [Name]
 getDataConsNames = concatMap (\dc -> dataConName dc : (idName <$> dataConImplicitIds dc)) . getDataCons
 
 ----------------------------------------------------------------------------------------
--- Variables / names map
+-- Variables map
 ----------------------------------------------------------------------------------------
 
 type VarMap = Map Var Var
@@ -183,6 +197,27 @@ primVarName v = do name <- createNewName "'" $ varName v
                    return $ setVarName v name
 
 ----------------------------------------------------------------------------------------
+-- Imports
+----------------------------------------------------------------------------------------
+
+getImportedModules :: ModGuts -> [Module]
+getImportedModules = moduleEnvKeys . mg_dir_imps
+
+getImportedMaps :: HscEnv -> ModGuts -> (NameMap, VarMap, TyConMap)
+getImportedMaps env guts = (Map.fromList namePairs, Map.fromList varPairs, Map.fromList tcPairs)
+    where mods = catMaybes $ lookupUFM (hsc_HPT env) <$> moduleName <$> getImportedModules guts
+          types = mconcat $ md_types <$> hm_details <$> mods
+          ids = eltsUFM types
+          idNames = getName <$> ids
+          findPair names name = (\n -> (name, n)) <$> find ((getNameStr name ++ name_suffix ==) . getNameStr) names
+          namePairs = catMaybes $ findPair idNames <$> idNames
+          findId = fromJust . lookupUFM types
+          tyThingPairs = fmap (\(n1,n2) -> (findId n1, findId n2)) namePairs
+          (tcThings, varThings) = partition (isTyThingTyCon . fst) tyThingPairs
+          varPairs = fmap (\(tt1, tt2) -> (tyThingId tt1, tyThingId tt2)) varThings
+          tcPairs = fmap (\(tt1, tt2) -> (tyThingTyCon tt1, tyThingTyCon tt2)) tcThings
+
+----------------------------------------------------------------------------------------
 -- Exports
 ----------------------------------------------------------------------------------------
 
@@ -197,7 +232,7 @@ newExports avls nameMap = concatMap go avls
 ----------------------------------------------------------------------------------------
 
 getClasses :: ModGuts -> [Class]
-getClasses = fmap fromJust . filter isJust . fmap tyConClass_maybe . mg_tcs
+getClasses = catMaybes . fmap tyConClass_maybe . mg_tcs
 
 getClassDataCons :: Class -> [DataCon]
 getClassDataCons = tyConDataCons . classTyCon
@@ -393,7 +428,7 @@ isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem
 ----------------------------------------------------------------------------------------
 
 getVarNameStr :: Var -> String
-getVarNameStr = occNameString . nameOccName . varName
+getVarNameStr = getNameStr . varName
 
 -- FIXME use isPrimOpId or check type ??
 isInternalVar :: Var -> Bool
@@ -406,7 +441,6 @@ changeExpr mod varMap tcMap e = newExpr varMap e
           newExpr varMap (Var v) | isInternalType $ varType v = return $ Var v
           newExpr varMap (Var v) | isPreludeShow v = return $ Var v
           newExpr varMap (Var v) | isMetaEquivalent v = return $ getMetaEquivalent mod v
-          newExpr varMap (Var v) | isValueType $ varType v = emptyExpr mod (Var v)
           newExpr varMap (Var v) = pprPanic "unknown variable" (showVar v <+> text "::" <+> ppr (varType v))
           newExpr varMap (Lit l) = emptyExpr mod (Lit l)
           newExpr varMap a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
@@ -418,7 +452,7 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                                else return f'
                                         x' <- newExpr varMap x
                                         x'' <- if (isWithMetaType mod $ funArgTy $ exprType f'') && (not $ isWithMetaType mod $ exprType x')
-                                               then emptyExpr mod x'
+                                               then emptyExpr mod x' -- FIXME always correct?
                                                else return x'
                                         return $ mkCoreApp f'' x''
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e

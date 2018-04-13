@@ -2,8 +2,8 @@
 + dowiedzieć się do czego służą funkcje: $c..., $f..., 
 + zaimplementować najpierw mapy wszystkich nazw (TyVar, DictId, DataCon, Var,) a później klasy, zmienne i in. przekształcić wzajemnie rekurencyjnie
 + zaimplementować plugin bez wprowadzania nowych klas (NLambda...), -- chyba jednak są potrzebne (np. jak klasa ma metodę a -> Atom)
-- obsłużyć deriving, Show
-- obsłużyć import innych modułów,
++ obsłużyć deriving, Show
++ obsłużyć import innych modułów,
 - zmienić unionMeta na :: WithMeta a -> WithMeta b -> (a,b,Meta)
 - zaimplementować NLambdaPrelude,
 - zaimplementować NLambdaAtom (dla testów)
