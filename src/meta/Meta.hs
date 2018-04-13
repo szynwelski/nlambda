@@ -19,6 +19,10 @@ create x m = WithMeta x m
 union :: WithMeta a -> Meta -> WithMeta a
 union (WithMeta x m) m' = WithMeta x (unionMeta m m')
 
+
+----- Prelude -----
+
+
 metaColon :: WithMeta a -> WithMeta [a] -> WithMeta [a]
 metaColon (WithMeta x m) (WithMeta l m') = create (x:l) (unionMeta m m')
 
@@ -36,3 +40,6 @@ metaPlus (WithMeta x _) (WithMeta y _) = empty (x+y)
 
 metaMinus :: Num a => WithMeta a -> WithMeta a -> WithMeta a
 metaMinus (WithMeta x _) (WithMeta y _) = empty (x-y)
+
+metaConcat :: WithMeta [a] -> WithMeta [a] -> WithMeta [a]
+metaConcat (WithMeta l1 m1) (WithMeta l2 m2) = create (l1 ++ l2) (unionMeta m1 m2)

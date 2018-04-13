@@ -404,6 +404,7 @@ changeExpr mod varMap tcMap e = newExpr varMap e
     where newExpr varMap e | noAtomsType $ exprType e = return e
           newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
           newExpr varMap (Var v) | isInternalType $ varType v = return $ Var v
+          newExpr varMap (Var v) | isPreludeShow v = return $ Var v
           newExpr varMap (Var v) | isMetaEquivalent v = return $ getMetaEquivalent mod v
           newExpr varMap (Var v) | isValueType $ varType v = emptyExpr mod (Var v)
           newExpr varMap (Var v) = pprPanic "unknown variable" (showVar v <+> text "::" <+> ppr (varType v))
@@ -479,7 +480,7 @@ changeCoercion mod tcMap c = change c
 changeCoAxiom :: TyConMap -> CoAxiom a -> CoAxiom a
 changeCoAxiom tcMap (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon tcMap tc) bs i
 
-dataConExpr :: HomeModInfo -> DataCon -> [Var] -> Int -> CoreM (CoreExpr)
+dataConExpr :: HomeModInfo -> DataCon -> [Var] -> Int -> CoreM CoreExpr
 dataConExpr mod dc xs argNumber =
     if argNumber == dataConSourceArity dc
     then do let revXs = reverse xs
@@ -492,7 +493,7 @@ dataConExpr mod dc xs argNumber =
             let ty = withMetaType mod $ dataConOrigArgTys dc !! argNumber
             let x = mkLocalId xnm ty
             expr <- dataConExpr mod dc (x : xs) (succ argNumber)
-            emptyExpr mod $ Lam x expr
+            return $ Lam x expr
     where mkLetUnionExpr :: (CoreExpr) -> [Var] -> [Var] -> CoreExpr -> CoreM (CoreExpr)
           mkLetUnionExpr meta (x:xs) (x':xs') expr = do union <- unionExpr mod (Var x) meta
                                                         meta' <- metaExpr mod (Var x')
@@ -615,13 +616,16 @@ createExpr mod e1 e2 = do e <- applyExpr (createV mod) e1
                           applyExpr e e2
 
 metaEquivalents :: Map.Map String String
-metaEquivalents = Map.fromList [(":", "metaColon"), ("(,)", "metaPair"), ("==", "metaEq"), ("show", "metaShow"), ("+", "metaPlus"), ("-", "metaMinus")]
+metaEquivalents = Map.fromList [(":", "metaColon"), ("(,)", "metaPair"), ("==", "metaEq"), ("show", "metaShow"), ("+", "metaPlus"), ("-", "metaMinus"), ("++", "metaConcat")]
 
 isMetaEquivalent :: Var -> Bool
 isMetaEquivalent v = Map.member (getVarNameStr v) metaEquivalents
 
 getMetaEquivalent :: HomeModInfo -> Var -> CoreExpr
 getMetaEquivalent mod v = getMetaVar mod (metaEquivalents Map.! getVarNameStr v)
+
+isPreludeShow :: Var -> Bool
+isPreludeShow v = elem (getVarNameStr v) ["D:Show", "showList__", "showsPrec", "$dmshow", "$dmshowList", "$dmshowsPrec"]
 
 ----------------------------------------------------------------------------------------
 -- Show

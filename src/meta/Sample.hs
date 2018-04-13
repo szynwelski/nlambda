@@ -1,5 +1,8 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE ConstraintKinds #-}
+
 module Sample where
 
 --import Prelude (Bool(True, False), Int, String, (+), (-), Show, show)
@@ -130,23 +133,12 @@ import Prelude (Show, show)
 -- Test
 ----------------------------------------------------------------------------
 
-data Atom = A
+data Atom = A deriving Show
 
---instance Show Atom where
---    show A = "A"
---
-data Bool = True | False
---
---instance Show Bool where
---    show True = "True"
---    show False = "False"
+data Bool = True | False deriving Show
 
-data Maybe a = Nothing | Just a
---
-----instance Show a => Show (Maybe a) where
-----    show Nothing = "Nothing"
-----    show (Just x) = "Just"
---
+data Maybe a = Nothing | Just a deriving Show
+
 class Class a where
     method1 :: a -> Atom
     method1 _ = A
@@ -161,4 +153,4 @@ instance Class Bool
 instance Class (Maybe a)
 
 test :: Atom
-test = A
+test = method1 (Just A)
