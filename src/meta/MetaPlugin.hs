@@ -60,56 +60,70 @@ showMap header map showElem = putMsg $ text (header ++ ":") <+> (doubleQuotes $ 
 
 pass :: HscEnv -> Bool -> ModGuts -> CoreM ModGuts
 pass env onlyShow guts =
-                do putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:"
-                            <+> (ppr $ mg_module guts)
-                            <+> if onlyShow then text "[only show]" else text ""
+    if withMetaAnnotation guts
+    then do putMsg $ text "Ignore module: " <+> (ppr $ mg_module guts)
+            return guts
+    else
+         do putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:"
+                     <+> (ppr $ mg_module guts)
+                     <+> if onlyShow then text "[only show]" else text ""
 
-                   let mod = getMetaModule env
-                   let (impNameMap, impVarMap, impTcMap) = getImportedMaps env guts
+            let mod = getMetaModule env
+            let (impNameMap, impVarMap, impTcMap) = getImportedMaps env guts
 
-                   -- names
-                   nameMap <- mkNamesMap guts impNameMap
-                   showMap "Names" nameMap showName
+            -- names
+            nameMap <- mkNamesMap guts impNameMap
+            showMap "Names" nameMap showName
 
-                   -- classes and vars
-                   let modTcMap = mkTyConMap mod nameMap modVarMap (mg_tcs guts)
-                       modVarMap = mkVarMap guts mod nameMap modTcMap
-                       tcMap = Map.union modTcMap impTcMap
-                       varMap = Map.union modVarMap impVarMap
-                   showMap "TyCons" tcMap showTyCon
-                   showMap "Vars" varMap showVar
+            -- classes and vars
+            let modTcMap = mkTyConMap mod nameMap modVarMap (mg_tcs guts)
+                modVarMap = mkVarMap guts mod nameMap modTcMap
+                tcMap = Map.union modTcMap impTcMap
+                varMap = Map.union modVarMap impVarMap
+            showMap "TyCons" tcMap showTyCon
+            showMap "Vars" varMap showVar
 
-                   guts' <- if onlyShow
-                            then return guts
-                            else do binds <- newBinds mod varMap tcMap (getDataCons guts) (mg_binds guts)
-                                    let exps = newExports (mg_exports guts) nameMap
-                                    return $ guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap, mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
+            guts' <- if onlyShow
+                     then return guts
+                     else do binds <- newBinds mod varMap tcMap (getDataCons guts) (mg_binds guts)
+                             let exps = newExports (mg_exports guts) nameMap
+                             return $ guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap, mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
 
-                   -- show info
---                   putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
---                   putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
+            -- show info
+--            putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
+--            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
---                   modInfo "module" mg_module guts'
-                   modInfo "binds" mg_binds guts'
---                   modInfo "dependencies" (dep_mods . mg_deps) guts'
---                   modInfo "imported" getImportedModules guts'
---                   modInfo "exports" mg_exports guts'
---                   modInfo "type constructors" mg_tcs guts'
---                   modInfo "used names" mg_used_names guts'
---                   modInfo "global rdr env" mg_rdr_env guts'
---                   modInfo "fixities" mg_fix_env guts'
---                   modInfo "class instances" mg_insts guts'
---                   modInfo "family instances" mg_fam_insts guts'
---                   modInfo "pattern synonyms" mg_patsyns guts'
---                   modInfo "core rules" mg_rules guts'
---                   modInfo "vect decls" mg_vect_decls guts'
---                   modInfo "vect info" mg_vect_info guts'
---                   modInfo "files" mg_dependent_files guts'
---                   modInfo "classes" getClasses guts'
---                   modInfo "implicit binds" getImplicitBinds guts'
---                   modInfo "annotations" mg_anns guts'
-                   putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:" <+> (ppr $ mg_module guts')
-                   return guts'
+--            modInfo "module" mg_module guts'
+            modInfo "binds" mg_binds guts'
+--            modInfo "dependencies" (dep_mods . mg_deps) guts'
+--            modInfo "imported" getImportedModules guts'
+--            modInfo "exports" mg_exports guts'
+--            modInfo "type constructors" mg_tcs guts'
+--            modInfo "used names" mg_used_names guts'
+--            modInfo "global rdr env" mg_rdr_env guts'
+--            modInfo "fixities" mg_fix_env guts'
+--            modInfo "class instances" mg_insts guts'
+--            modInfo "family instances" mg_fam_insts guts'
+--            modInfo "pattern synonyms" mg_patsyns guts'
+--            modInfo "core rules" mg_rules guts'
+--            modInfo "vect decls" mg_vect_decls guts'
+--            modInfo "vect info" mg_vect_info guts'
+--            modInfo "files" mg_dependent_files guts'
+--            modInfo "classes" getClasses guts'
+--            modInfo "implicit binds" getImplicitBinds guts'
+--            modInfo "annotations" mg_anns guts'
+            putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:" <+> (ppr $ mg_module guts')
+            return guts'
+
+----------------------------------------------------------------------------------------
+-- Annotation
+----------------------------------------------------------------------------------------
+
+withMetaAnnotation :: ModGuts -> Bool
+withMetaAnnotation guts = isJust $ find isMetaAnn $ mg_anns guts
+    where isMetaAnn a = case fromSerialized deserializeWithData $ ann_value a of
+                          Just "WithMeta" -> True
+                          _ -> False
 
 ----------------------------------------------------------------------------------------
 -- Implicit Binds - copy from compiler/main/TidyPgm.hs
@@ -541,7 +555,7 @@ dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
                           return $ mkLocalId nm $ unionType mod
           renameValues u [] = return []
           renameValues u (x:xs) = do df <- getDynFlags
-                                     let n = Lit $ mkMachInt df $ toInteger (dataConSourceArity dc - length xs - 1)
+                                     let n = mkConApp intDataCon [Lit $ mkMachInt df $ toInteger (dataConSourceArity dc - length xs - 1)]
                                      v <- valueExpr mod $ Var x
                                      r <- renameExpr mod u n v
                                      rs <- renameValues u xs
@@ -776,10 +790,10 @@ showVar = ppr
 --            <> showName (varName v)
 --            <+> ppr (varUnique v)
 --            <+> showType (varType v)
---            <+> showOccName (nameOccName $ varName v)
+----            <+> showOccName (nameOccName $ varName v)
 --            <> (when (isId v) (idDetails v))
 --            <> (when (isId v) (arityInfo $ idInfo v))
---            <> (when (isId v) (specInfo $ idInfo v))
+----            <> (when (isId v) (specInfo $ idInfo v))
 --            <> (when (isId v) (unfoldingInfo $ idInfo v))
 --            <> (when (isId v) (cafInfo $ idInfo v))
 --            <> (when (isId v) (oneShotInfo $ idInfo v))

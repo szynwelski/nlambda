@@ -5,6 +5,9 @@
 + obsłużyć deriving, Show
 + obsłużyć import innych modułów,
 + zmienić unionMeta na :: WithMeta a -> WithMeta b -> (a,b,Meta)
++ dodać annotację do ignorowania modułu
+- zaimplementować MetaAtom (dla testów)
+- zaimplementować moduł Meta
 - dodać obowiązkową klasę (dla replace vars) dla metod WithMeta
 - zaimplementować NLambdaPrelude,
-- zaimplementować NLambdaAtom (dla testów)
+- podpiąć moduł NLambda

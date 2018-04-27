@@ -4,14 +4,12 @@
 module Sample where
 
 import Prelude (Show)
+import MetaAtom
+
 
 ----------------------------------------------------------------------------
 -- Test
 ----------------------------------------------------------------------------
 
-data Atom = A deriving Show
-
-data Maybe a = Nothing | Just a deriving Show
-
-test :: Maybe Atom
-test = Just A
+test :: Atom
+test = atom
