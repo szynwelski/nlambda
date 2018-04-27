@@ -4,6 +4,7 @@
 + zaimplementować plugin bez wprowadzania nowych klas (NLambda...), -- chyba jednak są potrzebne (np. jak klasa ma metodę a -> Atom)
 + obsłużyć deriving, Show
 + obsłużyć import innych modułów,
-- zmienić unionMeta na :: WithMeta a -> WithMeta b -> (a,b,Meta)
++ zmienić unionMeta na :: WithMeta a -> WithMeta b -> (a,b,Meta)
+- dodać obowiązkową klasę (dla replace vars) dla metod WithMeta
 - zaimplementować NLambdaPrelude,
 - zaimplementować NLambdaAtom (dla testów)

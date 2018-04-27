@@ -87,13 +87,13 @@ pass env onlyShow guts =
 
                    -- show info
 --                   putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
-                   putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
+--                   putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --                   modInfo "module" mg_module guts'
                    modInfo "binds" mg_binds guts'
 --                   modInfo "dependencies" (dep_mods . mg_deps) guts'
 --                   modInfo "imported" getImportedModules guts'
-                   modInfo "exports" mg_exports guts'
+--                   modInfo "exports" mg_exports guts'
 --                   modInfo "type constructors" mg_tcs guts'
 --                   modInfo "used names" mg_used_names guts'
 --                   modInfo "global rdr env" mg_rdr_env guts'
@@ -354,7 +354,7 @@ changeBindExpr mod varMap tcMap (b, e) = do newExpr <- changeExpr mod varMap tcM
 
 dataBind :: HomeModInfo -> VarMap -> DataCon -> CoreM CoreBind
 dataBind mod varMap dc | noAtomsType $ dataConOrigResTy dc = return $ nonRecDataBind varMap dc $ Var $ dataConWrapId dc
-dataBind mod varMap dc = do expr <- dataConExpr mod dc [] 0
+dataBind mod varMap dc = do expr <- dataConExpr mod dc
                             return $ nonRecDataBind varMap dc expr
 
 nonRecDataBind :: VarMap -> DataCon -> CoreExpr -> CoreBind
@@ -494,6 +494,7 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                                                return (DataAlt con, xs, e'')
           changeAlternative varMap m (alt, [], e) = do {e' <- newExpr varMap e; return (alt, [], e')}
 
+
 changeCoercion :: HomeModInfo -> TyConMap -> Coercion -> Coercion
 changeCoercion mod tcMap c = change c
     where change (Refl r t) = Refl r t -- FIXME not changeType ?
@@ -514,26 +515,41 @@ changeCoercion mod tcMap c = change c
 changeCoAxiom :: TyConMap -> CoAxiom a -> CoAxiom a
 changeCoAxiom tcMap (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon tcMap tc) bs i
 
-dataConExpr :: HomeModInfo -> DataCon -> [Var] -> Int -> CoreM CoreExpr
-dataConExpr mod dc xs argNumber =
-    if argNumber == dataConSourceArity dc
-    then do let revXs = reverse xs
-            xs' <- mapM primVarName revXs
-            xValues <- mapM (valueExpr mod) (fmap Var $ xs')
-            expr <- applyExprs (Var $ dataConWrapId dc) xValues
-            mkLetUnionExpr (emptyMetaV mod) revXs xs' expr
-    else do uniq <- getUniqueM
-            let xnm = mkInternalName uniq (mkVarOcc $ "x" ++ show argNumber) noSrcSpan
-            let ty = withMetaType mod $ dataConOrigArgTys dc !! argNumber
-            let x = mkLocalId xnm ty
-            expr <- dataConExpr mod dc (x : xs) (succ argNumber)
-            return $ Lam x expr
-    where mkLetUnionExpr :: (CoreExpr) -> [Var] -> [Var] -> CoreExpr -> CoreM (CoreExpr)
-          mkLetUnionExpr meta (x:xs) (x':xs') expr = do union <- unionExpr mod (Var x) meta
-                                                        meta' <- metaExpr mod (Var x')
-                                                        expr' <- mkLetUnionExpr meta' xs xs' expr
-                                                        return $ bindNonRec x' union expr'
-          mkLetUnionExpr meta [] [] expr = createExpr mod expr meta
+dataConExpr :: HomeModInfo -> DataCon -> CoreM CoreExpr
+dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
+                        ms <- mkMetaList xs
+                        ux <- mkUnionVar
+                        ue <- unionExpr mod ms
+                        rs <- renameValues (Var ux) xs
+                        m <- getMetaExpr mod (Var ux)
+                        e <- applyExprs (Var $ dataConWrapId dc) rs
+                        me <- createExpr mod e m
+                        return $ mkLam xs $ bindNonRec ux ue me
+    where mkArgs 0 = return []
+          mkArgs n = do uniq <- getUniqueM
+                        let xnm = mkInternalName uniq (mkVarOcc $ "x" ++ show n) noSrcSpan
+                        let ty = withMetaType mod $ dataConOrigArgTys dc !! (dataConSourceArity dc - n)
+                        let x = mkLocalId xnm ty
+                        args <- mkArgs $ pred n
+                        return $ x : args
+          mkMetaList [] = return $ emptyListV mod
+          mkMetaList (x:xs) = do meta <- metaExpr mod $ Var x
+                                 list <- mkMetaList xs
+                                 colonExpr mod meta list
+          mkUnionVar = do uniq <- getUniqueM
+                          let nm = mkInternalName uniq (mkVarOcc "u") noSrcSpan
+                          return $ mkLocalId nm $ unionType mod
+          renameValues u [] = return []
+          renameValues u (x:xs) = do df <- getDynFlags
+                                     let n = Lit $ mkMachInt df $ toInteger (dataConSourceArity dc - length xs - 1)
+                                     v <- valueExpr mod $ Var x
+                                     r <- renameExpr mod u n v
+                                     rs <- renameValues u xs
+                                     return (r : rs)
+          mkLam [] e = e
+          mkLam (x:xs) e = Lam x $ mkLam xs e
+
+
 
 ----------------------------------------------------------------------------------------
 -- Apply expression
@@ -610,7 +626,12 @@ unionV mod = getMetaVar mod "union"
 metaV mod = getMetaVar mod "meta"
 valueV mod = getMetaVar mod "value"
 createV mod = getMetaVar mod "create"
+getMetaV mod = getMetaVar mod "getMeta"
+renameV mod = getMetaVar mod "rename"
+emptyListV mod = getMetaVar mod "emptyList"
+colonV mod = getMetaVar mod "colon"
 withMetaC mod = getTyCon mod "WithMeta"
+unionC mod = getTyCon mod "Union"
 
 withMetaType :: HomeModInfo -> Type -> Type
 withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
@@ -619,6 +640,9 @@ isWithMetaType :: HomeModInfo -> Type -> Bool
 isWithMetaType mod t = let (_, _, ty) = tcSplitSigmaTy t in go ty
     where go ty | Just (tc, _) <- splitTyConApp_maybe ty = tc == withMetaC mod
                 | otherwise = False
+
+unionType :: HomeModInfo -> Type
+unionType = mkTyConTy . unionC
 
 mkPredVar :: (Class, [Type]) -> CoreM DictId
 mkPredVar (cls, tys) = do uniq <- getUniqueM
@@ -640,14 +664,21 @@ valueExpr mod e = applyExpr (valueV mod) e
 metaExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
 metaExpr mod e = applyExpr (metaV mod) e
 
-unionExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
-unionExpr mod e1 e2 = do e <- applyExpr (unionV mod) e1
-                         applyExpr e e2
+unionExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
+unionExpr mod e = applyExpr (unionV mod) e
 
 createExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 createExpr mod e  _  | isInternalType $ exprType e = return e
-createExpr mod e1 e2 = do e <- applyExpr (createV mod) e1
-                          applyExpr e e2
+createExpr mod e1 e2 = applyExprs (createV mod) [e1, e2]
+
+getMetaExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
+getMetaExpr mod e = applyExpr (getMetaV mod) e
+
+renameExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreExpr -> CoreM CoreExpr
+renameExpr mod e1 e2 e3 = applyExprs (renameV mod) [e1, e2, e3]
+
+colonExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
+colonExpr mod e1 e2 = applyExprs (colonV mod) [e1, e2]
 
 metaEquivalents :: Map.Map String String
 metaEquivalents = Map.fromList [(":", "metaColon"), ("(,)", "metaPair"), ("==", "metaEq"), ("show", "metaShow"), ("+", "metaPlus"), ("-", "metaMinus"), ("++", "metaConcat")]

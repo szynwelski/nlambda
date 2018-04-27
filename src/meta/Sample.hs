@@ -3,17 +3,15 @@
 
 module Sample where
 
-import SampleImport
+import Prelude (Show)
 
 ----------------------------------------------------------------------------
 -- Test
 ----------------------------------------------------------------------------
 
-id :: a -> a
-id x = x
+data Atom = A deriving Show
 
-instance Class Atom
-instance Class (Maybe a)
+data Maybe a = Nothing | Just a deriving Show
 
-test :: Atom
-test = method (id justA)
+test :: Maybe Atom
+test = Just A
