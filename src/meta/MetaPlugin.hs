@@ -765,6 +765,8 @@ showBindExpr (b,e) = text "===> "
                         <+> showVar b
                         <+> text "::"
                         <+> showType (varType b)
+                        <+> text "::"
+                        <+> showType (exprType e)
                         <+> (if noAtomsType $ varType b then text "[no atoms]" else text "[atoms]")
                         <> text "\n"
                         <+> showExpr e

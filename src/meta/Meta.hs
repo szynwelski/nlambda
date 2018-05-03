@@ -12,7 +12,32 @@ import Data.Map (Map)
 import Data.Set (Set)
 import GHC.Generics
 
-data WithMeta a = WithMeta {value :: a, meta :: Meta} deriving (Show, Eq, Ord) -- FIXME replace vars before ==, compare, etc.
+data WithMeta a = WithMeta {value :: a, meta :: Meta}
+
+instance Show a => Show (WithMeta a) where
+    show = show . value
+
+instance Eq a => Eq (WithMeta a) where
+    (==) = noMetaResUnionOp (==)
+    (/=) = noMetaResUnionOp (/=)
+
+instance Ord a => Ord (WithMeta a) where
+    compare = noMetaResUnionOp compare
+    (<) = noMetaResUnionOp (<)
+    (<=) = noMetaResUnionOp (<=)
+    (>) = noMetaResUnionOp (>)
+    (>=) = noMetaResUnionOp (>=)
+    max = unionOp max
+    min = unionOp min
+
+instance Num a => Num (WithMeta a) where
+    (+) = unionOp (+)
+    (-) = unionOp (-)
+    (*) = unionOp (*)
+    negate = idOp negate
+    abs = idOp abs
+    signum = idOp signum
+    fromInteger = noMeta . fromInteger
 
 type Identifier = Int
 type IdMap = Map Identifier Identifier
@@ -187,7 +212,7 @@ data MetaEquivalentType = FunSuffix | OpSuffix | SameOp | ConvertFun ConvertFun
 data MetaEquivalent = NoEquivalent | MetaFun String | MetaConvertFun String | OrigFun
 
 metaEquivalentModules :: [String]
-metaEquivalentModules = ["GHC.Base", "GHC.Classes", "GHC.List", "GHC.Num", "GHC.Real", "GHC.Show", "GHC.Tuple", "GHC.Types"]
+metaEquivalentModules = ["GHC.Base", "GHC.Classes", "GHC.Float", "GHC.List", "GHC.Num", "GHC.Real", "GHC.Show", "GHC.Tuple", "GHC.Types"]
 
 metaEquivalent :: String -> MetaEquivalent
 metaEquivalent name = case Map.lookup name preludeEquivalents of
@@ -201,6 +226,7 @@ metaEquivalent name = case Map.lookup name preludeEquivalents of
 -- Meta Equivalents
 ----------------------------------------------------------------------------------------
 
+-- TODO change to map (Module -> Fun -> Type) or (Module -> Type -> [Fun])
 preludeEquivalents :: Map String MetaEquivalentType
 preludeEquivalents = Map.fromList [
 -- GHC.Base
@@ -215,30 +241,32 @@ preludeEquivalents = Map.fromList [
     (">>" , ConvertFun UnionOp),
     ("Nothing", ConvertFun NoMeta),
     ("Just", ConvertFun IdOp),
+    ("id", ConvertFun IdOp),
 -- GHC.Classes
     ("D:Eq", SameOp),
-    ("/=", ConvertFun NoMetaResUnionOp),
-    ("==", ConvertFun NoMetaResUnionOp),
-    ("$dm==", ConvertFun NoMetaResUnionOp),
-    ("$dm/=", ConvertFun NoMetaResUnionOp),
+    ("/=", SameOp),
+    ("==", SameOp),
+    ("$dm==", SameOp),
+    ("$dm/=", SameOp),
     ("D:Ord", SameOp),
-    ("<", ConvertFun NoMetaResUnionOp),
-    ("<=", ConvertFun NoMetaResUnionOp),
-    (">", ConvertFun NoMetaResUnionOp),
-    (">=", ConvertFun NoMetaResUnionOp),
-    ("min", ConvertFun UnionOp),
-    ("$dmmin", ConvertFun UnionOp),
-    ("max", ConvertFun UnionOp),
-    ("$dmmax", ConvertFun UnionOp),
-    ("compare", ConvertFun NoMetaResUnionOp),
+    ("<", SameOp),
+    ("<=", SameOp),
+    (">", SameOp),
+    (">=", SameOp),
+    ("min", SameOp),
+    ("$dmmin", SameOp),
+    ("max", SameOp),
+    ("$dmmax", SameOp),
+    ("compare", SameOp),
+-- GHC.Float -- FIXME SameOp ??
+    ("**", SameOp),
 -- GHC.List
     ("!!", ConvertFun LeftIdOp),
 -- GHC.Num
-    ("*", ConvertFun UnionOp),
-    ("**", ConvertFun UnionOp),
-    ("+", ConvertFun UnionOp),
-    ("-", ConvertFun UnionOp),
--- GHC.Real
+    ("*", SameOp),
+    ("+", SameOp),
+    ("-", SameOp),
+-- GHC.Real -- FIXME SameOp ??
     ("/", ConvertFun UnionOp),
     ("^", ConvertFun UnionOp),
     ("^^", ConvertFun UnionOp),
