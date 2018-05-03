@@ -405,9 +405,6 @@ changePredType _ t = t
 getMainType :: Type -> Type
 getMainType t = let (_,_,t') = tcSplitSigmaTy t in t'
 
-isValueType :: Type -> Bool
-isValueType = not . isFunTy . getMainType
-
 isInternalType :: Type -> Bool
 isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPrimitiveType t' || isUnLiftedType t'
 
@@ -435,7 +432,7 @@ noAtomsTypeCon tcs tc n| isDataTyCon tc = and $ fmap (noAtomsTypeVars (nub $ tc 
 noAtomsTypeCon _ _ _ = True
 
 isAtomsTypeName :: TyCon -> Bool
-isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"]
+isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"] -- FIXME check namespace
 
 ----------------------------------------------------------------------------------------
 -- Expr
@@ -450,16 +447,15 @@ isInternalVar v = let n = getVarNameStr v in isSuffixOf "#" n
 
 changeExpr :: HomeModInfo -> VarMap -> TyConMap -> CoreExpr -> CoreM CoreExpr
 changeExpr mod varMap tcMap e = newExpr varMap e
-    where newExpr varMap e | noAtomsType $ exprType e = return e
+    where newExpr varMap e | noAtomsSubExpr e = return e
           newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
           newExpr varMap (Var v) | isInternalType $ varType v = return $ Var v
-          newExpr varMap (Var v) | isPreludeShow v = return $ Var v
           newExpr varMap (Var v) | isMetaEquivalent v = getMetaEquivalent mod v
           newExpr varMap (Var v) = pprPanic "unknown variable" (showVar v <+> text "::" <+> ppr (varType v))
           newExpr varMap (Lit l) = noMetaExpr mod (Lit l)
           newExpr varMap a@(App (Var v) _) | isInternalVar v = noMetaExpr mod a
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
-                                               return $ App f' $ Type (if isValueType t then t else changeType mod tcMap t)
+                                               return $ App f' $ Type (if noAtomsType t then t else changeType mod tcMap t)
           newExpr varMap (App f x) = do f' <- newExpr varMap f
                                         f'' <- if isWithMetaType mod $ exprType f'
                                                then valueExpr mod f'
@@ -473,7 +469,7 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                                     return $ Lam x e'
           newExpr varMap (Lam x e) = do let x' = changeBindType mod tcMap x
                                         e' <- newExpr (Map.insert x x' varMap) e
-                                        return $ Lam x e'
+                                        return $ Lam x' e'
           newExpr varMap (Let b e) = do (b', varMap') <- changeLetBind b varMap
                                         e' <- newExpr varMap' e
                                         return $ Let b' e'
@@ -508,6 +504,17 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                                                return (DataAlt con, xs, e'')
           changeAlternative varMap m (alt, [], e) = do {e' <- newExpr varMap e; return (alt, [], e')}
 
+noAtomsSubExpr :: CoreExpr -> Bool
+noAtomsSubExpr e | not $ noAtomsType $ exprType e = False
+noAtomsSubExpr (App f e) = noAtomsSubExpr f && noAtomsSubExpr e
+noAtomsSubExpr (Lam x e) = noAtomsSubExpr e
+noAtomsSubExpr (Let b e) = noAtomsBind b && noAtomsSubExpr e
+    where noAtomsBind (NonRec b e) = noAtomsSubExpr e
+          noAtomsBind (Rec bs) = all (noAtomsSubExpr . snd) bs
+noAtomsSubExpr (Case e b t as) = noAtomsSubExpr e && all noAtomsAlt as
+    where noAtomsAlt (alt, xs, e) = noAtomsSubExpr e
+noAtomsSubExpr (Cast e c) = noAtomsSubExpr e
+noAtomsSubExpr e = True
 
 changeCoercion :: HomeModInfo -> TyConMap -> Coercion -> Coercion
 changeCoercion mod tcMap c = change c
@@ -529,8 +536,9 @@ changeCoercion mod tcMap c = change c
 changeCoAxiom :: TyConMap -> CoAxiom a -> CoAxiom a
 changeCoAxiom tcMap (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon tcMap tc) bs i
 
--- TODO add if conditions for arity dc < 2
 dataConExpr :: HomeModInfo -> DataCon -> CoreM CoreExpr
+dataConExpr mod dc | dataConSourceArity dc == 0 = noMetaExpr mod (Var $ dataConWrapId dc)
+dataConExpr mod dc | dataConSourceArity dc == 1 = idOpExpr mod (Var $ dataConWrapId dc)
 dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
                         ms <- mkMetaList xs
                         ux <- mkUnionVar
@@ -651,6 +659,7 @@ getMetaV mod = getMetaVar mod "getMeta"
 renameV mod = getMetaVar mod "rename"
 emptyListV mod = getMetaVar mod "emptyList"
 colonV mod = getMetaVar mod "colon"
+idOpV mod = getMetaVar mod "idOp"
 withMetaC mod = getTyCon mod "WithMeta"
 unionC mod = getTyCon mod "Union"
 
@@ -701,26 +710,26 @@ renameExpr mod e1 e2 e3 = applyExprs (renameV mod) [e1, e2, e3]
 colonExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 colonExpr mod e1 e2 = applyExprs (colonV mod) [e1, e2]
 
+idOpExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
+idOpExpr mod e = applyExpr (idOpV mod) e
+
 ----------------------------------------------------------------------------------------
 -- Meta Equivalents
 ----------------------------------------------------------------------------------------
 
 isMetaEquivalent :: Var -> Bool
-isMetaEquivalent v | pprTrace "isMetaEquivalent" (ppr v <+> ppr (nameModule_maybe $ varName v)) False = undefined
-isMetaEquivalent v = maybe False isPrelude $ nameModule_maybe $ varName v
---isMetaEquivalent = maybe False isPrelude . nameModule_maybe . varName
-    where isPrelude = (`elem` metaEquivalentModules) . moduleNameString . moduleName
+--isMetaEquivalent v | pprTrace "isMetaEquivalent" (ppr v <+> ppr (nameModule_maybe $ varName v)) False = undefined
+isMetaEquivalent v = (maybe False isMetaModule $ nameModule_maybe $ varName v) && (hasMetaEquivalent $ metaEquivalent $ getVarNameStr v)
+    where isMetaModule = (`elem` metaEquivalentModules) . moduleNameString . moduleName
+          hasMetaEquivalent NoEquivalent = False
+          hasMetaEquivalent _ = True
 
 getMetaEquivalent :: HomeModInfo -> Var -> CoreM CoreExpr
---getMetaEquivalent mod v | pprTrace "getMetaEquivalent" (ppr v <+> ppr (show $ metaEquivalent (getVarNameStr v))) False = undefined
 getMetaEquivalent mod v = case metaEquivalent (getVarNameStr v) of
                             OrigFun -> return $ Var v
                             MetaFun name -> return $ getMetaVar mod name
                             MetaConvertFun name -> applyExpr (getMetaVar mod name) (Var v)
-
--- FIXME to remove
-isPreludeShow :: Var -> Bool
-isPreludeShow v = elem (getVarNameStr v) ["D:Show", "showList__", "showsPrec", "$dmshow", "$dmshowList", "$dmshowsPrec"]
+                            NoEquivalent -> pprPanic "no meta equivalent for:" (showVar v)
 
 ----------------------------------------------------------------------------------------
 -- Show

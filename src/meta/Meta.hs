@@ -12,7 +12,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import GHC.Generics
 
-data WithMeta a = WithMeta {value :: a, meta :: Meta} deriving (Show, Eq)
+data WithMeta a = WithMeta {value :: a, meta :: Meta} deriving (Show, Eq, Ord)
 
 type Identifier = Int
 type IdMap = Map Identifier Identifier
@@ -184,17 +184,18 @@ convertFunName fun = (toLower $ head $ show fun) : (tail $ show fun)
 
 data MetaEquivalentType = FunSuffix | OpSuffix | SameOp | ConvertFun ConvertFun
 
-data MetaEquivalent = MetaFun String | MetaConvertFun String | OrigFun
+data MetaEquivalent = NoEquivalent | MetaFun String | MetaConvertFun String | OrigFun
 
 metaEquivalentModules :: [String]
-metaEquivalentModules = ["GHC.Base", "GHC.Classes", "GHC.List", "GHC.Num", "GHC.Real", "GHC.Tuple", "GHC.Types", "Prelude"]
+metaEquivalentModules = ["GHC.Base", "GHC.Classes", "GHC.List", "GHC.Num", "GHC.Real", "GHC.Show", "GHC.Tuple", "GHC.Types"]
 
 metaEquivalent :: String -> MetaEquivalent
-metaEquivalent name = case preludeEquivalents Map.! name of
-                        FunSuffix -> MetaFun (name ++ "_nlambda")
-                        OpSuffix -> MetaFun (name ++ "###")
-                        SameOp -> OrigFun
-                        ConvertFun fun -> MetaConvertFun (convertFunName fun)
+metaEquivalent name = case Map.lookup name preludeEquivalents of
+                        Just FunSuffix -> MetaFun (name ++ "_nlambda")
+                        Just OpSuffix -> MetaFun (name ++ "###")
+                        Just SameOp -> OrigFun
+                        Just (ConvertFun fun) -> MetaConvertFun (convertFunName fun)
+                        Nothing -> NoEquivalent
 
 ----------------------------------------------------------------------------------------
 -- Meta Equivalents
@@ -208,9 +209,26 @@ preludeEquivalents = Map.fromList [
     ("*>", ConvertFun UnionOp),
     ("++", ConvertFun UnionOp),
     (".", SameOp),
+    ("<$", ConvertFun UnionOp),
+    ("<*", ConvertFun UnionOp),
+    ("<*>", ConvertFun UnionOp),
+    (">>" , ConvertFun UnionOp),
+    ("Nothing", ConvertFun NoMeta),
+    ("Just", ConvertFun IdOp),
 -- GHC.Classes
+    ("D:Eq", SameOp),
     ("/=", ConvertFun NoMetaResUnionOp),
     ("==", ConvertFun NoMetaResUnionOp),
+    ("D:Ord", SameOp),
+    ("<", ConvertFun NoMetaResUnionOp),
+    ("<=", ConvertFun NoMetaResUnionOp),
+    (">", ConvertFun NoMetaResUnionOp),
+    (">=", ConvertFun NoMetaResUnionOp),
+    ("min", ConvertFun UnionOp),
+    ("$dmmin", ConvertFun UnionOp),
+    ("max", ConvertFun UnionOp),
+    ("$dmmax", ConvertFun UnionOp),
+    ("compare", ConvertFun NoMetaResUnionOp),
 -- GHC.List
     ("!!", ConvertFun LeftIdOp),
 -- GHC.Num
@@ -220,11 +238,17 @@ preludeEquivalents = Map.fromList [
     ("-", ConvertFun UnionOp),
 -- GHC.Real
     ("/", ConvertFun UnionOp),
+    ("^", ConvertFun UnionOp),
+    ("^^", ConvertFun UnionOp),
+-- GHC.Show
+    ("D:Show", SameOp),
+    ("showList__", SameOp),
+    ("showsPrec", SameOp),
+    ("$dmshow", SameOp),
+    ("$dmshowList", SameOp),
+    ("$dmshowsPrec", SameOp),
 -- GHC.Tuple
     ("(,)", ConvertFun UnionOp),
 -- GHC.Types
     (":", ConvertFun UnionOp),
-    ("[]", ConvertFun NoMeta),
--- Prelude
-    ("", SameOp) -- TODO to remove
-    ]
+    ("[]", ConvertFun NoMeta)]

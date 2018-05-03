@@ -54,7 +54,7 @@ nlambda_pair = unionOp (,)
 (<$###) :: Functor f => WithMeta a -> WithMeta (f b) -> WithMeta (f a)
 (<$###) = unionOp (<$)
 
-(<$>###) :: (Functor f, MetaLevel f) => (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
+(<$>###) :: (Functor f, MetaLevel f) => (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b) -- TODO move to Meta.hs
 (<$>###) = liftMeta .* metaFunOp (<$>)
 
 (<*###) :: Applicative f => WithMeta (f a) -> WithMeta (f b) -> WithMeta (f a)
@@ -66,7 +66,7 @@ nlambda_pair = unionOp (,)
 (<=###) :: Ord a => WithMeta a -> WithMeta a -> Bool
 (<=###) = noMetaResUnionOp (<=)
 
-(=<<###) :: (Monad m, MetaLevel m) => (WithMeta a -> WithMeta (m b)) -> WithMeta (m a) -> WithMeta (m b)
+(=<<###) :: (Monad m, MetaLevel m) => (WithMeta a -> WithMeta (m b)) -> WithMeta (m a) -> WithMeta (m b) -- TODO move to Meta.hs
 f =<<### x = x >>=### f
 
 (==###) :: Eq a => WithMeta a -> WithMeta a -> Bool
@@ -81,7 +81,7 @@ f =<<### x = x >>=### f
 (>>###) :: Monad m => WithMeta (m a) -> WithMeta (m b) -> WithMeta (m b)
 (>>###) = unionOp (>>)
 
-(>>=###) :: (Monad m, MetaLevel m) => WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
+(>>=###) :: (Monad m, MetaLevel m) => WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b) -- TODO move to Meta.hs
 (>>=###) (WithMeta x m) f = liftMeta $ x >>= (dropMeta . metaFun m f)
 
 (^###) :: (Num a, Integral b) => WithMeta a -> WithMeta b -> WithMeta a

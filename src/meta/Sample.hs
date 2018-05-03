@@ -3,17 +3,14 @@
 
 module Sample where
 
-import Prelude (Bool, Eq, (==))
+import Prelude (Bool, Show, Eq, Ord, min)
 
 
 ----------------------------------------------------------------------------
 -- Test
 ----------------------------------------------------------------------------
 
-data Atom = A | B deriving Eq
+data Atom = A | B deriving (Show, Eq, Ord)
 
-
-id x = x
-
-test :: Bool
-test = A == B
+test :: Atom
+test = min A B
