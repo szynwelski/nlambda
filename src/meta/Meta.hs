@@ -12,7 +12,7 @@ import Data.Map (Map)
 import Data.Set (Set)
 import GHC.Generics
 
-data WithMeta a = WithMeta {value :: a, meta :: Meta} deriving (Show, Eq, Ord)
+data WithMeta a = WithMeta {value :: a, meta :: Meta} deriving (Show, Eq, Ord) -- FIXME replace vars before ==, compare, etc.
 
 type Identifier = Int
 type IdMap = Map Identifier Identifier
@@ -219,6 +219,8 @@ preludeEquivalents = Map.fromList [
     ("D:Eq", SameOp),
     ("/=", ConvertFun NoMetaResUnionOp),
     ("==", ConvertFun NoMetaResUnionOp),
+    ("$dm==", ConvertFun NoMetaResUnionOp),
+    ("$dm/=", ConvertFun NoMetaResUnionOp),
     ("D:Ord", SameOp),
     ("<", ConvertFun NoMetaResUnionOp),
     ("<=", ConvertFun NoMetaResUnionOp),
