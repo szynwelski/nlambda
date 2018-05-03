@@ -454,10 +454,10 @@ changeExpr mod varMap tcMap e = newExpr varMap e
           newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
           newExpr varMap (Var v) | isInternalType $ varType v = return $ Var v
           newExpr varMap (Var v) | isPreludeShow v = return $ Var v
-          newExpr varMap (Var v) | isMetaEquivalent v = return $ getMetaEquivalent mod v
+          newExpr varMap (Var v) | isMetaEquivalent v = getMetaEquivalent mod v
           newExpr varMap (Var v) = pprPanic "unknown variable" (showVar v <+> text "::" <+> ppr (varType v))
-          newExpr varMap (Lit l) = emptyExpr mod (Lit l)
-          newExpr varMap a@(App (Var v) _) | isInternalVar v = emptyExpr mod a
+          newExpr varMap (Lit l) = noMetaExpr mod (Lit l)
+          newExpr varMap a@(App (Var v) _) | isInternalVar v = noMetaExpr mod a
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
                                                return $ App f' $ Type (if isValueType t then t else changeType mod tcMap t)
           newExpr varMap (App f x) = do f' <- newExpr varMap f
@@ -466,7 +466,7 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                                else return f'
                                         x' <- newExpr varMap x
                                         x'' <- if (isWithMetaType mod $ funArgTy $ exprType f'') && (not $ isWithMetaType mod $ exprType x')
-                                               then emptyExpr mod x' -- FIXME always correct?
+                                               then noMetaExpr mod x' -- FIXME always correct?
                                                else return x'
                                         return $ mkCoreApp f'' x''
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
@@ -529,6 +529,7 @@ changeCoercion mod tcMap c = change c
 changeCoAxiom :: TyConMap -> CoAxiom a -> CoAxiom a
 changeCoAxiom tcMap (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon tcMap tc) bs i
 
+-- TODO add if conditions for arity dc < 2
 dataConExpr :: HomeModInfo -> DataCon -> CoreM CoreExpr
 dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
                         ms <- mkMetaList xs
@@ -569,35 +570,42 @@ dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
 -- Apply expression
 ----------------------------------------------------------------------------------------
 
-splitType :: CoreExpr -> CoreM ([TyVar], [DictId], Type)
---splitType e | pprTrace "splitType" (ppr e <+> text "preds:" <+> ppr (let (tyVars, preds, ty') = tcSplitSigmaTy (exprType e) in preds)) False = undefined
-splitType e =
-    do let ty = exprType e
-       let (tyVars, preds, ty') = tcSplitSigmaTy ty
-       tyVars' <- mapM makeTyVarUnique tyVars
-       let preds' = filter isClassPred preds
-       let classTys = map getClassPredTys preds'
-       predVars <- mapM mkPredVar classTys
-       let subst = extendTvSubstList emptySubst (zip tyVars $ fmap TyVarTy tyVars')
-       let ty'' = substTy subst ty'
-       return (tyVars', [], ty'') -- FIXME predVars ???
+data ExprVar = TV TyVar | DI DictId
+
+exprVarToVar :: [ExprVar] -> [CoreBndr]
+exprVarToVar = fmap toCoreBndr
+    where toCoreBndr (TV v) = v
+          toCoreBndr (DI i) = i
+
+exprVarToExpr :: [ExprVar] -> [CoreExpr]
+exprVarToExpr = fmap toExpr
+    where toExpr (TV v) = Type $ mkTyVarTy v
+          toExpr (DI i) = Var i
+
+splitTypeTyVars :: Type -> CoreM ([ExprVar], Type)
+splitTypeTyVars ty =
+    let (tyVars, preds, ty') = tcSplitSigmaTy ty
+    in if null tyVars && null preds
+       then return ([], ty')
+       else do tyVars' <- mapM makeTyVarUnique tyVars
+               let preds' = filter isClassPred preds -- TODO other preds
+               let classTys = fmap getClassPredTys preds'
+               predVars <- mapM mkPredVar classTys
+               let subst = extendTvSubstList emptySubst (zip tyVars $ fmap TyVarTy tyVars')
+               (resTyVars, resTy) <- splitTypeTyVars $ substTy subst ty'
+               return ((TV <$> tyVars') ++ (DI <$> predVars) ++ resTyVars, resTy)
 
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
---applyExpr fun e | pprTrace "applyExpr" (ppr fun <+> text "and" <+> ppr e) False = undefined
 applyExpr fun e =
-    do (tyVars, predVars, ty) <- splitType e
+    do (eTyVars, ty) <- splitTypeTyVars $ exprType e
        let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
        let subst = maybe (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
                          id $ tcUnifyTy (funArgTy funTy) ty
        let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
-       let res = mkCoreLams tyVars $ mkCoreLams predVars $
-                  mkCoreApp
-                    (mkCoreApps fun $ funTyVarSubstExprs)
-                    (mkCoreApps
-                      (mkCoreApps e $ fmap Type $ mkTyVarTys tyVars)
-                      (fmap Var predVars))
---       putMsg $ text "applyExpr" <+> ppr fun <+> text "and" <+> ppr e <+> text ">>>" <+> ppr res <+> text "::" <+> ppr (exprType res)
-       return $ res
+       return $ mkCoreLams (exprVarToVar eTyVars)
+                  (mkCoreApp
+                    (mkCoreApps fun funTyVarSubstExprs)
+                    (mkCoreApps e $ exprVarToExpr eTyVars))
 
 applyExprs :: CoreExpr -> [CoreExpr] -> CoreM CoreExpr
 applyExprs = foldlM applyExpr
@@ -634,8 +642,7 @@ getTyCon mod nm = getTyThing mod nm isTyThingTyCon tyThingTyCon tyConName
 getMetaVar :: HomeModInfo -> String -> CoreExpr
 getMetaVar mod = Var . getVar mod
 
-emptyV mod = getMetaVar mod "empty"
-emptyMetaV mod = getMetaVar mod "emptyMeta"
+noMetaV mod = getMetaVar mod "noMeta"
 unionV mod = getMetaVar mod "union"
 metaV mod = getMetaVar mod "meta"
 valueV mod = getMetaVar mod "value"
@@ -667,9 +674,9 @@ makeTyVarUnique :: TyVar -> CoreM TyVar
 makeTyVarUnique v = do uniq <- getUniqueM
                        return $ mkTyVar (setNameUnique (tyVarName v) uniq) (tyVarKind v)
 
-emptyExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
-emptyExpr mod e | isInternalType $ exprType e = return e
-emptyExpr mod e = applyExpr (emptyV mod) e
+noMetaExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
+noMetaExpr mod e | isInternalType $ exprType e = return e
+noMetaExpr mod e = applyExpr (noMetaV mod) e
 
 valueExpr :: HomeModInfo -> CoreExpr -> CoreM CoreExpr
 valueExpr mod e | not $ isWithMetaType mod $ exprType e = return e
@@ -694,15 +701,24 @@ renameExpr mod e1 e2 e3 = applyExprs (renameV mod) [e1, e2, e3]
 colonExpr :: HomeModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 colonExpr mod e1 e2 = applyExprs (colonV mod) [e1, e2]
 
-metaEquivalents :: Map.Map String String
-metaEquivalents = Map.fromList [(":", "metaColon"), ("(,)", "metaPair"), ("==", "metaEq"), ("show", "metaShow"), ("+", "metaPlus"), ("-", "metaMinus"), ("++", "metaConcat")]
+----------------------------------------------------------------------------------------
+-- Meta Equivalents
+----------------------------------------------------------------------------------------
 
 isMetaEquivalent :: Var -> Bool
-isMetaEquivalent v = Map.member (getVarNameStr v) metaEquivalents
+isMetaEquivalent v | pprTrace "isMetaEquivalent" (ppr v <+> ppr (nameModule_maybe $ varName v)) False = undefined
+isMetaEquivalent v = maybe False isPrelude $ nameModule_maybe $ varName v
+--isMetaEquivalent = maybe False isPrelude . nameModule_maybe . varName
+    where isPrelude = (`elem` metaEquivalentModules) . moduleNameString . moduleName
 
-getMetaEquivalent :: HomeModInfo -> Var -> CoreExpr
-getMetaEquivalent mod v = getMetaVar mod (metaEquivalents Map.! getVarNameStr v)
+getMetaEquivalent :: HomeModInfo -> Var -> CoreM CoreExpr
+--getMetaEquivalent mod v | pprTrace "getMetaEquivalent" (ppr v <+> ppr (show $ metaEquivalent (getVarNameStr v))) False = undefined
+getMetaEquivalent mod v = case metaEquivalent (getVarNameStr v) of
+                            OrigFun -> return $ Var v
+                            MetaFun name -> return $ getMetaVar mod name
+                            MetaConvertFun name -> applyExpr (getMetaVar mod name) (Var v)
 
+-- FIXME to remove
 isPreludeShow :: Var -> Bool
 isPreludeShow v = elem (getVarNameStr v) ["D:Show", "showList__", "showsPrec", "$dmshow", "$dmshowList", "$dmshowsPrec"]
 

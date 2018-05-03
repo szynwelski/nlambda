@@ -3,13 +3,17 @@
 
 module Sample where
 
-import Prelude (Show)
-import MetaAtom
+import Prelude (Bool, Eq, (==))
 
 
 ----------------------------------------------------------------------------
 -- Test
 ----------------------------------------------------------------------------
 
-test :: Atom
-test = atom
+data Atom = A | B deriving Eq
+
+
+id x = x
+
+test :: Bool
+test = A == B

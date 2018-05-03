@@ -6,54 +6,6 @@ module MetaPrelude where
 import Meta
 
 ---------------------------------------------------------------
--- Auxiliary functions
----------------------------------------------------------------
-
-instance Monoid a => Monoid (WithMeta a) where
-    mempty = empty mempty
-    mappend = unionOp mappend
-
-idOp :: (a -> b) -> WithMeta a -> WithMeta b
-idOp op (WithMeta x m) = WithMeta (op x) m
-
-noMetaResOp :: (a -> b) -> WithMeta a -> b
-noMetaResOp op = op . value
-
-leftIdOp :: (a -> b -> c) -> WithMeta a -> b -> WithMeta c
-leftIdOp op (WithMeta x m) y = WithMeta (op x y) m
-
-rightIdOp :: (a -> b -> c) -> a -> WithMeta b -> WithMeta c
-rightIdOp op x (WithMeta y m) = WithMeta (op x y) m
-
-unionOp :: (a -> b -> c) -> WithMeta a -> WithMeta b -> WithMeta c
-unionOp op (WithMeta x m1) (WithMeta y m2) = WithMeta (op x' y') (getMeta u)
-    where u = union [m1, m2]
-          x' = rename u 0 x
-          y' = rename u 1 y
-
-union3Op :: (a -> b -> c -> d) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d
-union3Op op (WithMeta x m1) (WithMeta y m2) (WithMeta z m3) = WithMeta (op x' y' z') (getMeta u)
-    where u = union [m1, m2]
-          x' = rename u 0 x
-          y' = rename u 1 y
-          z' = rename u 2 z
-
-noMetaResUnionOp :: (a -> b -> c) -> WithMeta a -> WithMeta b -> c
-noMetaResUnionOp op x = value . unionOp op x
-
-(.*) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
-(.*) = (.) . (.)
-
-metaFun :: Meta -> (WithMeta a -> b) -> a -> b
-metaFun m f x = f (WithMeta x m)
-
-metaFunOp :: ((a -> b) -> c -> d) -> (WithMeta a -> b) -> WithMeta c -> d
-metaFunOp op f (WithMeta x m) = op (metaFun m f) x
-
-metaFunOpMeta :: ((a -> b) -> c -> d) -> (WithMeta a -> b) -> WithMeta c -> WithMeta d
-metaFunOpMeta op f (WithMeta x m) = WithMeta (op (metaFun m f) x) m
-
----------------------------------------------------------------
 -- Prelude functions
 ---------------------------------------------------------------
 
@@ -68,9 +20,6 @@ nlambda_pair = unionOp (,)
 
 ($!###) :: (WithMeta a -> WithMeta b) -> WithMeta a -> WithMeta b
 ($!###) = ($!)
-
-(&&###) :: Bool -> Bool -> Bool
-(&&###) = (&&)
 
 (*###) :: Num a => WithMeta a -> WithMeta a -> WithMeta a
 (*###) = unionOp (*)
@@ -142,7 +91,7 @@ f =<<### x = x >>=### f
 (^^###) = unionOp (^^)
 
 nlambda_Nothing :: WithMeta (Maybe a)
-nlambda_Nothing = empty Nothing
+nlambda_Nothing = noMeta Nothing
 
 nlambda_Just :: WithMeta a -> WithMeta (Maybe a)
 nlambda_Just = idOp Just
@@ -190,7 +139,7 @@ nlambda_atanh :: Floating a => WithMeta a -> WithMeta a
 nlambda_atanh = idOp atanh
 
 nlambda_break :: (WithMeta a -> Bool) -> WithMeta [a] -> WithMeta ([a], [a])
-nlambda_break = metaFunOpMeta break
+nlambda_break = noMetaResFunOp break
 
 nlambda_ceiling :: RealFrac a => Integral b => WithMeta a -> WithMeta b
 nlambda_ceiling = idOp ceiling
@@ -232,7 +181,7 @@ nlambda_drop :: Int -> WithMeta [a] -> WithMeta [a]
 nlambda_drop = rightIdOp drop
 
 nlambda_dropWhile :: (WithMeta a -> Bool) -> WithMeta [a] -> WithMeta [a]
-nlambda_dropWhile = metaFunOpMeta dropWhile
+nlambda_dropWhile = noMetaResFunOp dropWhile
 
 nlambda_either :: (WithMeta a -> WithMeta c) -> (WithMeta b -> WithMeta c) -> WithMeta (Either a b) -> WithMeta c
 nlambda_either f1 f2 (WithMeta x m) = either (metaFun m f1) (metaFun m f2) x
@@ -241,7 +190,7 @@ nlambda_elem :: Foldable t => Eq a => WithMeta a -> WithMeta (t a) -> Bool
 nlambda_elem = noMetaResUnionOp elem
 
 nlambda_encodeFloat :: RealFloat a => Integer -> Int -> WithMeta a
-nlambda_encodeFloat x y = empty $ encodeFloat x y
+nlambda_encodeFloat x y = noMeta $ encodeFloat x y
 
 nlambda_enumFrom :: Enum a => WithMeta a -> WithMeta [a]
 nlambda_enumFrom = idOp enumFrom
@@ -256,7 +205,7 @@ nlambda_enumFromTo :: Enum a => WithMeta a -> WithMeta a -> WithMeta [a]
 nlambda_enumFromTo = unionOp enumFromTo
 
 nlambda_error :: [Char] -> WithMeta a
-nlambda_error = empty . error
+nlambda_error = noMeta . error
 
 nlambda_even :: Integral a => WithMeta a -> Bool
 nlambda_even = noMetaResOp even
@@ -268,10 +217,10 @@ nlambda_exponent :: RealFloat a => WithMeta a -> Int
 nlambda_exponent = noMetaResOp exponent
 
 nlambda_fail :: Monad m => String -> WithMeta (m a)
-nlambda_fail = empty . fail
+nlambda_fail = noMeta . fail
 
 nlambda_filter :: (WithMeta a -> Bool) -> WithMeta [a] -> WithMeta [a]
-nlambda_filter = metaFunOpMeta filter
+nlambda_filter = noMetaResFunOp filter
 
 nlambda_flip :: (WithMeta a -> WithMeta b -> WithMeta c) -> WithMeta b -> WithMeta a -> WithMeta c
 nlambda_flip = flip
@@ -310,13 +259,13 @@ nlambda_fromEnum :: Enum a => WithMeta a -> Int
 nlambda_fromEnum = noMetaResOp fromEnum
 
 nlambda_fromInteger :: Num a => Integer -> WithMeta a
-nlambda_fromInteger = empty . fromInteger
+nlambda_fromInteger = noMeta . fromInteger
 
 nlambda_fromIntegral :: (Integral a, Num b) => WithMeta a -> WithMeta b
 nlambda_fromIntegral = idOp fromIntegral
 
 nlambda_fromRational :: Fractional a => Rational -> WithMeta a
-nlambda_fromRational = empty . fromRational
+nlambda_fromRational = noMeta . fromRational
 
 nlambda_fst :: WithMeta (a, b) -> WithMeta a
 nlambda_fst = idOp fst
@@ -334,7 +283,7 @@ nlambda_init :: WithMeta [a] -> WithMeta [a]
 nlambda_init = idOp init
 
 nlambda_ioError :: IOError -> WithMeta (IO a)
-nlambda_ioError = empty . ioError
+nlambda_ioError = noMeta . ioError
 
 nlambda_isDenormalized :: RealFloat a => WithMeta a -> Bool
 nlambda_isDenormalized = noMetaResOp isDenormalized
@@ -379,7 +328,7 @@ nlambda_mapM :: (Traversable t, MetaLevel t) => forall a (m :: * -> *) b. (Monad
 nlambda_mapM f (WithMeta x m) = liftMeta $ fmap liftMeta $ mapM (dropMeta . metaFun m f) x
 
 nlambda_mapM_ :: (Foldable t, Monad m, MetaLevel m) => (WithMeta a -> WithMeta (m b)) -> WithMeta (t a) -> WithMeta (m ())
-nlambda_mapM_ f (WithMeta x m) = empty $ mapM_ (dropMeta . metaFun m f) x
+nlambda_mapM_ f (WithMeta x m) = noMeta $ mapM_ (dropMeta . metaFun m f) x
 
 nlambda_mappend :: Monoid a => WithMeta a -> WithMeta a -> WithMeta a
 nlambda_mappend = unionOp mappend
@@ -388,7 +337,7 @@ nlambda_max :: Ord a => WithMeta a -> WithMeta a -> WithMeta a
 nlambda_max = unionOp max
 
 nlambda_maxBound :: Bounded a => WithMeta a
-nlambda_maxBound = empty $ maxBound
+nlambda_maxBound = noMeta $ maxBound
 
 nlambda_maximum :: Foldable t => forall a. Ord a => WithMeta (t a) -> WithMeta a
 nlambda_maximum = idOp maximum
@@ -399,14 +348,14 @@ nlambda_maybe d f (WithMeta x m) = maybe d (metaFun m f) x
 nlambda_mconcat :: Monoid a => WithMeta [a] -> WithMeta a
 nlambda_mconcat = idOp mconcat
 
-nlambda_mempty :: Monoid a => WithMeta a
-nlambda_mempty = empty $ mempty
+nlambda_mnoMeta :: Monoid a => WithMeta a
+nlambda_mnoMeta = noMeta $ mempty
 
 nlambda_min :: Ord a => WithMeta a -> WithMeta a -> WithMeta a
 nlambda_min = unionOp min
 
 nlambda_minBound :: Bounded a => WithMeta a
-nlambda_minBound = empty $ minBound
+nlambda_minBound = noMeta $ minBound
 
 nlambda_minimum :: Foldable t => forall a. Ord a => WithMeta (t a) -> WithMeta a
 nlambda_minimum = idOp minimum
@@ -430,7 +379,7 @@ nlambda_or :: Foldable t => WithMeta (t Bool) -> Bool
 nlambda_or = noMetaResOp or
 
 nlambda_pi :: Floating a => WithMeta a
-nlambda_pi = empty pi
+nlambda_pi = noMeta pi
 
 nlambda_pred :: Enum a => WithMeta a -> WithMeta a
 nlambda_pred = idOp pred
@@ -454,25 +403,25 @@ nlambda_quotRem :: Integral a => WithMeta a -> WithMeta a -> WithMeta (a, a)
 nlambda_quotRem = unionOp quotRem
 
 nlambda_read :: Read a => String -> WithMeta a
-nlambda_read = empty . read
+nlambda_read = noMeta . read
 
 nlambda_readIO :: Read a => String -> WithMeta (IO a)
-nlambda_readIO = empty . readIO
+nlambda_readIO = noMeta . readIO
 
 nlambda_readList :: Read a => String -> WithMeta [([a], String)]
-nlambda_readList = empty . readList
+nlambda_readList = noMeta . readList
 
 nlambda_readLn :: Read a => WithMeta (IO a)
-nlambda_readLn = empty readLn
+nlambda_readLn = noMeta readLn
 
 nlambda_readParen :: Bool -> (String -> WithMeta [(a, String)]) -> String -> WithMeta [(a, String)]
-nlambda_readParen b f = empty . readParen b (value . f)
+nlambda_readParen b f = noMeta . readParen b (value . f)
 
 nlambda_reads :: Read a => String -> WithMeta [(a, String)]
-nlambda_reads = empty . reads
+nlambda_reads = noMeta . reads
 
 nlambda_readsPrec :: Read a => Int -> String -> WithMeta [(a, String)]
-nlambda_readsPrec n = empty . readsPrec n
+nlambda_readsPrec n = noMeta . readsPrec n
 
 nlambda_realToFrac :: (Real a, Fractional b) => WithMeta a -> WithMeta b
 nlambda_realToFrac = idOp realToFrac
@@ -553,7 +502,7 @@ nlambda_snd :: WithMeta (a, b) -> WithMeta b
 nlambda_snd = idOp snd
 
 nlambda_span :: (WithMeta a -> Bool) -> WithMeta [a] -> WithMeta ([a], [a])
-nlambda_span = metaFunOpMeta span
+nlambda_span = noMetaResFunOp span
 
 nlambda_splitAt :: Int -> WithMeta [a] -> WithMeta ([a], [a])
 nlambda_splitAt = rightIdOp splitAt
@@ -577,7 +526,7 @@ nlambda_take :: Int -> WithMeta [a] -> WithMeta [a]
 nlambda_take = rightIdOp take
 
 nlambda_takeWhile :: (WithMeta a -> Bool) -> WithMeta [a] -> WithMeta [a]
-nlambda_takeWhile = metaFunOpMeta takeWhile
+nlambda_takeWhile = noMetaResFunOp takeWhile
 
 nlambda_tan :: Floating a => WithMeta a -> WithMeta a
 nlambda_tan = idOp tan
@@ -586,7 +535,7 @@ nlambda_tanh :: Floating a => WithMeta a -> WithMeta a
 nlambda_tanh = idOp tanh
 
 nlambda_toEnum :: Enum a => Int -> WithMeta a
-nlambda_toEnum = empty . toEnum
+nlambda_toEnum = noMeta . toEnum
 
 nlambda_toInteger :: Integral a => WithMeta a -> Integer
 nlambda_toInteger = noMetaResOp toInteger
@@ -605,7 +554,7 @@ nlambda_uncurry :: (WithMeta a -> WithMeta b -> WithMeta c) -> WithMeta (a, b) -
 nlambda_uncurry f x = f (idOp fst $ x) (idOp snd $ x)
 
 nlambda_undefined :: WithMeta a
-nlambda_undefined = empty undefined
+nlambda_undefined = noMeta undefined
 
 nlambda_until :: (WithMeta a -> Bool) -> (WithMeta a -> WithMeta a) -> WithMeta a -> WithMeta a
 nlambda_until = until
