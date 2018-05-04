@@ -23,6 +23,7 @@ import InstEnv
 import Class
 import MkId
 import CoAxiom
+import Kind
 import qualified BooleanFormula as BF
 
 import Data.Map (Map)
@@ -629,12 +630,23 @@ splitTypeTyVars ty =
                (resTyVars, resTy) <- splitTypeTyVars $ substTy subst ty'
                return ((TV <$> tyVars') ++ (DI <$> predVars) ++ resTyVars, resTy)
 
+unifyTypes :: Type -> Type -> Maybe TvSubst
+unifyTypes t1 t2 = maybe unifyWithOpenKinds Just (tcUnifyTy t1 t2)
+    where unifyWithOpenKinds = tcUnifyTy (replaceOpenKinds t1) (replaceOpenKinds t2)
+          replaceOpenKinds (TyVarTy v) | isOpenTypeKind (tyVarKind v) = TyVarTy $ setTyVarKind v (defaultKind $ tyVarKind v)
+          replaceOpenKinds (TyVarTy v) = TyVarTy v
+          replaceOpenKinds (AppTy t1 t2) = AppTy (replaceOpenKinds t1) (replaceOpenKinds t2)
+          replaceOpenKinds (TyConApp tc ts) = TyConApp tc (fmap replaceOpenKinds ts)
+          replaceOpenKinds (FunTy t1 t2) = FunTy (replaceOpenKinds t1) (replaceOpenKinds t2)
+          replaceOpenKinds (ForAllTy v t) = ForAllTy v (replaceOpenKinds t)
+          replaceOpenKinds (LitTy tl) = LitTy tl
+
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
     do (eTyVars, ty) <- splitTypeTyVars $ exprType e
        let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
        let subst = maybe (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
-                         id $ tcUnifyTy (funArgTy funTy) ty
+                         id $ unifyTypes (funArgTy funTy) ty
        let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
        return $ mkCoreLams (exprVarToVar eTyVars)
                   (mkCoreApp
