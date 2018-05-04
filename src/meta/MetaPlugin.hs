@@ -509,16 +509,20 @@ changeExpr mod varMap tcMap e = newExpr varMap e
           changeAlternative varMap m (alt, [], e) = do {e' <- newExpr varMap e; return (alt, [], e')}
 
 noAtomsSubExpr :: CoreExpr -> Bool
+-- type of expression is open for atoms
 noAtomsSubExpr e | not $ noAtomsType $ exprType e = False
-noAtomsSubExpr (App f e) = noAtomsSubExpr f && noAtomsSubExpr e
-noAtomsSubExpr (Lam x e) = noAtomsSubExpr e
-noAtomsSubExpr (Let b e) = noAtomsBind b && noAtomsSubExpr e
-    where noAtomsBind (NonRec x e) = noAtomsSubExpr e
-          noAtomsBind (Rec bs) = all (noAtomsSubExpr . snd) bs
-noAtomsSubExpr (Case e b t as) = noAtomsSubExpr e && all noAtomsAlt as
-    where noAtomsAlt (alt, xs, e) = noAtomsSubExpr e
-noAtomsSubExpr (Cast e c) = noAtomsSubExpr e
-noAtomsSubExpr e = True
+-- there are free variables open for atoms
+noAtomsSubExpr e | not . isEmptyUniqSet $ filterUniqSet (not . noAtomsType . varType) $ exprFreeIds e = False
+noAtomsSubExpr e = go e
+    where go  (App f e) = go f && go e
+          go (Lam x e) = go e
+          go (Let b e) = noAtomsBind b && go e
+          go (Cast e c) = go e
+          go (Case e b t as) = go e && all noAtomsAlt as
+          go e = True
+          noAtomsBind (NonRec x e) = go e
+          noAtomsBind (Rec bs) = all (go . snd) bs
+          noAtomsAlt (alt, xs, e) = go e
 
 replaceVars :: VarMap -> CoreExpr -> CoreExpr
 replaceVars varMap (Var x) = Var (newVarDefault varMap x)
