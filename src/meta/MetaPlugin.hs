@@ -213,6 +213,12 @@ primVarName :: Var -> CoreM Var
 primVarName v = do name <- createNewName "'" $ varName v
                    return $ setVarName v name
 
+getVarNameStr :: Var -> String
+getVarNameStr = getNameStr . varName
+
+getModuleNameStr :: Var -> String
+getModuleNameStr = maybe "" (moduleNameString . moduleName) . nameModule_maybe . varName
+
 ----------------------------------------------------------------------------------------
 -- Imports
 ----------------------------------------------------------------------------------------
@@ -443,9 +449,6 @@ isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem
 -- Expr
 ----------------------------------------------------------------------------------------
 
-getVarNameStr :: Var -> String
-getVarNameStr = getNameStr . varName
-
 -- FIXME use isPrimOpId or check type ??
 isInternalVar :: Var -> Bool
 isInternalVar v = let n = getVarNameStr v in isSuffixOf "#" n
@@ -455,7 +458,8 @@ changeExpr mod varMap tcMap e = newExpr varMap e
     where newExpr varMap e | noAtomsSubExpr e = return $ replaceVars varMap e
           newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
           newExpr varMap (Var v) | isMetaEquivalent v = getMetaEquivalent mod v
-          newExpr varMap (Var v) = pprPanic "unknown variable" (showVar v <+> text "::" <+> ppr (varType v))
+          newExpr varMap (Var v) = pprPanic "unknown variable"
+            (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleNameStr v ++ " is not compiled with NLambda Plugin."))
           newExpr varMap (Lit l) = noMetaExpr mod (Lit l)
           newExpr varMap a@(App (Var v) _) | isInternalVar v = noMetaExpr mod a
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
@@ -740,18 +744,16 @@ idOpExpr mod e = applyExpr (idOpV mod) e
 ----------------------------------------------------------------------------------------
 
 isMetaEquivalent :: Var -> Bool
---isMetaEquivalent v | pprTrace "isMetaEquivalent" (ppr v <+> text "::" <+> ppr (exprType $ Var v) <+> text "from" <+> ppr (nameModule_maybe $ varName v)) False = undefined
-isMetaEquivalent v = (maybe False isMetaModule $ nameModule_maybe $ varName v) && (hasMetaEquivalent $ metaEquivalent $ getVarNameStr v)
-    where isMetaModule = (`elem` metaEquivalentModules) . moduleNameString . moduleName
-          hasMetaEquivalent NoEquivalent = False
-          hasMetaEquivalent _ = True
+isMetaEquivalent v = case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
+                       NoEquivalent -> False
+                       _            -> True
 
 getMetaEquivalent :: HomeModInfo -> Var -> CoreM CoreExpr
-getMetaEquivalent mod v = case metaEquivalent (getVarNameStr v) of
+getMetaEquivalent mod v = case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
                             OrigFun -> return $ Var v
                             MetaFun name -> return $ getMetaVar mod name
                             MetaConvertFun name -> applyExpr (getMetaVar mod name) (Var v)
-                            NoEquivalent -> pprPanic "no meta equivalent for:" (showVar v)
+                            NoEquivalent -> pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> ppr (getModuleNameStr v))
 
 ----------------------------------------------------------------------------------------
 -- Show

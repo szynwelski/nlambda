@@ -12,6 +12,15 @@ import Data.Map (Map)
 import Data.Set (Set)
 import GHC.Generics
 
+------------------------------------------------------------------------------------------
+-- Class WithMeta and instances
+------------------------------------------------------------------------------------------
+
+type Identifier = Int
+type IdMap = Map Identifier Identifier
+type IdPairSet = Set (Identifier, Identifier)
+type Meta = (IdMap, IdPairSet)
+
 data WithMeta a = WithMeta {value :: a, meta :: Meta}
 
 instance Show a => Show (WithMeta a) where
@@ -39,10 +48,14 @@ instance Num a => Num (WithMeta a) where
     signum = idOp signum
     fromInteger = noMeta . fromInteger
 
-type Identifier = Int
-type IdMap = Map Identifier Identifier
-type IdPairSet = Set (Identifier, Identifier)
-type Meta = (IdMap, IdPairSet)
+instance Monoid a => Monoid (WithMeta a) where
+    mempty = noMeta mempty
+    mappend = unionOp mappend
+
+------------------------------------------------------------------------------------------
+-- Methods to handle meta information in expressions
+------------------------------------------------------------------------------------------
+
 type Union = (Meta, [IdMap])
 
 -- TODO
@@ -91,7 +104,51 @@ colon :: a -> [a] -> [a]
 colon = (:)
 
 ------------------------------------------------------------------------------------------
--- class MetaLevel
+-- Conversion functions to meta operations
+------------------------------------------------------------------------------------------
+
+idOp :: (a -> b) -> WithMeta a -> WithMeta b
+idOp op (WithMeta x m) = WithMeta (op x) m
+
+noMetaResOp :: (a -> b) -> WithMeta a -> b
+noMetaResOp op = op . value
+
+leftIdOp :: (a -> b -> c) -> WithMeta a -> b -> WithMeta c
+leftIdOp op (WithMeta x m) y = WithMeta (op x y) m
+
+rightIdOp :: (a -> b -> c) -> a -> WithMeta b -> WithMeta c
+rightIdOp op x (WithMeta y m) = WithMeta (op x y) m
+
+unionOp :: (a -> b -> c) -> WithMeta a -> WithMeta b -> WithMeta c
+unionOp op (WithMeta x m1) (WithMeta y m2) = WithMeta (op x' y') (getMeta u)
+    where u = union [m1, m2]
+          x' = rename u 0 x
+          y' = rename u 1 y
+
+union3Op :: (a -> b -> c -> d) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d
+union3Op op (WithMeta x m1) (WithMeta y m2) (WithMeta z m3) = WithMeta (op x' y' z') (getMeta u)
+    where u = union [m1, m2]
+          x' = rename u 0 x
+          y' = rename u 1 y
+          z' = rename u 2 z
+
+noMetaResUnionOp :: (a -> b -> c) -> WithMeta a -> WithMeta b -> c
+noMetaResUnionOp op x = value . unionOp op x
+
+(.*) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
+(.*) = (.) . (.)
+
+metaFun :: Meta -> (WithMeta a -> b) -> a -> b
+metaFun m f x = f (WithMeta x m)
+
+metaFunOp :: ((a -> b) -> c -> d) -> (WithMeta a -> b) -> WithMeta c -> d
+metaFunOp op f (WithMeta x m) = op (metaFun m f) x
+
+noMetaResFunOp :: ((a -> b) -> c -> d) -> (WithMeta a -> b) -> WithMeta c -> WithMeta d
+noMetaResFunOp op f (WithMeta x m) = WithMeta (op (metaFun m f) x) m
+
+------------------------------------------------------------------------------------------
+-- Class MetaLevel and deriving methods
 ------------------------------------------------------------------------------------------
 
 class MetaLevel (f :: * -> *) where
@@ -149,142 +206,79 @@ instance MetaLevel IO where
     liftMeta x = noMeta $ fmap value x -- noMeta ???
     dropMeta (WithMeta x m) = fmap (`WithMeta` m) x
 
-------------------------------------------------------------------------------------------
--- Conversion functions to meta operations
-------------------------------------------------------------------------------------------
-
-instance Monoid a => Monoid (WithMeta a) where
-    mempty = noMeta mempty
-    mappend = unionOp mappend
-
-idOp :: (a -> b) -> WithMeta a -> WithMeta b
-idOp op (WithMeta x m) = WithMeta (op x) m
-
-noMetaResOp :: (a -> b) -> WithMeta a -> b
-noMetaResOp op = op . value
-
-leftIdOp :: (a -> b -> c) -> WithMeta a -> b -> WithMeta c
-leftIdOp op (WithMeta x m) y = WithMeta (op x y) m
-
-rightIdOp :: (a -> b -> c) -> a -> WithMeta b -> WithMeta c
-rightIdOp op x (WithMeta y m) = WithMeta (op x y) m
-
-unionOp :: (a -> b -> c) -> WithMeta a -> WithMeta b -> WithMeta c
-unionOp op (WithMeta x m1) (WithMeta y m2) = WithMeta (op x' y') (getMeta u)
-    where u = union [m1, m2]
-          x' = rename u 0 x
-          y' = rename u 1 y
-
-union3Op :: (a -> b -> c -> d) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d
-union3Op op (WithMeta x m1) (WithMeta y m2) (WithMeta z m3) = WithMeta (op x' y' z') (getMeta u)
-    where u = union [m1, m2]
-          x' = rename u 0 x
-          y' = rename u 1 y
-          z' = rename u 2 z
-
-noMetaResUnionOp :: (a -> b -> c) -> WithMeta a -> WithMeta b -> c
-noMetaResUnionOp op x = value . unionOp op x
-
-(.*) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
-(.*) = (.) . (.)
-
-metaFun :: Meta -> (WithMeta a -> b) -> a -> b
-metaFun m f x = f (WithMeta x m)
-
-metaFunOp :: ((a -> b) -> c -> d) -> (WithMeta a -> b) -> WithMeta c -> d
-metaFunOp op f (WithMeta x m) = op (metaFun m f) x
-
-noMetaResFunOp :: ((a -> b) -> c -> d) -> (WithMeta a -> b) -> WithMeta c -> WithMeta d
-noMetaResFunOp op f (WithMeta x m) = WithMeta (op (metaFun m f) x) m
-
-
 ----------------------------------------------------------------------------------------
--- Meta Equivalents
+-- Meta equivalents
 ----------------------------------------------------------------------------------------
 
-data ConvertFun = NoMeta | IdOp | NoMetaResOp | LeftIdOp | RightIdOp | UnionOp | Union3Op | NoMetaResUnionOp | MetaFunOp | NoMetaResFunOp deriving Show
+data ConvertFun = NoMeta | IdOp | NoMetaResOp | LeftIdOp | RightIdOp | UnionOp | Union3Op | NoMetaResUnionOp | MetaFunOp | NoMetaResFunOp
+    deriving (Show, Eq, Ord)
 
 convertFunName :: ConvertFun -> String
 convertFunName fun = (toLower $ head $ show fun) : (tail $ show fun)
 
-data MetaEquivalentType = FunSuffix | OpSuffix | SameOp | ConvertFun ConvertFun
+data MetaEquivalentType = FunSuffix | OpSuffix | SameOp | ConvertFun ConvertFun deriving (Eq, Ord)
 
 data MetaEquivalent = NoEquivalent | MetaFun String | MetaConvertFun String | OrigFun
 
-metaEquivalentModules :: [String]
-metaEquivalentModules = ["GHC.Base", "GHC.Classes", "GHC.Float", "GHC.List", "GHC.Num", "GHC.Real", "GHC.Show", "GHC.Tuple", "GHC.Types"]
+type ModuleName = String
+type MethodName = String
+type MetaEquivalentMap = Map ModuleName (Map MetaEquivalentType [MethodName])
 
-metaEquivalent :: String -> MetaEquivalent
-metaEquivalent name = case Map.lookup name preludeEquivalents of
-                        Just FunSuffix -> MetaFun (name ++ "_nlambda")
-                        Just OpSuffix -> MetaFun (name ++ "###")
-                        Just SameOp -> OrigFun
-                        Just (ConvertFun fun) -> MetaConvertFun (convertFunName fun)
-                        Nothing -> NoEquivalent
+createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> MetaEquivalentMap
+createEquivalentsMap mod = Map.singleton mod . Map.fromList
+
+preludeEquivalents :: Map String (Map MetaEquivalentType [String])
+preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes]
+
+metaEquivalent :: ModuleName -> MethodName -> MetaEquivalent
+metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod preludeEquivalents of
+                            Just FunSuffix -> MetaFun (name ++ "_nlambda")
+                            Just OpSuffix -> MetaFun (name ++ "###")
+                            Just SameOp -> OrigFun
+                            Just (ConvertFun fun) -> MetaConvertFun (convertFunName fun)
+                            Nothing -> NoEquivalent
+    where findMethod = maybe Nothing (Just . fst . fst) . Map.minViewWithKey . Map.filter (elem name)
 
 ----------------------------------------------------------------------------------------
--- Meta Equivalents
+-- Meta equivalents methods
 ----------------------------------------------------------------------------------------
 
--- TODO change to map (Module -> Fun -> Type) or (Module -> Type -> [Fun])
-preludeEquivalents :: Map String MetaEquivalentType
-preludeEquivalents = Map.fromList [
--- GHC.Base
-    ("$", SameOp),
-    ("$!", SameOp),
-    ("*>", ConvertFun UnionOp),
-    ("++", ConvertFun UnionOp),
-    (".", SameOp),
-    ("<$", ConvertFun UnionOp),
-    ("<*", ConvertFun UnionOp),
-    ("<*>", ConvertFun UnionOp),
-    (">>" , ConvertFun UnionOp),
-    ("Nothing", ConvertFun NoMeta),
-    ("Just", ConvertFun IdOp),
-    ("id", SameOp),
-    ("const", SameOp),
--- GHC.Classes
-    ("D:Eq", SameOp),
-    ("/=", SameOp),
-    ("==", SameOp),
-    ("$dm==", SameOp),
-    ("$dm/=", SameOp),
-    ("D:Ord", SameOp),
-    ("<", SameOp),
-    ("<=", SameOp),
-    (">", SameOp),
-    (">=", SameOp),
-    ("min", SameOp),
-    ("$dmmin", SameOp),
-    ("max", SameOp),
-    ("$dmmax", SameOp),
-    ("compare", SameOp),
--- GHC.Float -- FIXME SameOp ??
-    ("**", SameOp),
--- GHC.List
-    ("!!", ConvertFun LeftIdOp),
--- GHC.Num
-    ("D:Num", SameOp),
-    ("*", SameOp),
-    ("+", SameOp),
-    ("-", SameOp),
-    ("negate", SameOp),
-    ("abs", SameOp),
-    ("signum", SameOp),
-    ("fromInteger", SameOp),
--- GHC.Real -- FIXME SameOp ??
-    ("/", ConvertFun UnionOp),
-    ("^", ConvertFun UnionOp),
-    ("^^", ConvertFun UnionOp),
--- GHC.Show
-    ("D:Show", SameOp),
-    ("showList__", SameOp),
-    ("showsPrec", SameOp),
-    ("$dmshow", SameOp),
-    ("$dmshowList", SameOp),
-    ("$dmshowsPrec", SameOp),
--- GHC.Tuple
-    ("(,)", ConvertFun UnionOp),
--- GHC.Types
-    (":", ConvertFun UnionOp),
-    ("[]", ConvertFun NoMeta)]
+ghcBase :: MetaEquivalentMap
+ghcBase = createEquivalentsMap "GHC.Base"
+    [(SameOp, ["$", "$!", ".", "id", "const"]),
+     (ConvertFun NoMeta, ["Nothing"]),
+     (ConvertFun IdOp, ["Just"]),
+     (ConvertFun UnionOp, ["*>", "++", "<$", "<*", "<*>", ">>"])]
+
+ghcClasses :: MetaEquivalentMap
+ghcClasses = createEquivalentsMap "GHC.Classes"
+    [(SameOp, ["D:Eq","/=","==","$dm==","$dm/=","D:Ord","<","<=",">",">=","min","$dmmin","max","$dmmax","compare"])]
+
+ghcFloat :: MetaEquivalentMap
+ghcFloat = createEquivalentsMap "GHC.Float"
+    [(SameOp, ["**"])]
+
+ghcList :: MetaEquivalentMap
+ghcList = createEquivalentsMap "GHC.List"
+    [(ConvertFun LeftIdOp, ["!!"])]
+
+ghcNum :: MetaEquivalentMap
+ghcNum = createEquivalentsMap "GHC.Num"
+    [(SameOp, ["D:Num","*","+","-","negate","abs","signum","fromInteger"])]
+
+ghcReal :: MetaEquivalentMap
+ghcReal = createEquivalentsMap "GHC.Real"
+    [(SameOp, ["/","^","^^"])]
+
+ghcShow :: MetaEquivalentMap
+ghcShow = createEquivalentsMap "GHC.Show"
+    [(SameOp, ["D:Show","showList__","showsPrec","$dmshow","$dmshowList","$dmshowsPrec"])]
+
+ghcTuple :: MetaEquivalentMap
+ghcTuple = createEquivalentsMap "GHC.Tuple"
+    [(ConvertFun UnionOp, ["(,)"])]
+
+ghcTypes :: MetaEquivalentMap
+ghcTypes = createEquivalentsMap "GHC.Types"
+    [(ConvertFun NoMeta, ["[]"]),
+     (ConvertFun UnionOp, [":"])]
