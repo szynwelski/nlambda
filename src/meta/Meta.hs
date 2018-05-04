@@ -241,7 +241,8 @@ preludeEquivalents = Map.fromList [
     (">>" , ConvertFun UnionOp),
     ("Nothing", ConvertFun NoMeta),
     ("Just", ConvertFun IdOp),
-    ("id", ConvertFun IdOp),
+    ("id", SameOp),
+    ("const", SameOp),
 -- GHC.Classes
     ("D:Eq", SameOp),
     ("/=", SameOp),
@@ -263,9 +264,14 @@ preludeEquivalents = Map.fromList [
 -- GHC.List
     ("!!", ConvertFun LeftIdOp),
 -- GHC.Num
+    ("D:Num", SameOp),
     ("*", SameOp),
     ("+", SameOp),
     ("-", SameOp),
+    ("negate", SameOp),
+    ("abs", SameOp),
+    ("signum", SameOp),
+    ("fromInteger", SameOp),
 -- GHC.Real -- FIXME SameOp ??
     ("/", ConvertFun UnionOp),
     ("^", ConvertFun UnionOp),
