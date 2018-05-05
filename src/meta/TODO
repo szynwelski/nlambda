@@ -9,5 +9,6 @@
 - zaimplementować MetaAtom (dla testów)
 - zaimplementować moduł Meta
 - dodać obowiązkową klasę (dla replace vars) dla metod WithMeta
+- obsłużyć klasy z Prelude
 - zaimplementować NLambdaPrelude,
 - podpiąć moduł NLambda

@@ -14,7 +14,7 @@ import Data.List (find, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub, par
 import Data.Maybe (fromJust)
 import TypeRep
 import Maybes
-import TcType (tcSplitSigmaTy)
+import TcType (tcSplitSigmaTy, tcSplitPhiTy)
 import TyCon
 import Unify
 import CoreSubst
@@ -364,7 +364,7 @@ getBindsNames = fmap varName . getBindsVars
 newBinds :: HomeModInfo -> VarMap -> TyConMap -> [DataCon] -> CoreProgram -> CoreM CoreProgram
 newBinds mod varMap tcMap dcs bs = do bs' <- mapM (changeBind mod varMap tcMap) bs
                                       bs'' <- mapM (dataBind mod varMap) dcs
-                                      return $ bs' ++ bs''
+                                      return $ checkBinds $ bs' ++ bs''
 
 changeBind :: HomeModInfo -> VarMap -> TyConMap -> CoreBind -> CoreM CoreBind
 changeBind mod varMap tcMap (NonRec b e) = do (b',e') <- changeBindExpr mod varMap tcMap (b, e)
@@ -383,6 +383,18 @@ dataBind mod varMap dc = do expr <- dataConExpr mod dc
 
 nonRecDataBind :: VarMap -> DataCon -> CoreExpr -> CoreBind
 nonRecDataBind varMap dc = NonRec (newVar varMap $ dataConWrapId dc)
+
+-- check var type is equal to expression type in every bind
+checkBinds :: CoreProgram -> CoreProgram
+checkBinds bs = fmap checkBind bs
+    where checkBind (NonRec b e) = uncurry NonRec $ check (b, e)
+          checkBind (Rec bs) = Rec (check <$> bs)
+          check (b,e) | varType b /= exprType e = pprPanic "======================= INCONSISTENT TYPES =======================" $ vcat
+              [text "var: " <+> showVar b,
+               text "var type:" <+> ppr (varType b),
+               text "expr:" <+> ppr e,
+               text "expr type:" <+> ppr (exprType e)]
+          check (b,e) = (b,e)
 
 ----------------------------------------------------------------------------------------
 -- Type
@@ -415,7 +427,42 @@ changePredType mod tcMap isDict t | (Just (tc, ts)) <- splitTyConApp_maybe t, is
 changePredType mod tcMap isDict t = t
 
 getMainType :: Type -> Type
-getMainType t = let (_,_,t') = tcSplitSigmaTy t in t'
+getMainType t = if t == t' then t else getMainType t'
+    where (tvs, ps ,t') = tcSplitSigmaTy t
+
+getForAllTyVar :: Type -> TyVar
+getForAllTyVar = head . fst . splitForAllTys
+
+getFunTypeParts :: Type -> [Type]
+getFunTypeParts t = argTys ++ [resTy]
+    where (argTys, resTy) = splitFunTys $ getMainType t
+
+isTyVarWrappedByWithMeta :: HomeModInfo -> TyVar -> Type -> Bool
+isTyVarWrappedByWithMeta mod tv = all (\t -> isWithMetaType mod t || notContainTyVar t) . getFunTypeParts
+    where notContainTyVar (TyVarTy tv') = tv /= tv'
+          notContainTyVar (AppTy t1 t2) = notContainTyVar t1 && notContainTyVar t2
+          notContainTyVar (TyConApp tc ts) = all notContainTyVar ts
+          notContainTyVar (FunTy t1 t2) = notContainTyVar t1 && notContainTyVar t2
+          notContainTyVar (LitTy _) = True
+
+isWithMetaType :: HomeModInfo -> Type -> Bool
+isWithMetaType mod t
+    | Just (tc, _) <- splitTyConApp_maybe (getMainType t) = tc == withMetaC mod
+    | otherwise = False
+
+beginWithMetaLevelRequirement :: HomeModInfo -> Type -> Bool
+beginWithMetaLevelRequirement mod t
+    | not $ null preds = isMetaLevel $ head preds
+    | otherwise = False
+    where (preds, t') = tcSplitPhiTy t
+          isMetaLevel pred
+            | Just tc <- tyConAppTyCon_maybe pred, isClassTyCon tc = tc == metaLevelC mod
+            | otherwise = False
+
+getOnlyTypeFromPred :: PredType -> Type
+getOnlyTypeFromPred t
+    | isPredTy t, Just ts <- tyConAppArgs_maybe t, length ts == 1 = head ts
+    | otherwise  = pprPanic "getTypeFromPred" (text "given type" <+> ppr t <+> text " is not constraint or has more than one arguments")
 
 isInternalType :: Type -> Bool
 isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPrimitiveType t' || isUnLiftedType t'
@@ -464,7 +511,9 @@ changeExpr mod varMap tcMap e = newExpr varMap e
           newExpr varMap (Lit l) = noMetaExpr mod (Lit l)
           newExpr varMap a@(App (Var v) _) | isInternalVar v = noMetaExpr mod a
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
-                                               return $ App f' $ Type (if noAtomsType t then t else changeType mod tcMap t)
+                                               let tyVar = getForAllTyVar $ exprType f'
+                                               let t' = if isTyVarWrappedByWithMeta mod tyVar $ exprType f' then t else changeType mod tcMap t
+                                               return $ App f' $ Type t'
           newExpr varMap (App f e) = do f' <- newExpr varMap f
                                         f'' <- if isWithMetaType mod $ exprType f'
                                                then valueExpr mod f'
@@ -473,7 +522,10 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                         e'' <- if (isWithMetaType mod $ funArgTy $ exprType f'') && (not $ isWithMetaType mod $ exprType e')
                                                then noMetaExpr mod e' -- FIXME always correct?
                                                else return e'
-                                        return $ mkCoreApp f'' e''
+                                        f''' <- if beginWithMetaLevelRequirement mod $ exprType f''
+                                                then return $ mkCoreApp f'' $ getMetaLevelInstance mod $ getOnlyTypeFromPred $ exprType e''
+                                                else return f''
+                                        return $ mkCoreApp f''' e''
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
                                                     return $ Lam x e'
           newExpr varMap (Lam x e) = do x' <- changeBindType mod tcMap x
@@ -491,7 +543,7 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                          return $ Cast e' (changeCoercion mod tcMap c)
           newExpr varMap (Tick t e) = do e' <- newExpr varMap e
                                          return $ Tick t e'
-          newExpr varMap (Type t) = undefined -- without changing type?
+          newExpr varMap (Type t) = undefined -- type should be served in (App f (Type t)) case
           newExpr varMap (Coercion c) = return $ Coercion $ changeCoercion mod tcMap c
           changeLetBind (NonRec b e) varMap = do b' <- changeBindType mod tcMap b
                                                  let varMap' = Map.insert b b' varMap
@@ -620,7 +672,7 @@ exprVarToExpr = fmap toExpr
 splitTypeTyVars :: Type -> CoreM ([ExprVar], Type)
 splitTypeTyVars ty =
     let (tyVars, preds, ty') = tcSplitSigmaTy ty
-    in if null tyVars && null preds
+    in if ty == ty'
        then return ([], ty')
        else do tyVars' <- mapM makeTyVarUnique tyVars
                let preds' = filter isClassPred preds -- TODO other preds
@@ -700,17 +752,18 @@ colonV mod = getMetaVar mod "colon"
 idOpV mod = getMetaVar mod "idOp"
 withMetaC mod = getTyCon mod "WithMeta"
 unionC mod = getTyCon mod "Union"
+metaLevelC mod = getTyCon mod "MetaLevel"
 
 withMetaType :: HomeModInfo -> Type -> Type
 withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
 
-isWithMetaType :: HomeModInfo -> Type -> Bool
-isWithMetaType mod t = let (_, _, ty) = tcSplitSigmaTy t in go ty
-    where go ty | Just (tc, _) <- splitTyConApp_maybe ty = tc == withMetaC mod
-                | otherwise = False
-
 unionType :: HomeModInfo -> Type
 unionType = mkTyConTy . unionC
+
+getMetaLevelInstance :: HomeModInfo -> Type -> CoreExpr
+getMetaLevelInstance mod t
+    | Just tc <- tyConAppTyCon_maybe t = getMetaVar mod $ "$fMetaLevel" ++ (occNameString $ getOccName tc)
+    | otherwise = pprPanic "getMetaLevelInstance" (text "given type" <+> ppr t <+> text "is not type constructor")
 
 mkPredVar :: (Class, [Type]) -> CoreM DictId
 mkPredVar (cls, tys) = do uniq <- getUniqueM
@@ -783,8 +836,6 @@ showBindExpr (b,e) = text "===> "
                         <+> showVar b
                         <+> text "::"
                         <+> showType (varType b)
-                        <+> text "::"
-                        <+> showType (exprType e)
                         <+> (if noAtomsType $ varType b then text "[no atoms]" else text "[atoms]")
                         <> text "\n"
                         <+> showExpr e
@@ -856,7 +907,6 @@ showVar = ppr
 ----            <+> showOccName (nameOccName $ varName v)
 --            <> (when (isId v) (idDetails v))
 --            <> (when (isId v) (arityInfo $ idInfo v))
-----            <> (when (isId v) (specInfo $ idInfo v))
 --            <> (when (isId v) (unfoldingInfo $ idInfo v))
 --            <> (when (isId v) (cafInfo $ idInfo v))
 --            <> (when (isId v) (oneShotInfo $ idInfo v))

@@ -3,23 +3,14 @@
 
 module Sample where
 
-import Prelude (Bool(..), Show, Eq, Ord, Num(..), min, max, id, const)
+import Prelude (Show(..), Int, fmap, id, map, length, ($))
 
 
 ----------------------------------------------------------------------------
 -- Test
 ----------------------------------------------------------------------------
 
-data Atom = A | B deriving (Show, Eq, Ord)
+data Atom = A
 
-instance Num Atom where
-    (+) a b = min a b
-    a - b = min a b
-    a * b = min a b
-    negate = id
-    abs = id
-    signum = id
-    fromInteger = const A
-
-test :: [Atom]
-test = [A + B, A - B, A * B, negate A, abs A, signum A, fromInteger 1]
+test :: Int
+test = length $ fmap id [A]
