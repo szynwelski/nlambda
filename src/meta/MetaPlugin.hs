@@ -439,12 +439,13 @@ getFunTypeParts t = argTys ++ [resTy]
     where (argTys, resTy) = splitFunTys $ getMainType t
 
 isTyVarWrappedByWithMeta :: HomeModInfo -> TyVar -> Type -> Bool
-isTyVarWrappedByWithMeta mod tv = all (\t -> isWithMetaType mod t || notContainTyVar t) . getFunTypeParts
-    where notContainTyVar (TyVarTy tv') = tv /= tv'
-          notContainTyVar (AppTy t1 t2) = notContainTyVar t1 && notContainTyVar t2
-          notContainTyVar (TyConApp tc ts) = all notContainTyVar ts
-          notContainTyVar (FunTy t1 t2) = notContainTyVar t1 && notContainTyVar t2
-          notContainTyVar (LitTy _) = True
+isTyVarWrappedByWithMeta mod tv = all wrappedByWithMeta . getFunTypeParts
+    where wrappedByWithMeta t | isWithMetaType mod t = True
+          wrappedByWithMeta (TyVarTy tv') = tv /= tv'
+          wrappedByWithMeta (AppTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
+          wrappedByWithMeta (TyConApp tc ts) = all wrappedByWithMeta ts
+          wrappedByWithMeta (FunTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
+          wrappedByWithMeta (LitTy _) = True
 
 isWithMetaType :: HomeModInfo -> Type -> Bool
 isWithMetaType mod t
