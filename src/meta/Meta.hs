@@ -1,11 +1,9 @@
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE KindSignatures, DefaultSignatures, FlexibleContexts, TypeOperators, RankNTypes #-}
 
 module Meta where
 
 import Data.Char (toLower)
+import Data.List (isPrefixOf)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Map (Map)
@@ -24,7 +22,9 @@ type Meta = (IdMap, IdPairSet)
 data WithMeta a = WithMeta {value :: a, meta :: Meta}
 
 instance Show a => Show (WithMeta a) where
+    showsPrec n = showsPrec n . value
     show = show . value
+    showList = showList . value . liftMeta
 
 instance Eq a => Eq (WithMeta a) where
     (==) = noMetaResUnionOp (==)
@@ -39,6 +39,20 @@ instance Ord a => Ord (WithMeta a) where
     max = unionOp max
     min = unionOp min
 
+instance Bounded a => Bounded (WithMeta a) where
+    minBound = noMeta minBound
+    maxBound = noMeta maxBound
+
+instance Enum a => Enum (WithMeta a) where
+    succ = idOp succ
+    pred = idOp pred
+    toEnum = noMeta . toEnum
+    fromEnum = noMetaResOp fromEnum
+    enumFrom = fmap noMeta . enumFrom . value
+    enumFromThen x = fmap noMeta . enumFromThen (value x). value
+    enumFromTo x = fmap noMeta . enumFromTo (value x). value
+    enumFromThenTo x y = fmap noMeta . enumFromThenTo (value x) (value y) . value
+
 instance Num a => Num (WithMeta a) where
     (+) = unionOp (+)
     (-) = unionOp (-)
@@ -51,6 +65,7 @@ instance Num a => Num (WithMeta a) where
 instance Monoid a => Monoid (WithMeta a) where
     mempty = noMeta mempty
     mappend = unionOp mappend
+    mconcat = idOp mconcat . liftMeta
 
 ------------------------------------------------------------------------------------------
 -- Methods to handle meta information in expressions
@@ -109,6 +124,9 @@ colon = (:)
 
 idOp :: (a -> b) -> WithMeta a -> WithMeta b
 idOp op (WithMeta x m) = WithMeta (op x) m
+
+noMetaArgOp :: (a -> b) -> a -> WithMeta b
+noMetaArgOp op = noMeta . op
 
 noMetaResOp :: (a -> b) -> WithMeta a -> b
 noMetaResOp op = op . value
@@ -210,15 +228,15 @@ instance MetaLevel IO where
 -- Meta equivalents
 ----------------------------------------------------------------------------------------
 
-data ConvertFun = NoMeta | IdOp | NoMetaResOp | LeftIdOp | RightIdOp | UnionOp | Union3Op | NoMetaResUnionOp | MetaFunOp | NoMetaResFunOp
-    deriving (Show, Eq, Ord)
+data ConvertFun = NoMeta | IdOp | NoMetaArgOp | NoMetaResOp | LeftIdOp | RightIdOp | UnionOp | Union3Op
+    | NoMetaResUnionOp | MetaFunOp | NoMetaResFunOp | LiftMeta | DropMeta deriving (Show, Eq, Ord)
 
 convertFunName :: ConvertFun -> String
 convertFunName fun = (toLower $ head $ show fun) : (tail $ show fun)
 
 data MetaEquivalentType = FunSuffix | OpSuffix | SameOp | ConvertFun ConvertFun deriving (Eq, Ord)
 
-data MetaEquivalent = NoEquivalent | MetaFun String | MetaConvertFun String | OrigFun
+data MetaEquivalent = NoEquivalent | MetaFun String | MetaConvertFun String | OrigFun deriving Show
 
 type ModuleName = String
 type MethodName = String
@@ -228,7 +246,7 @@ createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> Me
 createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map String (Map MetaEquivalentType [String])
-preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes]
+preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes]
 
 metaEquivalent :: ModuleName -> MethodName -> MetaEquivalent
 metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod preludeEquivalents of
@@ -237,7 +255,8 @@ metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod prelude
                             Just SameOp -> OrigFun
                             Just (ConvertFun fun) -> MetaConvertFun (convertFunName fun)
                             Nothing -> NoEquivalent
-    where findMethod = maybe Nothing (Just . fst . fst) . Map.minViewWithKey . Map.filter (elem name)
+    where findMethod eqs | isPrefixOf "D:" name = Just SameOp
+          findMethod eqs = maybe Nothing (Just . fst . fst) $ Map.minViewWithKey $ Map.filter (elem name) eqs
 
 ----------------------------------------------------------------------------------------
 -- Meta equivalents methods
@@ -245,14 +264,24 @@ metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod prelude
 
 ghcBase :: MetaEquivalentMap
 ghcBase = createEquivalentsMap "GHC.Base"
-    [(SameOp, ["$", "$!", ".", "id", "const"]),
+    [(SameOp, ["$", "$!", ".", "id", "const", "$fFunctor[]"]),
      (ConvertFun NoMeta, ["Nothing"]),
      (ConvertFun IdOp, ["Just"]),
-     (ConvertFun UnionOp, ["*>", "++", "<$", "<*", "<*>", ">>"])]
+     (ConvertFun UnionOp, ["*>", "++", "<$", "<*", "<*>", ">>"]),
+     (FunSuffix, ["fmap", "map"])]
 
 ghcClasses :: MetaEquivalentMap
 ghcClasses = createEquivalentsMap "GHC.Classes"
-    [(SameOp, ["D:Eq","/=","==","$dm==","$dm/=","D:Ord","<","<=",">",">=","min","$dmmin","max","$dmmax","compare"])]
+    [(SameOp, ["/=", "==", "$dm==", "$dm/=", "D:Ord", "<", "<=", ">", ">=", "min", "$dmmin", "max", "$dmmax", "compare"])]
+
+ghcEnum :: MetaEquivalentMap
+ghcEnum = createEquivalentsMap "GHC.Enum"
+    [(SameOp, ["succ", "pred", "toEnum", "fromEnum"]),
+     (ConvertFun NoMeta, ["minBound", "maxBound"])]
+
+ghcErr :: MetaEquivalentMap
+ghcErr = createEquivalentsMap "GHC.Err"
+    [(ConvertFun NoMetaArgOp, ["error"])]
 
 ghcFloat :: MetaEquivalentMap
 ghcFloat = createEquivalentsMap "GHC.Float"
@@ -264,15 +293,15 @@ ghcList = createEquivalentsMap "GHC.List"
 
 ghcNum :: MetaEquivalentMap
 ghcNum = createEquivalentsMap "GHC.Num"
-    [(SameOp, ["D:Num","*","+","-","negate","abs","signum","fromInteger"])]
+    [(SameOp, ["*", "+", "-", "negate", "abs", "signum",  "fromInteger"])]
 
 ghcReal :: MetaEquivalentMap
 ghcReal = createEquivalentsMap "GHC.Real"
-    [(SameOp, ["/","^","^^"])]
+    [(SameOp, ["/", "^", "^^"])]
 
 ghcShow :: MetaEquivalentMap
 ghcShow = createEquivalentsMap "GHC.Show"
-    [(SameOp, ["D:Show","showList__","showsPrec","$dmshow","$dmshowList","$dmshowsPrec"])]
+    [(SameOp, ["showsPrec", "$dmshowsPrec", "show", "$dmshow", "showList", "showList__", "$dmshowList"])]
 
 ghcTuple :: MetaEquivalentMap
 ghcTuple = createEquivalentsMap "GHC.Tuple"
@@ -282,3 +311,13 @@ ghcTypes :: MetaEquivalentMap
 ghcTypes = createEquivalentsMap "GHC.Types"
     [(ConvertFun NoMeta, ["[]"]),
      (ConvertFun UnionOp, [":"])]
+
+----------------------------------------------------------------------------------------
+-- Meta equivalents implementations
+----------------------------------------------------------------------------------------
+
+fmap_nlambda :: (MetaLevel f, Functor f) => forall a b. (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
+fmap_nlambda = liftMeta .* metaFunOp (<$>)
+
+map_nlambda :: (WithMeta a -> WithMeta b) -> WithMeta [a] -> WithMeta [b]
+map_nlambda = fmap_nlambda
