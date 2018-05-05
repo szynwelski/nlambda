@@ -3,14 +3,14 @@
 
 module Sample where
 
-import Prelude (Show(..), Int, fmap, id, map, length, ($))
+import Prelude (Show, fmap, id)
 
 
 ----------------------------------------------------------------------------
 -- Test
 ----------------------------------------------------------------------------
 
-data Atom = A
+data Atom = A deriving Show
 
-test :: Int
-test = length $ fmap id [A]
+test :: [Atom]
+test = fmap id [A]

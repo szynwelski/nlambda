@@ -389,11 +389,12 @@ checkBinds :: CoreProgram -> CoreProgram
 checkBinds bs = fmap checkBind bs
     where checkBind (NonRec b e) = uncurry NonRec $ check (b, e)
           checkBind (Rec bs) = Rec (check <$> bs)
-          check (b,e) | varType b /= exprType e = pprPanic "======================= INCONSISTENT TYPES =======================" $ vcat
+          check (b,e) | varType b /= exprType e = pprTrace "======================= INCONSISTENT TYPES =======================" (vcat
               [text "var: " <+> showVar b,
                text "var type:" <+> ppr (varType b),
                text "expr:" <+> ppr e,
-               text "expr type:" <+> ppr (exprType e)]
+               text "expr type:" <+> ppr (exprType e),
+               text "========================================================================"]) (b, e)
           check (b,e) = (b,e)
 
 ----------------------------------------------------------------------------------------
@@ -565,21 +566,10 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                                                return (DataAlt con, xs', e'')
           changeAlternative varMap m (alt, [], e) = do {e' <- newExpr varMap e; return (alt, [], e')}
 
+-- the type of expression is not open for atoms and there are no free variables open for atoms
 noAtomsSubExpr :: CoreExpr -> Bool
--- type of expression is open for atoms
-noAtomsSubExpr e | not $ noAtomsType $ exprType e = False
--- there are free variables open for atoms
-noAtomsSubExpr e | not . isEmptyUniqSet $ filterUniqSet (not . noAtomsType . varType) $ exprFreeIds e = False
-noAtomsSubExpr e = go e
-    where go  (App f e) = go f && go e
-          go (Lam x e) = go e
-          go (Let b e) = noAtomsBind b && go e
-          go (Cast e c) = go e
-          go (Case e b t as) = go e && all noAtomsAlt as
-          go e = True
-          noAtomsBind (NonRec x e) = go e
-          noAtomsBind (Rec bs) = all (go . snd) bs
-          noAtomsAlt (alt, xs, e) = go e
+noAtomsSubExpr e = (noAtomsType $ exprType e) && noAtomFreeVars
+    where noAtomFreeVars = isEmptyUniqSet $ filterUniqSet (not . noAtomsType . varType) $ exprFreeIds e
 
 replaceVars :: VarMap -> CoreExpr -> CoreExpr
 replaceVars varMap (Var x) = Var (newVarDefault varMap x)
