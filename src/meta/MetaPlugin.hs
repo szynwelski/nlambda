@@ -7,7 +7,7 @@ import Unique
 import Avail
 import Serialized
 import Annotations
-import GHC hiding (exprType)
+import GHC hiding (exprType, typeKind)
 import Control.Monad (unless)
 import Data.Data (Data)
 import Data.List (find, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub, partition)
@@ -31,12 +31,6 @@ import qualified Data.Map as Map
 import Meta
 
 import Debug.Trace (trace) --pprTrace
-
-debug :: String -> SDoc -> a -> a
-debug msg out x = go x
-    where go x | pprTrace msg out False = undefined
-          go x = x
-
 
 plugin :: Plugin
 plugin = defaultPlugin {
@@ -432,7 +426,7 @@ getMainType t = if t == t' then t else getMainType t'
     where (tvs, ps ,t') = tcSplitSigmaTy t
 
 getForAllTyVar :: Type -> TyVar
-getForAllTyVar = head . fst . splitForAllTys
+getForAllTyVar t = fromMaybe (pprPanic "getForAllTyVar" $ ppr t) $ listToMaybe $ fst $ splitForAllTys t
 
 getFunTypeParts :: Type -> [Type]
 getFunTypeParts t = argTys ++ [resTy]
@@ -453,9 +447,7 @@ isWithMetaType mod t
     | otherwise = False
 
 beginWithMetaLevelRequirement :: HomeModInfo -> Type -> Bool
-beginWithMetaLevelRequirement mod t
-    | not $ null preds = isMetaLevel $ head preds
-    | otherwise = False
+beginWithMetaLevelRequirement mod t = maybe False isMetaLevel $ listToMaybe preds
     where (preds, t') = tcSplitPhiTy t
           isMetaLevel pred
             | Just tc <- tyConAppTyCon_maybe pred, isClassTyCon tc = tc == metaLevelC mod
@@ -514,7 +506,9 @@ changeExpr mod varMap tcMap e = newExpr varMap e
           newExpr varMap a@(App (Var v) _) | isInternalVar v = noMetaExpr mod a
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
                                                let tyVar = getForAllTyVar $ exprType f'
-                                               let t' = if isTyVarWrappedByWithMeta mod tyVar $ exprType f' then t else changeType mod tcMap t
+                                               let t' = if (not $ isFunTy $ typeKind t) && (isTyVarWrappedByWithMeta mod tyVar $ exprType f')
+                                                        then t
+                                                        else changeType mod tcMap t
                                                return $ App f' $ Type t'
           newExpr varMap (App f e) = do f' <- newExpr varMap f
                                         f'' <- if isWithMetaType mod $ exprType f'
@@ -688,8 +682,9 @@ applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
     do (eTyVars, ty) <- splitTypeTyVars $ exprType e
        let (funTyVars, _, funTy) = tcSplitSigmaTy $ exprType fun
-       let subst = maybe (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
-                         id $ unifyTypes (funArgTy funTy) ty
+       let subst = fromMaybe
+                     (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
+                     (unifyTypes (funArgTy funTy) ty)
        let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
        return $ mkCoreLams (exprVarToVar eTyVars)
                   (mkCoreApp
@@ -710,9 +705,10 @@ hasName :: String -> Name -> Bool
 hasName nmStr nm = occNameString (nameOccName nm) == nmStr
 
 getTyThing :: HomeModInfo -> String -> (TyThing -> Bool) -> (TyThing -> a) -> (a -> Name) -> a
-getTyThing mod nm cond fromThing getName = fromThing $ head $ nameEnvElts $ filterNameEnv
-                                                                                    (\t -> cond t && hasName nm (getName $ fromThing t))
-                                                                                    (md_types $ hm_details mod)
+getTyThing mod nm cond fromThing getName =
+    maybe (pprPanic "getTyThing - name not found:" $ text nm)
+          fromThing $ listToMaybe $ nameEnvElts $ filterNameEnv (\t -> cond t && hasName nm (getName $ fromThing t))
+                                                                (md_types $ hm_details mod)
 
 isTyThingId :: TyThing -> Bool
 isTyThingId (AnId _) = True

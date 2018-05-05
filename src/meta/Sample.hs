@@ -1,16 +1,16 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 
 module Sample where
-
-import Prelude (Show, fmap, id)
-
 
 ----------------------------------------------------------------------------
 -- Test
 ----------------------------------------------------------------------------
 
-data Atom = A deriving Show
+data Atom a = A a | B deriving Show
 
-test :: [Atom]
-test = fmap id [A]
+instance Functor Atom where
+    fmap f (A a) = A (f a)
+    fmap _ B = B
+
+--test :: Atom Int
+test = fmap id (A 1)

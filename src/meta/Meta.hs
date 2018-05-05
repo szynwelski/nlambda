@@ -267,7 +267,7 @@ ghcBase = createEquivalentsMap "GHC.Base"
     [(SameOp, ["$", "$!", ".", "id", "const", "$fFunctor[]"]),
      (ConvertFun NoMeta, ["Nothing"]),
      (ConvertFun IdOp, ["Just"]),
-     (ConvertFun UnionOp, ["*>", "++", "<$", "<*", "<*>", ">>"]),
+     (ConvertFun UnionOp, ["*>", "++", "<$", "$dm<$", "<*", "<*>", ">>"]),
      (FunSuffix, ["fmap", "map"])]
 
 ghcClasses :: MetaEquivalentMap
