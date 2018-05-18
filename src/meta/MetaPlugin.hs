@@ -321,11 +321,11 @@ createDataCon mod nameMap varMap tcMap dc =
                 univ_tvs -- FIXME new unique ty vars?
                 ex_tvs -- FIXME new unique ty vars?
                 ((\(tv, t) -> (tv, changeType mod tcMap t)) <$> eq_spec)
-                (changePredType mod tcMap False <$> theta) -- False?
+                (changePredType mod tcMap <$> theta)
                 (changeType mod tcMap <$> arg_tys)
                 (changeType mod tcMap res_ty)
                 (newTyCon mod tcMap $ dataConTyCon dc)
-                (changePredType mod tcMap False <$> dataConStupidTheta dc) -- False?
+                (changePredType mod tcMap <$> dataConStupidTheta dc)
                 workerId
                 NoDataConRep -- FIXME use mkDataConRep
     in dc'
@@ -413,18 +413,17 @@ changeBindType mod tcMap x = do uniq <- getUniqueM
                                 return $ setVarUnique (setVarType x $ newBindType mod tcMap x) uniq
 
 changeType :: MetaModule -> TyConMap -> Type -> Type
-changeType mod tcMap t = go (isDictTy t) t
-    where go isDict t | noAtomsType t = t
-          go isDict t | isPredTy t = changePredType mod tcMap isDict t
-          go isDict t | (Just (tv, t')) <- splitForAllTy_maybe t = mkForAllTy tv (go isDict t')
-          go isDict t | (Just (t1, t2)) <- splitFunTy_maybe t = mkFunTy (go isDict t1) (go isDict t2)
-          go isDict t | isVoidTy t || isPredTy t || isPrimitiveType t = t
-          go isDict t = withMetaType mod t -- FIXME other cases?, maybe use makeTyVarUnique?
+changeType mod tcMap t = go t
+    where go t | noAtomsType t = t
+          go t | isPredTy t = changePredType mod tcMap t
+          go t | (Just (tv, t')) <- splitForAllTy_maybe t = mkForAllTy tv (go t')
+          go t | (Just (t1, t2)) <- splitFunTy_maybe t = mkFunTy (go t1) (go t2)
+          go t | isVoidTy t || isPredTy t || isPrimitiveType t = t
+          go t = withMetaType mod t -- FIXME other cases?, maybe use makeTyVarUnique?
 
-changePredType :: MetaModule -> TyConMap -> Bool -> PredType -> PredType
-changePredType mod tcMap isDict t | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc
-                                  = mkTyConApp (newTyCon mod tcMap tc) (if isDict then changeType mod tcMap <$> ts else ts)
-changePredType mod tcMap isDict t = t
+changePredType :: MetaModule -> TyConMap -> PredType -> PredType
+changePredType mod tcMap t | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc = mkTyConApp (newTyCon mod tcMap tc) ts
+changePredType mod tcMap t = t
 
 getMainType :: Type -> Type
 getMainType t = if t == t' then t else getMainType t'
