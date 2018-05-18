@@ -234,7 +234,7 @@ instance MetaLevel IO where
 
 -- TODO add instances
 
-class Applicative f => Applicative_nlambda (f :: * -> *) where
+class (Functor_nlambda f, Applicative f) => Applicative_nlambda (f :: * -> *) where
   pure_nlambda :: WithMeta a -> WithMeta (f a)
   pure_nlambda = idOp pure
   (<*>###) :: WithMeta (f (a -> b)) -> WithMeta (f a) -> WithMeta (f b)
@@ -273,7 +273,7 @@ class Eq a => Eq_nlambda a where
   (/=###) :: WithMeta a -> WithMeta a -> Bool
   (/=###) = noMetaResUnionOp (/=)
 
-class Floating a => Floating_nlambda a where
+class (Fractional_nlambda a, Floating a) => Floating_nlambda a where
   pi_nlambda :: WithMeta a
   pi_nlambda = noMeta pi
   exp_nlambda :: WithMeta a -> WithMeta a
@@ -345,7 +345,7 @@ class (MetaLevel t, Foldable t) => Foldable_nlambda (t :: * -> *) where
   product_nlambda :: Num_nlambda a => WithMeta (t a) -> WithMeta a
   product_nlambda = idOp product
 
-class Fractional a => Fractional_nlambda a where
+class (Num_nlambda a, Fractional a) => Fractional_nlambda a where
   (/###) :: WithMeta a -> WithMeta a -> WithMeta a
   (/###) = unionOp (/)
   recip_nlambda :: WithMeta a -> WithMeta a
@@ -359,7 +359,7 @@ class (MetaLevel f, Functor f) => Functor_nlambda (f :: * -> *) where
   (<$###) :: WithMeta a -> WithMeta (f b) -> WithMeta (f a)
   (<$###) = unionOp (<$)
 
-class Integral a => Integral_nlambda a where
+class (Real_nlambda a, Enum_nlambda a, Integral a) => Integral_nlambda a where
   quot_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
   quot_nlambda = unionOp quot
   rem_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
@@ -375,7 +375,7 @@ class Integral a => Integral_nlambda a where
   toInteger_nlambda :: WithMeta a -> Integer
   toInteger_nlambda = noMetaResOp toInteger
 
-class (MetaLevel m, Monad m) => Monad_nlambda (m :: * -> *) where
+class (Applicative_nlambda m, Monad m) => Monad_nlambda (m :: * -> *) where
   (>>=###) :: WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
   (>>=###) (WithMeta x m) f = liftMeta $ x >>= (dropMeta . metaFun m f)
   (>>###) :: WithMeta (m a) -> WithMeta (m b) -> WithMeta (m b)
@@ -409,7 +409,7 @@ class Num a => Num_nlambda a where
   fromInteger_nlambda :: Integer -> WithMeta a
   fromInteger_nlambda = noMeta . fromInteger
 
-class Ord a => Ord_nlambda a where
+class (Eq_nlambda a, Ord a) => Ord_nlambda a where
   compare_nlambda :: WithMeta a -> WithMeta a -> Ordering
   compare_nlambda = noMetaResUnionOp compare
   (<###) :: WithMeta a -> WithMeta a -> Bool
@@ -435,11 +435,11 @@ class Read a => Read_nlambda a where
   readListPrec_nlambda :: WithMeta (ReadPrec [a])
   readListPrec_nlambda = noMeta readListPrec
 
-class Real a => Real_nlambda a where
+class (Num_nlambda a, Ord_nlambda a, Real a) => Real_nlambda a where
   toRational_nlambda :: WithMeta a -> Rational
   toRational_nlambda = noMetaResOp toRational
 
-class RealFloat a => RealFloat_nlambda a where
+class (RealFrac_nlambda a, Floating_nlambda a, RealFloat a) => RealFloat_nlambda a where
   floatRadix_nlambda :: WithMeta a -> Integer
   floatRadix_nlambda = noMetaResOp floatRadix
   floatDigits_nlambda :: WithMeta a -> Int
@@ -469,7 +469,7 @@ class RealFloat a => RealFloat_nlambda a where
   atan2_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
   atan2_nlambda = unionOp atan2
 
-class RealFrac a => RealFrac_nlambda a where
+class (Real_nlambda a, Fractional_nlambda a, RealFrac a) => RealFrac_nlambda a where
   properFraction_nlambda :: Integral_nlambda b => WithMeta a -> WithMeta (b, a)
   properFraction_nlambda = idOp properFraction
   truncate_nlambda :: Integral_nlambda b => WithMeta a -> WithMeta b
@@ -489,7 +489,7 @@ class Show a => Show_nlambda a where
   showList_nlambda :: WithMeta [a] -> ShowS
   showList_nlambda = noMetaResOp showList
 
-class (MetaLevel t, Traversable t) => Traversable_nlambda (t :: * -> *) where
+class (Functor_nlambda t, Foldable_nlambda t, Traversable t) => Traversable_nlambda (t :: * -> *) where
   traverse_nlambda :: (MetaLevel f, Applicative_nlambda f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
   traverse_nlambda f (WithMeta x m) = liftMeta $ fmap liftMeta $ traverse (dropMeta . metaFun m f) x
   sequenceA_nlambda :: Applicative_nlambda f => WithMeta (t (f a)) -> WithMeta (f (t a))
@@ -530,8 +530,11 @@ type MetaEquivalentMap = Map ModuleName (Map MetaEquivalentType [MethodName])
 createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> MetaEquivalentMap
 createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
-preludeEquivalents :: Map String (Map MetaEquivalentType [String])
+preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes]
+
+preludeModules :: [ModuleName]
+preludeModules = Map.keys preludeEquivalents
 
 metaEquivalent :: ModuleName -> MethodName -> MetaEquivalent
 metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod preludeEquivalents of
@@ -555,7 +558,9 @@ ghcBase = createEquivalentsMap "GHC.Base"
      (ConvertFun UnionOp, ["*>", "++", "<$", "$dm<$", "<*", "<*>", ">>"])]
 
 ghcClasses :: MetaEquivalentMap
-ghcClasses = createEquivalentsMap "GHC.Classes" []
+ghcClasses = createEquivalentsMap "GHC.Classes"
+    [(OpSuffix,  ["==", "/=", "<"]),
+     (FunSuffix, ["$dmmax", "$dmmin", "compare"])]
 
 ghcEnum :: MetaEquivalentMap
 ghcEnum = createEquivalentsMap "GHC.Enum" []

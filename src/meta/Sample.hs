@@ -6,7 +6,7 @@ module Sample where
 -- Test
 ----------------------------------------------------------------------------
 
-data Atom = A deriving Show
+data Atom = A | B deriving (Show, Eq, Ord)
 
-test :: String
-test = show A
+--test :: Bool
+test = (compare A A, compare B A, compare A B, compare B B)

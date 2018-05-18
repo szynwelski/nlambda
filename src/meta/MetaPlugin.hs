@@ -70,7 +70,7 @@ pass env onlyShow guts =
             -- names
             let metaNameMap = getMetaPreludeNameMaps mod env guts
             nameMap <- mkNamesMap guts $ Map.union impNameMap metaNameMap
-            showMap "Names" nameMap showName
+--            showMap "Names" nameMap showName
 
             -- classes and vars
             let modTcMap = mkTyConMap mod nameMap modVarMap (mg_tcs guts)
@@ -377,7 +377,7 @@ changeBind mod varMap tcMap (Rec bs) = do bs' <- mapM (changeBindExpr mod varMap
                                           return (Rec bs')
 
 changeBindExpr :: MetaModule -> VarMap -> TyConMap -> (CoreBndr, CoreExpr) -> CoreM (CoreBndr, CoreExpr)
-changeBindExpr mod varMap tcMap (b, e) = do newExpr <- changeExpr mod varMap tcMap e
+changeBindExpr mod varMap tcMap (b, e) = do newExpr <- changeExpr mod varMap tcMap b e
                                             return (newVar varMap b, newExpr)
 
 dataBind :: MetaModule -> VarMap -> DataCon -> CoreM CoreBind
@@ -457,10 +457,15 @@ beginWithMetaLevelRequirement mod t = maybe False isMetaLevel $ listToMaybe pred
             | Just tc <- tyConAppTyCon_maybe pred, isClassTyCon tc = tc == metaLevelC mod
             | otherwise = False
 
-getOnlyTypeFromPred :: PredType -> Type
-getOnlyTypeFromPred t
-    | isPredTy t, Just ts <- tyConAppArgs_maybe t, length ts == 1 = head ts
-    | otherwise  = pprPanic "getTypeFromPred" (text "given type" <+> ppr t <+> text " is not constraint or has more than one arguments")
+getOnlyArgTypeFromDict :: Type -> Type
+getOnlyArgTypeFromDict t
+    | isDictTy t, Just ts <- tyConAppArgs_maybe t, length ts == 1 = head ts
+    | otherwise = pprPanic "getOnlyArgTypeFromDict" (text "given type" <+> ppr t <+> text " is not dict or has more than one arguments")
+
+isPreludeDictType :: Type -> Bool
+isPreludeDictType t | Just (cl, _) <- getClassPredTys_maybe t, Just m <- nameModule_maybe $ getName cl
+                    = elem (moduleNameString $ moduleName m) preludeModules
+isPreludeDictType t = False
 
 isInternalType :: Type -> Bool
 isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPrimitiveType t' || isUnLiftedType t'
@@ -495,8 +500,8 @@ isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem
 -- Expr
 ----------------------------------------------------------------------------------------
 
-changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreExpr -> CoreM CoreExpr
-changeExpr mod varMap tcMap e = newExpr varMap e
+changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> CoreExpr -> CoreM CoreExpr
+changeExpr mod varMap tcMap b e = newExpr varMap e
     where newExpr varMap e | noAtomsSubExpr e = return $ replaceVars varMap e
           newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
           newExpr varMap (Var v) | isMetaEquivalent v = getMetaEquivalent mod v
@@ -513,12 +518,14 @@ changeExpr mod varMap tcMap e = newExpr varMap e
                                                else return f'
                                         e' <- newExpr varMap e
                                         e'' <- if (isWithMetaType mod $ funArgTy $ exprType f'') && (not $ isWithMetaType mod $ exprType e')
-                                               then noMetaExpr mod e' -- TODO check if it is always correct
+                                               then noMetaExpr mod e'
                                                else return e'
-                                        f''' <- if beginWithMetaLevelRequirement mod $ exprType f''
-                                                then return $ mkCoreApp f'' $ getMetaLevelInstance mod $ getOnlyTypeFromPred $ exprType e''
-                                                else return f''
-                                        return $ mkCoreApp f''' e''
+                                        let f''' = fixMetaPreludeDictPredicate mod b f''
+                                        if eqType (funArgTy $ exprType f''') (exprType e'')
+                                        then return $ mkCoreApp f''' e''
+                                        else pprPanic "inconsistent types in application:"
+                                               (ppr f''' <+> text "::" <+> ppr (exprType f''')
+                                                <+> text "\n" <+> ppr e'' <+> text "::" <+> ppr (exprType e''))
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
                                                     return $ Lam x e'
           newExpr varMap (Lam x e) = do x' <- changeBindType mod tcMap x
@@ -808,6 +815,13 @@ isMetaPreludeTyCon mod tc = any (== getName tc) (metaNames mod)
 getMetaPreludeTyCon :: MetaModule -> TyCon -> Maybe TyCon
 getMetaPreludeTyCon mod tc = (getTyCon mod . getNameStr . snd) <$> findNamePair (metaNames mod) (getName tc)
 
+fixMetaPreludeDictPredicate :: MetaModule -> CoreBndr -> CoreExpr -> CoreExpr
+fixMetaPreludeDictPredicate mod b f
+    | beginWithMetaLevelRequirement mod t = mkCoreApp f $ getMetaLevelInstance mod $ getOnlyArgTypeFromDict $ funArgTy t
+    | isPreludeDictType $ funArgTy t = mkCoreApp f (Var b)
+    | otherwise = f
+    where t = exprType f
+
 isMetaEquivalent :: Var -> Bool
 isMetaEquivalent v = case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
                        NoEquivalent -> False
@@ -870,7 +884,7 @@ showTyCon tc = text "'" <> text (occNameString $ nameOccName $ tyConName tc) <> 
 --    <> text "}"
 
 showName :: Name -> SDoc
-showName = ppr . nameOccName
+showName = ppr
 --showName n = text "<"
 --             <> ppr (nameOccName n)
 --             <+> ppr (nameUnique n)
