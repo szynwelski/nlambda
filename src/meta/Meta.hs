@@ -232,8 +232,6 @@ instance MetaLevel IO where
 -- Meta classes from Prelude
 ------------------------------------------------------------------------------------------
 
--- TODO add instances
-
 class (Functor_nlambda f, Applicative f) => Applicative_nlambda (f :: * -> *) where
   pure_nlambda :: WithMeta a -> WithMeta (f a)
   pure_nlambda = idOp pure
@@ -244,11 +242,27 @@ class (Functor_nlambda f, Applicative f) => Applicative_nlambda (f :: * -> *) wh
   (<*###) :: WithMeta (f a) -> WithMeta (f b) -> WithMeta (f a)
   (<*###) = unionOp (<*)
 
+instance Applicative_nlambda (Either e) -- Defined in ‘Data.Either’
+instance Applicative_nlambda [] -- Defined in ‘GHC.Base’
+instance Applicative_nlambda Maybe -- Defined in ‘GHC.Base’
+instance Applicative_nlambda IO -- Defined in ‘GHC.Base’
+instance Applicative_nlambda ((->) a) -- Defined in ‘GHC.Base’
+instance Monoid_nlambda a => Applicative_nlambda ((,) a) -- Defined in ‘GHC.Base’
+
 class Bounded a => Bounded_nlambda a where
   minBound_nlambda :: WithMeta a
   minBound_nlambda = noMeta minBound
   maxBound_nlambda :: WithMeta a
   maxBound_nlambda = noMeta maxBound
+
+instance Bounded_nlambda Word -- Defined in ‘GHC.Enum’
+instance Bounded_nlambda Ordering -- Defined in ‘GHC.Enum’
+instance Bounded_nlambda Int -- Defined in ‘GHC.Enum’
+instance Bounded_nlambda Char -- Defined in ‘GHC.Enum’
+instance Bounded_nlambda Bool -- Defined in ‘GHC.Enum’
+instance Bounded_nlambda () -- Defined in ‘GHC.Enum’
+instance (Bounded_nlambda a, Bounded_nlambda b) => Bounded_nlambda (a, b)  -- Defined in ‘GHC.Enum’
+instance (Bounded_nlambda a, Bounded_nlambda b, Bounded_nlambda c) => Bounded_nlambda (a, b, c)  -- Defined in ‘GHC.Enum’
 
 class Enum a => Enum_nlambda a where
   succ_nlambda :: WithMeta a -> WithMeta a
@@ -264,14 +278,40 @@ class Enum a => Enum_nlambda a where
   enumFromThen_nlambda :: WithMeta a -> WithMeta a -> WithMeta [a]
   enumFromThen_nlambda = unionOp enumFromThen
   enumFromTo_nlambda :: WithMeta a -> WithMeta a -> WithMeta [a]
+  enumFromTo_nlambda = unionOp enumFromTo
   enumFromThenTo_nlambda :: WithMeta a -> WithMeta a -> WithMeta a -> WithMeta [a]
   enumFromThenTo_nlambda = union3Op enumFromThenTo
+
+instance Enum_nlambda Word -- Defined in ‘GHC.Enum’
+instance Enum_nlambda Ordering -- Defined in ‘GHC.Enum’
+instance Enum_nlambda Integer -- Defined in ‘GHC.Enum’
+instance Enum_nlambda Int -- Defined in ‘GHC.Enum’
+instance Enum_nlambda Char -- Defined in ‘GHC.Enum’
+instance Enum_nlambda Bool -- Defined in ‘GHC.Enum’
+instance Enum_nlambda () -- Defined in ‘GHC.Enum’
+instance Enum_nlambda Float -- Defined in ‘GHC.Float’
+instance Enum_nlambda Double -- Defined in ‘GHC.Float’
 
 class Eq a => Eq_nlambda a where
   (==###) :: WithMeta a -> WithMeta a -> Bool
   (==###) = noMetaResUnionOp (==)
   (/=###) :: WithMeta a -> WithMeta a -> Bool
   (/=###) = noMetaResUnionOp (/=)
+
+instance (Eq_nlambda a, Eq_nlambda b) => Eq_nlambda (Either a b)  -- Defined in ‘Data.Either’
+instance Eq_nlambda Integer  -- Defined in ‘integer-gmp-1.0.0.0:GHC.Integer.Type’
+instance Eq_nlambda a => Eq_nlambda [a] -- Defined in ‘GHC.Classes’
+instance Eq_nlambda Word -- Defined in ‘GHC.Classes’
+instance Eq_nlambda Ordering -- Defined in ‘GHC.Classes’
+instance Eq_nlambda Int -- Defined in ‘GHC.Classes’
+instance Eq_nlambda Float -- Defined in ‘GHC.Classes’
+instance Eq_nlambda Double -- Defined in ‘GHC.Classes’
+instance Eq_nlambda Char -- Defined in ‘GHC.Classes’
+instance Eq_nlambda Bool -- Defined in ‘GHC.Classes’
+instance Eq_nlambda () -- Defined in ‘GHC.Classes’
+instance (Eq_nlambda a, Eq_nlambda b) => Eq_nlambda (a, b) -- Defined in ‘GHC.Classes’
+instance (Eq_nlambda a, Eq_nlambda b, Eq_nlambda c) => Eq_nlambda (a, b, c)  -- Defined in ‘GHC.Classes’
+instance Eq_nlambda a => Eq_nlambda (Maybe a) -- Defined in ‘GHC.Base’
 
 class (Fractional_nlambda a, Floating a) => Floating_nlambda a where
   pi_nlambda :: WithMeta a
@@ -311,6 +351,9 @@ class (Fractional_nlambda a, Floating a) => Floating_nlambda a where
   atanh_nlambda :: WithMeta a -> WithMeta a
   atanh_nlambda = idOp atanh
 
+instance Floating_nlambda Float -- Defined in ‘GHC.Float’
+instance Floating_nlambda Double -- Defined in ‘GHC.Float’
+
 class (MetaLevel t, Foldable t) => Foldable_nlambda (t :: * -> *) where
   fold_nlambda :: Monoid_nlambda m => WithMeta (t m) -> WithMeta m
   fold_nlambda = idOp fold
@@ -345,6 +388,11 @@ class (MetaLevel t, Foldable t) => Foldable_nlambda (t :: * -> *) where
   product_nlambda :: Num_nlambda a => WithMeta (t a) -> WithMeta a
   product_nlambda = idOp product
 
+instance Foldable_nlambda [] -- Defined in ‘Data.Foldable’
+instance Foldable_nlambda Maybe -- Defined in ‘Data.Foldable’
+instance Foldable_nlambda (Either a) -- Defined in ‘Data.Foldable’
+instance Foldable_nlambda ((,) a) -- Defined in ‘Data.Foldable’
+
 class (Num_nlambda a, Fractional a) => Fractional_nlambda a where
   (/###) :: WithMeta a -> WithMeta a -> WithMeta a
   (/###) = unionOp (/)
@@ -353,11 +401,21 @@ class (Num_nlambda a, Fractional a) => Fractional_nlambda a where
   fromRational_nlambda :: Rational -> WithMeta a
   fromRational_nlambda = noMeta . fromRational
 
+instance Fractional_nlambda Float -- Defined in ‘GHC.Float’
+instance Fractional_nlambda Double -- Defined in ‘GHC.Float’
+
 class (MetaLevel f, Functor f) => Functor_nlambda (f :: * -> *) where
   fmap_nlambda :: (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
   fmap_nlambda = liftMeta .* metaFunOp fmap
   (<$###) :: WithMeta a -> WithMeta (f b) -> WithMeta (f a)
   (<$###) = unionOp (<$)
+
+instance Functor_nlambda (Either a) -- Defined in ‘Data.Either’
+instance Functor_nlambda [] -- Defined in ‘GHC.Base’
+instance Functor_nlambda Maybe -- Defined in ‘GHC.Base’
+instance Functor_nlambda IO -- Defined in ‘GHC.Base’
+instance Functor_nlambda ((->) r) -- Defined in ‘GHC.Base’
+instance Functor_nlambda ((,) a) -- Defined in ‘GHC.Base’
 
 class (Real_nlambda a, Enum_nlambda a, Integral a) => Integral_nlambda a where
   quot_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
@@ -375,6 +433,10 @@ class (Real_nlambda a, Enum_nlambda a, Integral a) => Integral_nlambda a where
   toInteger_nlambda :: WithMeta a -> Integer
   toInteger_nlambda = noMetaResOp toInteger
 
+instance Integral_nlambda Word -- Defined in ‘GHC.Real’
+instance Integral_nlambda Integer -- Defined in ‘GHC.Real’
+instance Integral_nlambda Int -- Defined in ‘GHC.Real’
+
 class (Applicative_nlambda m, Monad m) => Monad_nlambda (m :: * -> *) where
   (>>=###) :: WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
   (>>=###) (WithMeta x m) f = liftMeta $ x >>= (dropMeta . metaFun m f)
@@ -385,6 +447,12 @@ class (Applicative_nlambda m, Monad m) => Monad_nlambda (m :: * -> *) where
   fail_nlambda :: String -> WithMeta (m a)
   fail_nlambda = noMeta . fail
 
+instance Monad_nlambda (Either e) -- Defined in ‘Data.Either’
+instance Monad_nlambda [] -- Defined in ‘GHC.Base’
+instance Monad_nlambda Maybe -- Defined in ‘GHC.Base’
+instance Monad_nlambda IO -- Defined in ‘GHC.Base’
+instance Monad_nlambda ((->) r) -- Defined in ‘GHC.Base’
+
 class Monoid a => Monoid_nlambda a where
   mempty_nlambda :: WithMeta a
   mempty_nlambda = noMeta mempty
@@ -392,6 +460,14 @@ class Monoid a => Monoid_nlambda a where
   mappend_nlambda = unionOp mappend
   mconcat_nlambda :: WithMeta [a] -> WithMeta a
   mconcat_nlambda = idOp mconcat
+
+instance Monoid_nlambda [a] -- Defined in ‘GHC.Base’
+instance Monoid_nlambda Ordering -- Defined in ‘GHC.Base’
+instance Monoid_nlambda a => Monoid_nlambda (Maybe a) -- Defined in ‘GHC.Base’
+instance Monoid_nlambda b => Monoid_nlambda (a -> b) -- Defined in ‘GHC.Base’
+instance Monoid_nlambda () -- Defined in ‘GHC.Base’
+instance (Monoid_nlambda a, Monoid_nlambda b) => Monoid_nlambda (a, b)  -- Defined in ‘GHC.Base’
+instance (Monoid_nlambda a, Monoid_nlambda b, Monoid_nlambda c) => Monoid_nlambda (a, b, c)  -- Defined in ‘GHC.Base’
 
 class Num a => Num_nlambda a where
   (+###) :: WithMeta a -> WithMeta a -> WithMeta a
@@ -409,6 +485,12 @@ class Num a => Num_nlambda a where
   fromInteger_nlambda :: Integer -> WithMeta a
   fromInteger_nlambda = noMeta . fromInteger
 
+instance Num_nlambda Word -- Defined in ‘GHC.Num’
+instance Num_nlambda Integer -- Defined in ‘GHC.Num’
+instance Num_nlambda Int -- Defined in ‘GHC.Num’
+instance Num_nlambda Float -- Defined in ‘GHC.Float’
+instance Num_nlambda Double -- Defined in ‘GHC.Float’
+
 class (Eq_nlambda a, Ord a) => Ord_nlambda a where
   compare_nlambda :: WithMeta a -> WithMeta a -> Ordering
   compare_nlambda = noMetaResUnionOp compare
@@ -425,6 +507,21 @@ class (Eq_nlambda a, Ord a) => Ord_nlambda a where
   min_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
   min_nlambda = unionOp min
 
+instance Ord_nlambda Integer  -- Defined in ‘integer-gmp-1.0.0.0:GHC.Integer.Type’
+instance Ord_nlambda a => Ord_nlambda [a] -- Defined in ‘GHC.Classes’
+instance Ord_nlambda Word -- Defined in ‘GHC.Classes’
+instance Ord_nlambda Ordering -- Defined in ‘GHC.Classes’
+instance Ord_nlambda Int -- Defined in ‘GHC.Classes’
+instance Ord_nlambda Float -- Defined in ‘GHC.Classes’
+instance Ord_nlambda Double -- Defined in ‘GHC.Classes’
+instance Ord_nlambda Char -- Defined in ‘GHC.Classes’
+instance Ord_nlambda Bool -- Defined in ‘GHC.Classes’
+instance Ord_nlambda () -- Defined in ‘GHC.Classes’
+instance (Ord_nlambda a, Ord_nlambda b) => Ord_nlambda (a, b) -- Defined in ‘GHC.Classes’
+instance (Ord_nlambda a, Ord_nlambda b, Ord_nlambda c) => Ord_nlambda (a, b, c)  -- Defined in ‘GHC.Classes’
+instance (Ord_nlambda a, Ord_nlambda b) => Ord_nlambda (Either a b)  -- Defined in ‘Data.Either’
+instance Ord_nlambda a => Ord_nlambda (Maybe a) -- Defined in ‘GHC.Base’
+
 class Read a => Read_nlambda a where
   readsPrec_nlambda :: Int -> String -> WithMeta [(a, String)]
   readsPrec_nlambda n = noMeta . readsPrec n
@@ -435,9 +532,30 @@ class Read a => Read_nlambda a where
   readListPrec_nlambda :: WithMeta (ReadPrec [a])
   readListPrec_nlambda = noMeta readListPrec
 
+instance Read_nlambda a => Read_nlambda [a] -- Defined in ‘GHC.Read’
+instance Read_nlambda Word -- Defined in ‘GHC.Read’
+instance Read_nlambda Ordering -- Defined in ‘GHC.Read’
+instance Read_nlambda a => Read_nlambda (Maybe a) -- Defined in ‘GHC.Read’
+instance Read_nlambda Integer -- Defined in ‘GHC.Read’
+instance Read_nlambda Int -- Defined in ‘GHC.Read’
+instance Read_nlambda Float -- Defined in ‘GHC.Read’
+instance Read_nlambda Double -- Defined in ‘GHC.Read’
+instance Read_nlambda Char -- Defined in ‘GHC.Read’
+instance Read_nlambda Bool -- Defined in ‘GHC.Read’
+instance Read_nlambda () -- Defined in ‘GHC.Read’
+instance (Read_nlambda a, Read_nlambda b) => Read_nlambda (a, b) -- Defined in ‘GHC.Read’
+instance (Read_nlambda a, Read_nlambda b, Read_nlambda c) => Read_nlambda (a, b, c)  -- Defined in ‘GHC.Read’
+instance (Read_nlambda a, Read_nlambda b) => Read_nlambda (Either a b)  -- Defined in ‘Data.Either’
+
 class (Num_nlambda a, Ord_nlambda a, Real a) => Real_nlambda a where
   toRational_nlambda :: WithMeta a -> Rational
   toRational_nlambda = noMetaResOp toRational
+
+instance Real_nlambda Word -- Defined in ‘GHC.Real’
+instance Real_nlambda Integer -- Defined in ‘GHC.Real’
+instance Real_nlambda Int -- Defined in ‘GHC.Real’
+instance Real_nlambda Float -- Defined in ‘GHC.Float’
+instance Real_nlambda Double -- Defined in ‘GHC.Float’
 
 class (RealFrac_nlambda a, Floating_nlambda a, RealFloat a) => RealFloat_nlambda a where
   floatRadix_nlambda :: WithMeta a -> Integer
@@ -469,6 +587,9 @@ class (RealFrac_nlambda a, Floating_nlambda a, RealFloat a) => RealFloat_nlambda
   atan2_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
   atan2_nlambda = unionOp atan2
 
+instance RealFloat_nlambda Float -- Defined in ‘GHC.Float’
+instance RealFloat_nlambda Double -- Defined in ‘GHC.Float’
+
 class (Real_nlambda a, Fractional_nlambda a, RealFrac a) => RealFrac_nlambda a where
   properFraction_nlambda :: Integral_nlambda b => WithMeta a -> WithMeta (b, a)
   properFraction_nlambda = idOp properFraction
@@ -481,6 +602,9 @@ class (Real_nlambda a, Fractional_nlambda a, RealFrac a) => RealFrac_nlambda a w
   floor_nlambda :: Integral_nlambda b => WithMeta a -> WithMeta b
   floor_nlambda = idOp floor
 
+instance RealFrac_nlambda Float -- Defined in ‘GHC.Float’
+instance RealFrac_nlambda Double -- Defined in ‘GHC.Float’
+
 class Show a => Show_nlambda a where
   showsPrec_nlambda :: Int -> WithMeta a -> ShowS
   showsPrec_nlambda n = noMetaResOp (showsPrec n)
@@ -488,6 +612,21 @@ class Show a => Show_nlambda a where
   show_nlambda = noMetaResOp show
   showList_nlambda :: WithMeta [a] -> ShowS
   showList_nlambda = noMetaResOp showList
+
+instance Show_nlambda a => Show_nlambda [a] -- Defined in ‘GHC.Show’
+instance Show_nlambda Word -- Defined in ‘GHC.Show’
+instance Show_nlambda Ordering -- Defined in ‘GHC.Show’
+instance Show_nlambda a => Show_nlambda (Maybe a) -- Defined in ‘GHC.Show’
+instance Show_nlambda Integer -- Defined in ‘GHC.Show’
+instance Show_nlambda Int -- Defined in ‘GHC.Show’
+instance Show_nlambda Char -- Defined in ‘GHC.Show’
+instance Show_nlambda Bool -- Defined in ‘GHC.Show’
+instance Show_nlambda () -- Defined in ‘GHC.Show’
+instance (Show_nlambda a, Show_nlambda b) => Show_nlambda (a, b) -- Defined in ‘GHC.Show’
+instance (Show_nlambda a, Show_nlambda b, Show_nlambda c) => Show_nlambda (a, b, c)  -- Defined in ‘GHC.Show’
+instance (Show_nlambda a, Show_nlambda b) => Show_nlambda (Either a b)  -- Defined in ‘Data.Either’
+instance Show_nlambda Float -- Defined in ‘GHC.Float’
+instance Show_nlambda Double -- Defined in ‘GHC.Float’
 
 class (Functor_nlambda t, Foldable_nlambda t, Traversable t) => Traversable_nlambda (t :: * -> *) where
   traverse_nlambda :: (MetaLevel f, Applicative_nlambda f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
@@ -498,6 +637,11 @@ class (Functor_nlambda t, Foldable_nlambda t, Traversable t) => Traversable_nlam
   mapM_nlambda f (WithMeta x m) = liftMeta $ fmap liftMeta $ mapM (dropMeta . metaFun m f) x
   sequence_nlambda :: Monad_nlambda m => WithMeta (t (m a)) -> WithMeta (m (t a))
   sequence_nlambda = idOp sequence
+
+instance Traversable_nlambda [] -- Defined in ‘Data.Traversable’
+instance Traversable_nlambda Maybe -- Defined in ‘Data.Traversable’
+instance Traversable_nlambda (Either a) -- Defined in ‘Data.Traversable’
+instance Traversable_nlambda ((,) a) -- Defined in ‘Data.Traversable’
 
 showList___nlambda :: (WithMeta a -> ShowS) ->  WithMeta [a] -> ShowS
 showList___nlambda f (WithMeta xs m) = showList__ (metaFun m f) xs
