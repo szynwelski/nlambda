@@ -232,7 +232,7 @@ instance MetaLevel IO where
 -- Meta classes from Prelude
 ------------------------------------------------------------------------------------------
 
-class (Functor_nlambda f, Applicative f) => Applicative_nlambda (f :: * -> *) where
+class (Applicative f, Functor_nlambda f) => Applicative_nlambda (f :: * -> *) where
   pure_nlambda :: WithMeta a -> WithMeta (f a)
   pure_nlambda = idOp pure
   (<*>###) :: WithMeta (f (a -> b)) -> WithMeta (f a) -> WithMeta (f b)
@@ -294,7 +294,7 @@ instance Enum_nlambda Double -- Defined in ‘GHC.Float’
 
 class Eq a => Eq_nlambda a where
   (==###) :: WithMeta a -> WithMeta a -> Bool
-  (==###) = noMetaResUnionOp (==)
+  (==###) = noMetaResUnionOp (==) -- FIXME replace vars and then compare?
   (/=###) :: WithMeta a -> WithMeta a -> Bool
   (/=###) = noMetaResUnionOp (/=)
 
@@ -313,7 +313,7 @@ instance (Eq_nlambda a, Eq_nlambda b) => Eq_nlambda (a, b) -- Defined in ‘GHC.
 instance (Eq_nlambda a, Eq_nlambda b, Eq_nlambda c) => Eq_nlambda (a, b, c)  -- Defined in ‘GHC.Classes’
 instance Eq_nlambda a => Eq_nlambda (Maybe a) -- Defined in ‘GHC.Base’
 
-class (Fractional_nlambda a, Floating a) => Floating_nlambda a where
+class (Floating a, Fractional_nlambda a) => Floating_nlambda a where
   pi_nlambda :: WithMeta a
   pi_nlambda = noMeta pi
   exp_nlambda :: WithMeta a -> WithMeta a
@@ -393,7 +393,7 @@ instance Foldable_nlambda Maybe -- Defined in ‘Data.Foldable’
 instance Foldable_nlambda (Either a) -- Defined in ‘Data.Foldable’
 instance Foldable_nlambda ((,) a) -- Defined in ‘Data.Foldable’
 
-class (Num_nlambda a, Fractional a) => Fractional_nlambda a where
+class (Fractional a, Num_nlambda a) => Fractional_nlambda a where
   (/###) :: WithMeta a -> WithMeta a -> WithMeta a
   (/###) = unionOp (/)
   recip_nlambda :: WithMeta a -> WithMeta a
@@ -417,7 +417,7 @@ instance Functor_nlambda IO -- Defined in ‘GHC.Base’
 instance Functor_nlambda ((->) r) -- Defined in ‘GHC.Base’
 instance Functor_nlambda ((,) a) -- Defined in ‘GHC.Base’
 
-class (Real_nlambda a, Enum_nlambda a, Integral a) => Integral_nlambda a where
+class (Integral a, Real_nlambda a, Enum_nlambda a) => Integral_nlambda a where
   quot_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
   quot_nlambda = unionOp quot
   rem_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
@@ -437,7 +437,7 @@ instance Integral_nlambda Word -- Defined in ‘GHC.Real’
 instance Integral_nlambda Integer -- Defined in ‘GHC.Real’
 instance Integral_nlambda Int -- Defined in ‘GHC.Real’
 
-class (Applicative_nlambda m, Monad m) => Monad_nlambda (m :: * -> *) where
+class (Monad m, Applicative_nlambda m) => Monad_nlambda (m :: * -> *) where
   (>>=###) :: WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
   (>>=###) (WithMeta x m) f = liftMeta $ x >>= (dropMeta . metaFun m f)
   (>>###) :: WithMeta (m a) -> WithMeta (m b) -> WithMeta (m b)
@@ -491,7 +491,7 @@ instance Num_nlambda Int -- Defined in ‘GHC.Num’
 instance Num_nlambda Float -- Defined in ‘GHC.Float’
 instance Num_nlambda Double -- Defined in ‘GHC.Float’
 
-class (Eq_nlambda a, Ord a) => Ord_nlambda a where
+class (Ord a, Eq_nlambda a) => Ord_nlambda a where
   compare_nlambda :: WithMeta a -> WithMeta a -> Ordering
   compare_nlambda = noMetaResUnionOp compare
   (<###) :: WithMeta a -> WithMeta a -> Bool
@@ -547,7 +547,7 @@ instance (Read_nlambda a, Read_nlambda b) => Read_nlambda (a, b) -- Defined in �
 instance (Read_nlambda a, Read_nlambda b, Read_nlambda c) => Read_nlambda (a, b, c)  -- Defined in ‘GHC.Read’
 instance (Read_nlambda a, Read_nlambda b) => Read_nlambda (Either a b)  -- Defined in ‘Data.Either’
 
-class (Num_nlambda a, Ord_nlambda a, Real a) => Real_nlambda a where
+class (Real a, Num_nlambda a, Ord_nlambda a) => Real_nlambda a where
   toRational_nlambda :: WithMeta a -> Rational
   toRational_nlambda = noMetaResOp toRational
 
@@ -557,7 +557,7 @@ instance Real_nlambda Int -- Defined in ‘GHC.Real’
 instance Real_nlambda Float -- Defined in ‘GHC.Float’
 instance Real_nlambda Double -- Defined in ‘GHC.Float’
 
-class (RealFrac_nlambda a, Floating_nlambda a, RealFloat a) => RealFloat_nlambda a where
+class (RealFloat a, RealFrac_nlambda a, Floating_nlambda a) => RealFloat_nlambda a where
   floatRadix_nlambda :: WithMeta a -> Integer
   floatRadix_nlambda = noMetaResOp floatRadix
   floatDigits_nlambda :: WithMeta a -> Int
@@ -590,7 +590,7 @@ class (RealFrac_nlambda a, Floating_nlambda a, RealFloat a) => RealFloat_nlambda
 instance RealFloat_nlambda Float -- Defined in ‘GHC.Float’
 instance RealFloat_nlambda Double -- Defined in ‘GHC.Float’
 
-class (Real_nlambda a, Fractional_nlambda a, RealFrac a) => RealFrac_nlambda a where
+class (RealFrac a, Real_nlambda a, Fractional_nlambda a) => RealFrac_nlambda a where
   properFraction_nlambda :: Integral_nlambda b => WithMeta a -> WithMeta (b, a)
   properFraction_nlambda = idOp properFraction
   truncate_nlambda :: Integral_nlambda b => WithMeta a -> WithMeta b
@@ -628,7 +628,7 @@ instance (Show_nlambda a, Show_nlambda b) => Show_nlambda (Either a b)  -- Defin
 instance Show_nlambda Float -- Defined in ‘GHC.Float’
 instance Show_nlambda Double -- Defined in ‘GHC.Float’
 
-class (Functor_nlambda t, Foldable_nlambda t, Traversable t) => Traversable_nlambda (t :: * -> *) where
+class (Traversable t, Functor_nlambda t, Foldable_nlambda t) => Traversable_nlambda (t :: * -> *) where
   traverse_nlambda :: (MetaLevel f, Applicative_nlambda f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
   traverse_nlambda f (WithMeta x m) = liftMeta $ fmap liftMeta $ traverse (dropMeta . metaFun m f) x
   sequenceA_nlambda :: Applicative_nlambda f => WithMeta (t (f a)) -> WithMeta (f (t a))
@@ -687,8 +687,7 @@ metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod prelude
                             Just SameOp -> OrigFun
                             Just (ConvertFun fun) -> MetaConvertFun (convertFunName fun)
                             Nothing -> NoEquivalent
-    where findMethod eqs | isPrefixOf "D:" name = Just FunSuffix
-          findMethod eqs = maybe Nothing (Just . fst . fst) $ Map.minViewWithKey $ Map.filter (elem name) eqs
+    where findMethod = maybe Nothing (Just . fst . fst) . Map.minViewWithKey . Map.filter (elem name)
 
 ----------------------------------------------------------------------------------------
 -- Meta equivalents methods
