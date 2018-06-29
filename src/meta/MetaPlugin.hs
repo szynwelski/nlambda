@@ -8,10 +8,11 @@ import Avail
 import Serialized
 import Annotations
 import GHC hiding (exprType, typeKind)
-import Control.Monad (unless)
+import Control.Exception (assert)
+import Control.Monad (liftM, unless)
 import Data.Char (isLetter)
 import Data.Data (Data)
-import Data.List (find, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub, partition)
+import Data.List (find, findIndex, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub, partition)
 import Data.Maybe (fromJust)
 import Data.String.Utils (replace)
 import TypeRep
@@ -440,6 +441,7 @@ getForAllTyVar :: Type -> TyVar
 getForAllTyVar t = fromMaybe (pprPanic "getForAllTyVar" $ ppr t) $ listToMaybe $ fst $ splitForAllTys t
 
 getFunTypeParts :: Type -> [Type]
+getFunTypeParts t | not $ isFunTy t = [t]
 getFunTypeParts t = argTys ++ [resTy]
     where (argTys, resTy) = splitFunTys $ getMainType t
 
@@ -448,7 +450,7 @@ isTyVarWrappedByWithMeta mod tv = all wrappedByWithMeta . getFunTypeParts
     where wrappedByWithMeta t | isWithMetaType mod t = True
           wrappedByWithMeta (TyVarTy tv') = tv /= tv'
           wrappedByWithMeta (AppTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
-          wrappedByWithMeta (TyConApp tc ts) = isMetaPreludeTyCon mod tc || all wrappedByWithMeta ts
+          wrappedByWithMeta (TyConApp tc ts) = isMetaPreludeNamedThing mod tc || all wrappedByWithMeta ts
           wrappedByWithMeta (FunTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
           wrappedByWithMeta (LitTy _) = True
 
@@ -511,17 +513,15 @@ changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> CoreExpr -> CoreM 
 changeExpr mod varMap tcMap b e = newExpr varMap e
     where newExpr varMap e | noAtomsSubExpr e = return $ replaceVars varMap e
           newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
-          newExpr varMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod b v
+          newExpr varMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod varMap tcMap b v Nothing
           newExpr varMap (Var v) = pprPanic "unknown variable"
             (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleNameStr v ++ " is not compiled with NLambda Plugin."))
           newExpr varMap (Lit l) = noMetaExpr mod (Lit l)
+          newExpr varMap (App (Var v) (Type t)) | isMetaEquivalent mod v, isDataConWorkId v = getMetaEquivalent mod varMap tcMap b v $ Just t
           newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
-                                               -- check if type application is made in addDependencies function
-                                               if isMetaPreludeDict mod $ last $ getFunTypeParts $ exprType f'
-                                               then return f'
-                                               else let tyVar = getForAllTyVar $ exprType f'
-                                                        t' = if isTyVarWrappedByWithMeta mod tyVar $ exprType f' then t else changeType mod tcMap t
-                                                    in return $ App f' $ Type t'
+                                               let (tyVars, t') = splitForAllTys $ exprType f'
+                                               let t'' = if isTyVarWrappedByWithMeta mod (head tyVars) t' then t else changeType mod tcMap t
+                                               return $ App f' $ Type t''
           newExpr varMap (App f e) = do f' <- newExpr varMap f
                                         f'' <- if isWithMetaType mod $ exprType f'
                                                then valueExpr mod f'
@@ -530,13 +530,13 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                         e'' <- if (isWithMetaType mod $ funArgTy $ exprType f'') && (not $ isWithMetaType mod $ exprType e')
                                                then noMetaExpr mod e'
                                                else return e'
-                                        if eqType (funArgTy $ exprType f'') (exprType e'')
+                                        if isJust $ unifyTypes (funArgTy $ exprType f'') (exprType e'')
                                         then return $ mkCoreApp f'' e''
                                         else pprPanic "inconsistent types in application:"
                                                (ppr f'' <+> text "::" <+> ppr (exprType f'')
                                                 <+> text "\n" <+> ppr e'' <+> text "::" <+> ppr (exprType e''))
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
-                                                    return $ Lam x e'
+                                                    return $ Lam x e' -- FIXME new uniq for x (and then replace all occurrences)?
           newExpr varMap (Lam x e) = do x' <- changeBindType mod tcMap x
                                         e' <- newExpr (Map.insert x x' varMap) e
                                         return $ Lam x' e'
@@ -658,6 +658,10 @@ dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
 
 data ExprVar = TV TyVar | DI DictId
 
+isTV :: ExprVar -> Bool
+isTV (TV _) = True
+isTV (DI _) = False
+
 exprVarToVar :: [ExprVar] -> [CoreBndr]
 exprVarToVar = fmap toCoreBndr
     where toCoreBndr (TV v) = v
@@ -672,12 +676,12 @@ splitTypeTyVars :: Type -> CoreM ([ExprVar], Type)
 splitTypeTyVars ty =
     let (tyVars, preds, ty') = tcSplitSigmaTy ty
     in if ty == ty'
-       then return ([], ty')
+       then return ([], ty)
        else do tyVars' <- mapM makeTyVarUnique tyVars
                let preds' = filter isClassPred preds -- TODO other preds
                let classTys = fmap getClassPredTys preds'
-               predVars <- mapM mkPredVar classTys
                let subst = extendTvSubstList emptySubst (zip tyVars $ fmap TyVarTy tyVars')
+               predVars <- mapM mkPredVar ((\(c,tys) -> (c, substTy subst <$> tys)) <$> classTys)
                (resTyVars, resTy) <- splitTypeTyVars $ substTy subst ty'
                return ((TV <$> tyVars') ++ (DI <$> predVars) ++ resTyVars, resTy)
 
@@ -692,6 +696,11 @@ unifyTypes t1 t2 = maybe unifyWithOpenKinds Just (tcUnifyTy t1 t2)
           replaceOpenKinds (ForAllTy v t) = ForAllTy v (replaceOpenKinds t)
           replaceOpenKinds (LitTy tl) = LitTy tl
 
+sameTypes :: Type -> Type -> Bool
+sameTypes t1 t2
+    | Just s <- unifyTypes t1 t2 = all isTyVarTy $ eltsUFM $ getTvSubstEnv s
+    | otherwise = False
+
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
     do (eTyVars, ty) <- splitTypeTyVars $ exprType e
@@ -700,7 +709,7 @@ applyExpr fun e =
                      (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
                      (unifyTypes (funArgTy funTy) ty)
        let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
-       return $ mkCoreLams (exprVarToVar eTyVars)
+       return $ mkCoreLams (exprVarToVar eTyVars) -- FIXME case where length funTyVars > length eTyVars
                   (mkCoreApp
                     (mkCoreApps fun funTyVarSubstExprs)
                     (mkCoreApps e $ exprVarToExpr eTyVars))
@@ -820,11 +829,11 @@ getMetaPreludeNameMaps mod env guts = Map.fromList metaPairs
           preludeNames = fmap gre_name $ filter fromPrelude $ concat $ occEnvElts $ mg_rdr_env guts
           metaPairs = catMaybes $ fmap (findNamePair $ metaNames mod) preludeNames
 
-isMetaPreludeTyCon :: MetaModule -> TyCon -> Bool
-isMetaPreludeTyCon mod tc = any (== getName tc) (metaNames mod)
+isMetaPreludeNamedThing :: NamedThing a => MetaModule -> a -> Bool
+isMetaPreludeNamedThing mod nt = any (== getName nt) (metaNames mod)
 
 isMetaPreludeDict :: MetaModule -> Type -> Bool
-isMetaPreludeDict mod t | Just (cl, _) <- getClassPredTys_maybe t = any (== getName cl) (metaNames mod)
+isMetaPreludeDict mod t | Just (cl, _) <- getClassPredTys_maybe t = isMetaPreludeNamedThing mod cl
 isMetaPreludeDict mod t = False
 
 getMetaPreludeTyCon :: MetaModule -> TyCon -> Maybe TyCon
@@ -845,19 +854,51 @@ isMetaEquivalent mod v = case metaEquivalent (getModuleNameStr v) (getVarNameStr
                            NoEquivalent -> isJust $ getDefinedMetaEquivalentVar mod v
                            _            -> True
 
-getMetaEquivalent :: MetaModule -> CoreBndr -> Var -> CoreM CoreExpr
-getMetaEquivalent mod b v = case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
-                              OrigFun -> return $ Var v
-                              MetaFun name -> return $ getMetaVar mod name
-                              MetaConvertFun name -> applyExpr (getMetaVar mod name) (Var v)
-                              NoEquivalent -> addDependencies b v $ fromMaybe
-                                  (pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleNameStr v)))
-                                  (getDefinedMetaEquivalentVar mod v)
+getMetaEquivalent :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> CoreM CoreExpr
+getMetaEquivalent mod varMap tcMap b v mt = case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
+                                    OrigFun -> return $ appType $ Var v
+                                    MetaFun name -> return $ appType $ getMetaVar mod name
+                                    MetaConvertFun name -> liftM appType $ applyExpr (getMetaVar mod name) (Var v)
+                                    NoEquivalent -> addDependencies mod varMap tcMap b v mt $ fromMaybe
+                                        (pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleNameStr v)))
+                                        (getDefinedMetaEquivalentVar mod v)
+    where appType :: CoreExpr -> CoreExpr
+          appType e = maybe e (mkCoreApp e . Type) mt
 
-addDependencies :: CoreBndr -> Var -> Var -> CoreM CoreExpr
-addDependencies b var metaVar | pprTrace "addDependencies" (ppr metaVar) False = undefined
-addDependencies b var metaVar | isDataConWorkId metaVar = applyExpr (Var metaVar) (Var b) -- at once type application is added
-addDependencies b var metaVar = return $ Var metaVar -- TODO
+addDependencies :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> Var -> CoreM CoreExpr
+addDependencies mod varMap tcMap b var mt metaVar
+    | isDataConWorkId metaVar, isFun
+    = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
+         let metaE = mkCoreApp (Var metaVar) (Type $ fromJust mt)
+         let dictVars = (exprVarToVar $ filter (not . isTV) vars) ++ (filter (\x -> isLocalId x && not (isExportedId x) && isDictId x) $ Map.elems varMap)
+         addDictDeps metaE (Var b) dictVars
+    | isDFunId metaVar, isFun
+    = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
+         let TV tyVar = assert (not (null vars) && isTV (head vars)) head vars
+         let eTyVar = head $ exprVarToExpr vars
+         let metaE = mkCoreApp (Var metaVar) eTyVar
+         let dictVars = exprVarToVar $ tail vars
+         metaE' <- addDictDeps metaE (Var var) dictVars
+         let argVars = filter (isMetaPreludeDict mod . varType) dictVars
+         return $ mkCoreLams (tyVar : argVars) metaE'
+    | otherwise = return $ Var metaVar
+    where isFun = isFunTy $ dropForAlls $ varType metaVar
+          addDictDeps metaE e vars | Just (t,_) <- splitFunTy_maybe $ exprType metaE, isPredTy t = addDictDep metaE t e vars
+          addDictDeps metaE e _ = return metaE
+          addDictDep metaE t e (v:vars) | isMetaPreludeDict mod t = addDictDeps (mkCoreApp metaE $ Var v) e vars -- TODO check type is consistent?
+          addDictDep metaE t e vars = do dep <- noMetaDep e vars
+                                         let metaExp' = mkCoreApp metaE dep
+                                         addDictDeps metaExp' e vars
+          noMetaDep e vars | Just (t,_) <- splitFunTy_maybe $ dropForAlls $ exprType e
+                           = do sc <- findSuperClass t vars
+                                e' <- applyExpr e sc
+                                noMetaDep e' vars
+          noMetaDep e vars = return e
+          findSuperClass t (v:vars) | Just (cl, _) <- getClassPredTys_maybe $ varType v,
+                                      (_, preds, ids, _) <- classBigSig cl,
+                                      Just idx <- findIndex (sameTypes t) preds
+                                    = applyExpr (Var $ ids !! idx) (Var v)
+          findSuperClass t vars = pprPanic "findSuperClass - no super class with proper type found" (ppr t <+> ppr vars)
 
 ----------------------------------------------------------------------------------------
 -- Show
