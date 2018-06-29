@@ -20,12 +20,17 @@ module Sample where
 --test = fmap id (A 1)
 
 data Atom = A deriving Show
+data Btom = B deriving Show
 
-data List a = List a deriving Show
+--data List a = List a deriving Show
 
 
 test :: String
-test = show (List A)
+-- OK
+--test = show (List A)
 --test = show [A]
 --test = show A
 --test = show (A,A)
+--test = show (A,A,A)
+-- ERROR
+test = show (A,B)

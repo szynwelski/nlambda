@@ -14,6 +14,8 @@ import GHC.Read (readPrec, readListPrec)
 import GHC.Show (showList__)
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 
+import Debug.Trace
+
 ------------------------------------------------------------------------------------------
 -- Class WithMeta and instances
 ------------------------------------------------------------------------------------------
@@ -149,7 +151,7 @@ unionOp op (WithMeta x m1) (WithMeta y m2) = WithMeta (op x' y') (getMeta u)
 
 union3Op :: (a -> b -> c -> d) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d
 union3Op op (WithMeta x m1) (WithMeta y m2) (WithMeta z m3) = WithMeta (op x' y' z') (getMeta u)
-    where u = union [m1, m2]
+    where u = union [m1, m2, m3]
           x' = rename u 0 x
           y' = rename u 1 y
           z' = rename u 2 z
@@ -732,7 +734,8 @@ ghcShow = createEquivalentsMap "GHC.Show"
 
 ghcTuple :: MetaEquivalentMap
 ghcTuple = createEquivalentsMap "GHC.Tuple"
-    [(ConvertFun UnionOp, ["(,)"])]
+    [(ConvertFun UnionOp, ["(,)"]),
+     (ConvertFun Union3Op, ["(,,)"])]
 
 ghcTypes :: MetaEquivalentMap
 ghcTypes = createEquivalentsMap "GHC.Types"

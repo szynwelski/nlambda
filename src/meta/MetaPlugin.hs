@@ -530,6 +530,8 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                         e'' <- if (isWithMetaType mod $ funArgTy $ exprType f'') && (not $ isWithMetaType mod $ exprType e')
                                                then noMetaExpr mod e'
                                                else return e'
+
+--                                        return $ mkCoreApp f'' e''
                                         if isJust $ unifyTypes (funArgTy $ exprType f'') (exprType e'')
                                         then return $ mkCoreApp f'' e''
                                         else pprPanic "inconsistent types in application:"
@@ -650,7 +652,8 @@ dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
           mkLam [] e = e
           mkLam (x:xs) e = Lam x $ mkLam xs e
 
-
+(!!!) xs i | pprTrace "!!!" (ppr xs <+> ppr i) False = undefined
+(!!!) xs i = (!!) xs i
 
 ----------------------------------------------------------------------------------------
 -- Apply expression
@@ -866,6 +869,7 @@ getMetaEquivalent mod varMap tcMap b v mt = case metaEquivalent (getModuleNameSt
           appType e = maybe e (mkCoreApp e . Type) mt
 
 addDependencies :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> Var -> CoreM CoreExpr
+addDependencies mod varMap tcMap b var mt metaVar | pprTrace "addDependencies" (ppr var <+> ppr metaVar) False = undefined
 addDependencies mod varMap tcMap b var mt metaVar
     | isDataConWorkId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
@@ -874,13 +878,12 @@ addDependencies mod varMap tcMap b var mt metaVar
          addDictDeps metaE (Var b) dictVars
     | isDFunId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
-         let TV tyVar = assert (not (null vars) && isTV (head vars)) head vars
-         let eTyVar = head $ exprVarToExpr vars
-         let metaE = mkCoreApp (Var metaVar) eTyVar
-         let dictVars = exprVarToVar $ tail vars
+         let tyVars = filter isTV vars
+         let metaE = mkCoreApps (Var metaVar) (exprVarToExpr tyVars)
+         let dictVars = exprVarToVar $ filter (not . isTV) vars
          metaE' <- addDictDeps metaE (Var var) dictVars
          let argVars = filter (isMetaPreludeDict mod . varType) dictVars
-         return $ mkCoreLams (tyVar : argVars) metaE'
+         return $ mkCoreLams (exprVarToVar tyVars ++ argVars) metaE'
     | otherwise = return $ Var metaVar
     where isFun = isFunTy $ dropForAlls $ varType metaVar
           addDictDeps metaE e vars | Just (t,_) <- splitFunTy_maybe $ exprType metaE, isPredTy t = addDictDep metaE t e vars
@@ -890,14 +893,15 @@ addDependencies mod varMap tcMap b var mt metaVar
                                          let metaExp' = mkCoreApp metaE dep
                                          addDictDeps metaExp' e vars
           noMetaDep e vars | Just (t,_) <- splitFunTy_maybe $ dropForAlls $ exprType e
-                           = do sc <- findSuperClass t vars
+                           = do (sc, vars') <- findSuperClass t vars
                                 e' <- applyExpr e sc
-                                noMetaDep e' vars
+                                noMetaDep e' vars'
           noMetaDep e vars = return e
           findSuperClass t (v:vars) | Just (cl, _) <- getClassPredTys_maybe $ varType v,
                                       (_, preds, ids, _) <- classBigSig cl,
                                       Just idx <- findIndex (sameTypes t) preds
-                                    = applyExpr (Var $ ids !! idx) (Var v)
+                                    = do e <- applyExpr (Var $ ids !! idx) (Var v)
+                                         return (e, vars)
           findSuperClass t vars = pprPanic "findSuperClass - no super class with proper type found" (ppr t <+> ppr vars)
 
 ----------------------------------------------------------------------------------------
