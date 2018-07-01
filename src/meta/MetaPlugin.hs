@@ -17,7 +17,7 @@ import Data.Maybe (fromJust)
 import Data.String.Utils (replace)
 import TypeRep
 import Maybes
-import TcType (tcSplitSigmaTy, tcSplitPhiTy, tcSplitForAllTys)
+import TcType (tcSplitSigmaTy, tcSplitPhiTy)
 import TyCon
 import Unify
 import CoreSubst
@@ -385,8 +385,10 @@ changeBind mod varMap tcMap (Rec bs) = do bs' <- mapM (changeBindExpr mod varMap
                                           return (Rec bs')
 
 changeBindExpr :: MetaModule -> VarMap -> TyConMap -> (CoreBndr, CoreExpr) -> CoreM (CoreBndr, CoreExpr)
-changeBindExpr mod varMap tcMap (b, e) = do newExpr <- changeExpr mod varMap tcMap b e
-                                            return (newVar varMap b, newExpr)
+changeBindExpr mod varMap tcMap (b, e) = do e' <- changeExpr mod varMap tcMap b e
+                                            let b' = newVar varMap b
+                                            e'' <- convertMetaType mod e' $ varType b'
+                                            return (b', e'')
 
 dataBind :: MetaModule -> VarMap -> DataCon -> CoreM CoreBind
 dataBind mod varMap dc | noAtomsType $ dataConOrigResTy dc = return $ nonRecDataBind varMap dc $ Var $ dataConWrapId dc
@@ -406,7 +408,7 @@ checkBinds bs = fmap checkBind bs
                    text "var type:" <+> ppr (varType b),
                    text "expr:" <+> ppr e,
                    text "expr type:" <+> ppr (exprType e),
-                   text "\n========================================================================"]) (b, e)
+                   text "\n=======================================================================|"]) (b, e)
           check (b,e) = (b,e)
 
 ----------------------------------------------------------------------------------------
@@ -459,6 +461,9 @@ isWithMetaType mod t
     | Just (tc, _) <- splitTyConApp_maybe (getMainType t) = tc == withMetaC mod
     | otherwise = False
 
+addWithMetaType :: MetaModule -> Type -> Type
+addWithMetaType mod t = mkTyConApp (withMetaC mod) [t]
+
 beginWithMetaLevelRequirement :: MetaModule -> Type -> Bool
 beginWithMetaLevelRequirement mod t = maybe False isMetaLevel $ listToMaybe preds
     where (preds, t') = tcSplitPhiTy t
@@ -498,6 +503,7 @@ noAtomsTypeVars tcs vs (LitTy _ ) = True
 noAtomsTypeCon :: [TyCon] -> TyCon -> Int -> Bool
 noAtomsTypeCon tcs tc _ | elem tc tcs = True
 noAtomsTypeCon _ tc _| isAtomsTypeName tc = False
+noAtomsTypeCon _ tc _| isClassTyCon tc = False
 noAtomsTypeCon _ tc _| isPrimTyCon tc = True
 noAtomsTypeCon tcs tc n| isDataTyCon tc = and $ fmap (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc) $ concatMap dataConOrigArgTys $ tyConDataCons tc
 noAtomsTypeCon _ _ _ = True
@@ -527,16 +533,8 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                                then valueExpr mod f'
                                                else return f'
                                         e' <- newExpr varMap e
-                                        e'' <- if (isWithMetaType mod $ funArgTy $ exprType f'') && (not $ isWithMetaType mod $ exprType e')
-                                               then noMetaExpr mod e'
-                                               else return e'
-
---                                        return $ mkCoreApp f'' e''
-                                        if isJust $ unifyTypes (funArgTy $ exprType f'') (exprType e'')
-                                        then return $ mkCoreApp f'' e''
-                                        else pprPanic "inconsistent types in application:"
-                                               (ppr f'' <+> text "::" <+> ppr (exprType f'')
-                                                <+> text "\n" <+> ppr e'' <+> text "::" <+> ppr (exprType e''))
+                                        e'' <- convertMetaType mod e' $ funArgTy $ exprType f''
+                                        return $ checkTypeConsistency f'' e'' (mkCoreApp f'' e'')
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
                                                     return $ Lam x e' -- FIXME new uniq for x (and then replace all occurrences)?
           newExpr varMap (Lam x e) = do x' <- changeBindType mod tcMap x
@@ -576,6 +574,14 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                                                return (DataAlt con, xs', e'')
           changeAlternative varMap m (alt, [], e) = do e' <- newExpr varMap e
                                                        return (alt, [], e')
+          checkTypeConsistency f e | not $ canUnifyTypes (funArgTy $ exprType f) (exprType e)
+                                   = pprTrace "\n======================= INCONSISTENT TYPES IN APPLICATION =============="
+                                       (vcat [text "fun: " <+> ppr f,
+                                              text "fun type: " <+> ppr (exprType f),
+                                              text "arg: " <+> ppr e,
+                                              text "arg type: " <+> ppr (exprType e),
+                                              text "\n=======================================================================|"]) id
+          checkTypeConsistency f e = id
 
 -- the type of expression is not open for atoms and there are no free variables open for atoms
 noAtomsSubExpr :: CoreExpr -> Bool
@@ -699,6 +705,9 @@ unifyTypes t1 t2 = maybe unifyWithOpenKinds Just (tcUnifyTy t1 t2)
           replaceOpenKinds (ForAllTy v t) = ForAllTy v (replaceOpenKinds t)
           replaceOpenKinds (LitTy tl) = LitTy tl
 
+canUnifyTypes :: Type -> Type -> Bool
+canUnifyTypes t = isJust . unifyTypes t
+
 sameTypes :: Type -> Type -> Bool
 sameTypes t1 t2
     | Just s <- unifyTypes t1 t2 = all isTyVarTy $ eltsUFM $ getTvSubstEnv s
@@ -707,7 +716,7 @@ sameTypes t1 t2
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
     do (eTyVars, ty) <- splitTypeTyVars $ exprType e
-       let (funTyVars, funTy) = tcSplitForAllTys $ exprType fun
+       let (funTyVars, funTy) = splitForAllTys $ exprType fun
        let subst = fromMaybe
                      (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
                      (unifyTypes (funArgTy funTy) ty)
@@ -822,6 +831,26 @@ idOpExpr :: MetaModule -> CoreExpr -> CoreM CoreExpr
 idOpExpr mod e = applyExpr (idOpV mod) e
 
 ----------------------------------------------------------------------------------------
+-- Convert meta types
+----------------------------------------------------------------------------------------
+
+convertMetaType :: MetaModule -> CoreExpr -> Type -> CoreM CoreExpr
+convertMetaType mod e t | canUnifyTypes (getMainType $ exprType e) (getMainType t) = return e
+convertMetaType mod e t | length ets == length ts = applyExpr (convertMetaFun mod ets ts) e
+    where ets = getFunTypeParts $ getMainType $ exprType e
+          ts = getFunTypeParts $ getMainType t
+convertMetaType mod e t = return e
+
+convertMetaFun :: MetaModule -> [Type] -> [Type] -> CoreExpr
+convertMetaFun mod ts1 ts2 = getMetaVar mod $ funName "convert" ts1 ts2
+    where funName name (t1:ts1) (t2:ts2)
+            | canUnifyTypes t1 t2 = funName (name ++ "x") ts1 ts2
+            | isWithMetaType mod t1 && canUnifyTypes t1 (addWithMetaType mod t2) = funName (name ++ "0") ts1 ts2
+            | isWithMetaType mod t2 && canUnifyTypes (addWithMetaType mod t1) t2 = funName (name ++ "1") ts1 ts2
+            | otherwise = pprPanic "convertMetaFun - can't unify meta types:" (ppr (t1:ts1) <+> ppr (t2:ts2))
+          funName name [] [] = name
+
+----------------------------------------------------------------------------------------
 -- Meta Equivalents
 ----------------------------------------------------------------------------------------
 
@@ -869,7 +898,6 @@ getMetaEquivalent mod varMap tcMap b v mt = case metaEquivalent (getModuleNameSt
           appType e = maybe e (mkCoreApp e . Type) mt
 
 addDependencies :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> Var -> CoreM CoreExpr
-addDependencies mod varMap tcMap b var mt metaVar | pprTrace "addDependencies" (ppr var <+> ppr metaVar) False = undefined
 addDependencies mod varMap tcMap b var mt metaVar
     | isDataConWorkId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var

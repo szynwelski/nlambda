@@ -19,18 +19,20 @@ module Sample where
 --test :: Atom Int
 --test = fmap id (A 1)
 
+--type Fun a = a -> a
+--
 data Atom = A deriving Show
 data Btom = B deriving Show
-
---data List a = List a deriving Show
-
+--
+data List a = List a deriving Show
 
 test :: String
 -- OK
+--test = show A
+--test = show B
 --test = show (List A)
 --test = show [A]
---test = show A
 --test = show (A,A)
 --test = show (A,A,A)
--- ERROR
 test = show (A,B)
+-- ERROR
