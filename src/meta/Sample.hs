@@ -1,6 +1,12 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
 
+{-# LANGUAGE DeriveAnyClass, DeriveGeneric #-}
+
+
 module Sample where
+
+import Meta
+import GHC.Generics
 
 --import Prelude
 
@@ -10,29 +16,27 @@ module Sample where
 -- Test
 ----------------------------------------------------------------------------
 
---data Atom a = A a | B deriving Show
---
---instance Functor Atom where
---    fmap f (A a) = A (f a)
---    fmap _ B = B
---
---test :: Atom Int
---test = fmap id (A 1)
+--data Atom = A deriving Show
+--data Btom = B deriving Show
+--data List a = List a deriving Show
 
---type Fun a = a -> a
---
-data Atom = A deriving Show
-data Btom = B deriving Show
---
-data List a = List a deriving Show
-
-test :: String
 -- OK
+--test :: String
 --test = show A
 --test = show B
 --test = show (List A)
 --test = show [A]
 --test = show (A,A)
 --test = show (A,A,A)
-test = show (A,B)
+--test = show (A,B)
 -- ERROR
+
+
+data Atom a = A a | B deriving (Show, Generic1, MetaLevel)
+
+instance Functor Atom where
+    fmap f (A a) = A (f a)
+    fmap _ B = B
+
+test :: Atom Int
+test = fmap id (A 1)

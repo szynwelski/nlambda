@@ -9,7 +9,7 @@ import java.util.stream.IntStream;
 public class NLambdaConvert {
 
     public static final List<String> DIGITS = Arrays.asList("x", "0", "1");
-    public static final int SIZE = 10;
+    public static final int SIZE = 8;
 
     public static void main(String[] args) {
         for (int i = 2; i < SIZE; i++) {

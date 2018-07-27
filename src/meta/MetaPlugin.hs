@@ -81,9 +81,9 @@ pass env onlyShow guts =
             let modTcMap = mkTyConMap mod nameMap modVarMap (mg_tcs guts)
                 modVarMap = mkVarMap guts mod nameMap modTcMap
                 tcMap = Map.union modTcMap impTcMap
-                varMap = Map.union modVarMap impVarMap
+                varMap = unionVarMaps modVarMap impVarMap
             showMap "TyCons" tcMap showTyCon
-            showMap "Vars" varMap showVar
+            showMap "Vars" (fst varMap) showVar
 
             guts' <- if onlyShow
                      then return guts
@@ -96,7 +96,7 @@ pass env onlyShow guts =
 --            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --            modInfo "module" mg_module guts'
-            modInfo "binds" mg_binds guts'
+            modInfo "binds" (sortBinds . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
 --            modInfo "imported" getImportedModules guts'
 --            modInfo "exports" mg_exports guts'
@@ -112,7 +112,7 @@ pass env onlyShow guts =
 --            modInfo "vect info" mg_vect_info guts'
 --            modInfo "files" mg_dependent_files guts'
 --            modInfo "classes" getClasses guts'
-            modInfo "implicit binds" getImplicitBinds guts'
+--            modInfo "implicit binds" getImplicitBinds guts'
 --            modInfo "annotations" mg_anns guts'
             putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:" <+> (ppr $ mg_module guts')
             return guts'
@@ -205,20 +205,33 @@ getDataConsNames = concatMap (\dc -> dataConName dc : (idName <$> dataConImplici
 -- Variables map
 ----------------------------------------------------------------------------------------
 
-type VarMap = Map Var Var
+type VarMap = (Map Var Var, [Var])
+
+unionVarMaps :: VarMap -> VarMap -> VarMap
+unionVarMaps (m1,l1) (m2,l2) = (Map.union m1 m2, l1 ++ l2)
 
 newVar :: VarMap -> Var -> Var
-newVar map v = Map.findWithDefault (pprPanic "unknown variable: " (ppr v <+> ppr map)) v map
+newVar (map,_) v = Map.findWithDefault (pprPanic "unknown variable: " (ppr v <+> ppr map)) v map
 
 newVarDefault :: VarMap -> Var -> Var
-newVarDefault map v = Map.findWithDefault v v map
+newVarDefault map v = Map.findWithDefault v v $ fst map
+
+varMapMember :: Var -> VarMap -> Bool
+varMapMember v = Map.member v . fst
+
+varMapElems :: VarMap -> [Var]
+varMapElems = Map.elems . fst
+
+insertVar :: Var -> Var -> VarMap -> VarMap
+insertVar v v' (map, vs) = (Map.insert v v' map, vs)
 
 mkVarMap :: ModGuts -> MetaModule -> NameMap -> TyConMap -> VarMap
-mkVarMap guts mod nameMap tcMap = mkMapWithVars guts mod nameMap tcMap (getBindsVars guts ++ getClassesVars guts ++ getDataConsVars guts)
+mkVarMap guts mod nameMap tcMap = mkMapWithVars mod nameMap tcMap (getBindsVars guts ++ getClassesVars guts ++ getDataConsVars guts)
 
-mkMapWithVars :: ModGuts -> MetaModule -> NameMap -> TyConMap -> [Var] -> VarMap
-mkMapWithVars guts mod nameMap tcMap vars = Map.fromList $ zip vars $ fmap newVar vars
-    where newVar v = let newIdInfo = setInlinePragInfo vanillaIdInfo (inlinePragInfo $ idInfo v)
+mkMapWithVars :: MetaModule -> NameMap -> TyConMap -> [Var] -> VarMap
+mkMapWithVars mod nameMap tcMap vars = (Map.fromList $ zip vars' $ fmap newVar vars', vars'')
+    where (vars',vars'') = partition (not . isIgnoreImportType . varType) vars
+          newVar v = let newIdInfo = setInlinePragInfo vanillaIdInfo (inlinePragInfo $ idInfo v)
                          v' = mkLocalIdWithInfo (newName nameMap $ varName v) (newBindType mod tcMap v) newIdInfo
                      in if isExportedId v then setIdExported v' else setIdNotExported v'
 
@@ -236,11 +249,17 @@ getModuleNameStr = maybe "" (moduleNameString . moduleName) . nameModule_maybe .
 -- Imports
 ----------------------------------------------------------------------------------------
 
+importsToIgnore :: [String]
+importsToIgnore = ["Meta", "GHC.Generics"]
+
+isIgnoreImport :: Module -> Bool
+isIgnoreImport = (`elem` importsToIgnore) . moduleNameString . moduleName
+
 getImportedModules :: ModGuts -> [Module]
-getImportedModules = moduleEnvKeys . mg_dir_imps
+getImportedModules = filter (not . isIgnoreImport) . moduleEnvKeys . mg_dir_imps
 
 getImportedMaps :: HscEnv -> ModGuts -> (NameMap, VarMap, TyConMap)
-getImportedMaps env guts = (Map.fromList namePairs, Map.fromList varPairs, Map.fromList tcPairs)
+getImportedMaps env guts = (Map.fromList namePairs, (Map.fromList varPairs, []), Map.fromList tcPairs)
     where mods = catMaybes $ lookupUFM (hsc_HPT env) <$> moduleName <$> getImportedModules guts
           types = mconcat $ md_types <$> hm_details <$> mods
           ids = eltsUFM types
@@ -251,6 +270,10 @@ getImportedMaps env guts = (Map.fromList namePairs, Map.fromList varPairs, Map.f
           (tcThings, varThings) = partition (isTyThingTyCon . fst) tyThingPairs
           varPairs = fmap (\(tt1, tt2) -> (tyThingId tt1, tyThingId tt2)) varThings
           tcPairs = fmap (\(tt1, tt2) -> (tyThingTyCon tt1, tyThingTyCon tt2)) tcThings
+
+-- FIXME check if isAbstractTyCon should be used here
+isIgnoreImportType :: Type -> Bool
+isIgnoreImportType = anyNameEnv (\tc -> (isIgnoreImport $ nameModule $ getName tc) || isAbstractTyCon tc) . tyConsOfType
 
 ----------------------------------------------------------------------------------------
 -- Exports
@@ -363,6 +386,11 @@ createClass nameMap varMap tcMap tc cls =
 -- Binds
 ----------------------------------------------------------------------------------------
 
+sortBinds :: CoreProgram -> CoreProgram
+sortBinds = sortWith bindName
+    where bindName (NonRec v _) = getVarNameStr v
+          bindName (Rec bs) = maybe (pprPanic "sortBinds: empty rec binds" (ppr bs)) (getVarNameStr . fst) (listToMaybe bs)
+
 getBindVars :: CoreBind -> [Var]
 getBindVars (NonRec v _) = [v]
 getBindVars (Rec bs) = fmap fst bs
@@ -374,9 +402,11 @@ getBindsNames :: ModGuts -> [Name]
 getBindsNames = fmap varName . getBindsVars
 
 newBinds :: MetaModule -> VarMap -> TyConMap -> [DataCon] -> CoreProgram -> CoreM CoreProgram
-newBinds mod varMap tcMap dcs bs = do bs' <- mapM (changeBind mod varMap tcMap) bs
+newBinds mod varMap tcMap dcs bs = do bs' <- mapM (changeBind mod varMap tcMap) $ filter isInVarMap bs
                                       bs'' <- mapM (dataBind mod varMap) dcs
                                       return $ checkBinds $ bs' ++ bs''
+    where isInVarMap (NonRec b e) = varMapMember b varMap
+          isInVarMap (Rec bs) = all (`varMapMember` varMap) $ fst <$> bs
 
 changeBind :: MetaModule -> VarMap -> TyConMap -> CoreBind -> CoreM CoreBind
 changeBind mod varMap tcMap (NonRec b e) = do (b',e') <- changeBindExpr mod varMap tcMap (b, e)
@@ -464,12 +494,12 @@ isWithMetaType mod t
 addWithMetaType :: MetaModule -> Type -> Type
 addWithMetaType mod t = mkTyConApp (withMetaC mod) [t]
 
-beginWithMetaLevelRequirement :: MetaModule -> Type -> Bool
-beginWithMetaLevelRequirement mod t = maybe False isMetaLevel $ listToMaybe preds
+getMetaLevelPred :: MetaModule -> Type -> Maybe Type
+getMetaLevelPred mod t = maybe Nothing metaLevelPred $ listToMaybe preds
     where (preds, t') = tcSplitPhiTy t
-          isMetaLevel pred
-            | Just tc <- tyConAppTyCon_maybe pred, isClassTyCon tc = tc == metaLevelC mod
-            | otherwise = False
+          metaLevelPred pred
+            | Just tc <- tyConAppTyCon_maybe pred, isClassTyCon tc, tc == metaLevelC mod = Just pred
+            | otherwise = Nothing
 
 getOnlyArgTypeFromDict :: Type -> Type
 getOnlyArgTypeFromDict t
@@ -517,8 +547,9 @@ isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem
 
 changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> CoreExpr -> CoreM CoreExpr
 changeExpr mod varMap tcMap b e = newExpr varMap e
-    where newExpr varMap e | noAtomsSubExpr e = return $ replaceVars varMap e
-          newExpr varMap (Var v) | Map.member v varMap = return $ Var (newVar varMap v)
+    where -- newExpr varMap e | pprTrace "newExpr" (ppr e) False = undefined
+          newExpr varMap e | noAtomsSubExpr e = return $ replaceVars varMap e
+          newExpr varMap (Var v) | varMapMember v varMap = return $ Var (newVar varMap v)
           newExpr varMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod varMap tcMap b v Nothing
           newExpr varMap (Var v) = pprPanic "unknown variable"
             (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleNameStr v ++ " is not compiled with NLambda Plugin."))
@@ -538,7 +569,7 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
                                                     return $ Lam x e' -- FIXME new uniq for x (and then replace all occurrences)?
           newExpr varMap (Lam x e) = do x' <- changeBindType mod tcMap x
-                                        e' <- newExpr (Map.insert x x' varMap) e
+                                        e' <- newExpr (insertVar x x' varMap) e
                                         return $ Lam x' e'
           newExpr varMap (Let b e) = do (b', varMap') <- changeLetBind b varMap
                                         e' <- newExpr varMap' e
@@ -555,20 +586,20 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
           newExpr varMap (Type t) = undefined -- type should be served in (App f (Type t)) case
           newExpr varMap (Coercion c) = return $ Coercion $ changeCoercion mod tcMap c
           changeLetBind (NonRec b e) varMap = do b' <- changeBindType mod tcMap b
-                                                 let varMap' = Map.insert b b' varMap
+                                                 let varMap' = insertVar b b' varMap
                                                  e' <- newExpr varMap' e
                                                  return (NonRec b' e', varMap')
           changeLetBind (Rec bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
                                              return (Rec bs', varMap')
           changeRecBinds ((b, e):bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
                                                  b' <- changeBindType mod tcMap b
-                                                 let varMap'' = Map.insert b b' varMap'
+                                                 let varMap'' = insertVar b b' varMap'
                                                  e' <- newExpr varMap'' e
                                                  return ((b',e'):bs', varMap'')
           changeRecBinds [] varMap = return ([], varMap)
           changeAlternative varMap m (DataAlt con, xs, e) = do xs' <- mapM (changeBindType mod tcMap) xs
                                                                xs'' <- mapM (\x -> createExpr mod (Var x) m) xs'
-                                                               e' <- newExpr (Map.union varMap $ Map.fromList $ zip xs xs') e
+                                                               e' <- newExpr (unionVarMaps varMap (Map.fromList $ zip xs xs', [])) e
                                                                let subst = extendSubstList emptySubst (zip xs' xs'')
                                                                let e'' = substExpr (ppr subst) subst e' -- replace vars with expressions
                                                                return (DataAlt con, xs', e'')
@@ -578,6 +609,7 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                    = pprTrace "\n======================= INCONSISTENT TYPES IN APPLICATION =============="
                                        (vcat [text "fun: " <+> ppr f,
                                               text "fun type: " <+> ppr (exprType f),
+                                              text "fun arg type: " <+> ppr (funArgTy $ exprType f),
                                               text "arg: " <+> ppr e,
                                               text "arg type: " <+> ppr (exprType e),
                                               text "\n=======================================================================|"]) id
@@ -658,9 +690,6 @@ dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
           mkLam [] e = e
           mkLam (x:xs) e = Lam x $ mkLam xs e
 
-(!!!) xs i | pprTrace "!!!" (ppr xs <+> ppr i) False = undefined
-(!!!) xs i = (!!) xs i
-
 ----------------------------------------------------------------------------------------
 -- Apply expression
 ----------------------------------------------------------------------------------------
@@ -739,10 +768,13 @@ getMetaModule :: HscEnv -> MetaModule
 getMetaModule = fromJust . find ((== "Meta") . moduleNameString . moduleName . mi_module . hm_iface) . eltsUFM . hsc_HPT
 
 getTyThing :: MetaModule -> String -> (TyThing -> Bool) -> (TyThing -> a) -> (a -> Name) -> a
-getTyThing mod nm cond fromThing getName =
-    maybe (pprPanic "getTyThing - name not found:" $ text nm)
-          fromThing $ listToMaybe $ nameEnvElts $ filterNameEnv (\t -> cond t && hasName nm (getName $ fromThing t))
-                                                                (md_types $ hm_details mod)
+getTyThing mod nm cond fromThing getName = fromMaybe (pprPanic "getTyThing - name not found in module Meta:" $ text nm)
+                                                     (getTyThingMaybe mod nm cond fromThing getName)
+
+getTyThingMaybe :: MetaModule -> String -> (TyThing -> Bool) -> (TyThing -> a) -> (a -> Name) -> Maybe a
+getTyThingMaybe mod nm cond fromThing getName =
+    fmap fromThing $ listToMaybe $ nameEnvElts $ filterNameEnv (\t -> cond t && hasName nm (getName $ fromThing t))
+                                                                  (md_types $ hm_details mod)
     where hasName nmStr nm = occNameString (nameOccName nm) == nmStr
 
 isTyThingId :: TyThing -> Bool
@@ -751,6 +783,9 @@ isTyThingId _        = False
 
 getVar :: MetaModule -> String -> Var
 getVar mod nm = getTyThing mod nm isTyThingId tyThingId varName
+
+getVarMaybe :: MetaModule -> String -> Maybe Var
+getVarMaybe mod nm = getTyThingMaybe mod nm isTyThingId tyThingId varName
 
 metaNames :: MetaModule -> [Name]
 metaNames = fmap getName . nameEnvElts . md_types . hm_details
@@ -764,6 +799,9 @@ getTyCon mod nm = getTyThing mod nm isTyThingTyCon tyThingTyCon tyConName
 
 getMetaVar :: MetaModule -> String -> CoreExpr
 getMetaVar mod = Var . getVar mod
+
+getMetaVarMaybe :: MetaModule -> String -> Maybe CoreExpr
+getMetaVarMaybe mod = fmap Var . getVarMaybe mod
 
 noMetaV mod = getMetaVar mod "noMeta"
 unionV mod = getMetaVar mod "union"
@@ -786,10 +824,12 @@ unionType :: MetaModule -> Type
 unionType = mkTyConTy . unionC
 
 -- TODO search also for instance not in Meta module
-getMetaLevelInstance :: MetaModule -> Type -> CoreExpr
-getMetaLevelInstance mod t
-    | Just tc <- tyConAppTyCon_maybe t = getMetaVar mod $ "$fMetaLevel" ++ (occNameString $ getOccName tc)
-    | otherwise = pprPanic "getMetaLevelInstance" (text "given type" <+> ppr t <+> text "is not type constructor")
+getMetaLevelInstance :: MetaModule -> VarMap -> Type -> CoreExpr
+getMetaLevelInstance mod (_, vs) t | Just tc <- tyConAppTyCon_maybe t = getInstance ("$fMetaLevel" ++ (occNameString $ getOccName tc))
+    where getInstance iname
+              | Just v <- getMetaVarMaybe mod iname = v
+              | Just v <- listToMaybe $ filter ((== iname) . getVarNameStr) vs = Var v
+              | otherwise = pprPanic "getMetaLevelInstance" (text "given type" <+> ppr t <+> text "has no MetaLevel instance")
 
 mkPredVar :: (Class, [Type]) -> CoreM DictId
 mkPredVar (cls, tys) = do uniq <- getUniqueM
@@ -836,6 +876,11 @@ idOpExpr mod e = applyExpr (idOpV mod) e
 
 convertMetaType :: MetaModule -> CoreExpr -> Type -> CoreM CoreExpr
 convertMetaType mod e t | canUnifyTypes (getMainType $ exprType e) (getMainType t) = return e
+convertMetaType mod e t | isClassPred t,
+                          Just (cl, _) <- getClassPredTys_maybe $ exprType e,
+                          (_, preds, ids, _) <- classBigSig cl,
+                          Just idx <- findIndex (canUnifyTypes t) preds
+                        = applyExpr (Var $ ids !! idx) e
 convertMetaType mod e t | length ets == length ts = applyExpr (convertMetaFun mod ets ts) e
     where ets = getFunTypeParts $ getMainType $ exprType e
           ts = getFunTypeParts $ getMainType t
@@ -871,13 +916,6 @@ isMetaPreludeDict mod t = False
 getMetaPreludeTyCon :: MetaModule -> TyCon -> Maybe TyCon
 getMetaPreludeTyCon mod tc = (getTyCon mod . getNameStr . snd) <$> findNamePair (metaNames mod) (getName tc)
 
---fixMetaPreludeDictPredicate :: MetaModule -> DictMap -> CoreExpr -> CoreM CoreExpr
---fixMetaPreludeDictPredicate mod dictMap f
---    | beginWithMetaLevelRequirement mod t = applyExpr f $ getMetaLevelInstance mod $ getOnlyArgTypeFromDict $ funArgTy t
---    | isPreludeDictType $ funArgTy t, Just dict <- Map.lookup (funArgTy t) dictMap = applyExpr f dict
---    | otherwise = return f
---    where t = exprType f
-
 getDefinedMetaEquivalentVar :: MetaModule -> Var -> Maybe Var
 getDefinedMetaEquivalentVar mod v =  getVar mod . getNameStr . snd <$> findNamePair (metaNames mod) (varName v)
 
@@ -901,19 +939,22 @@ addDependencies :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe 
 addDependencies mod varMap tcMap b var mt metaVar
     | isDataConWorkId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
-         let metaE = mkCoreApp (Var metaVar) (Type $ fromJust mt)
-         let dictVars = (exprVarToVar $ filter (not . isTV) vars) ++ (filter (\x -> isLocalId x && not (isExportedId x) && isDictId x) $ Map.elems varMap)
+         let metaE = addMetaLevelPred $ mkCoreApp (Var metaVar) (Type $ fromJust mt)
+         let dictVars = (exprVarToVar $ filter (not . isTV) vars) ++ (filter (\x -> isLocalId x && not (isExportedId x) && isDictId x) $ varMapElems varMap)
          addDictDeps metaE (Var b) dictVars
     | isDFunId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
          let tyVars = filter isTV vars
-         let metaE = mkCoreApps (Var metaVar) (exprVarToExpr tyVars)
+         let metaE = addMetaLevelPred $ mkCoreApps (Var metaVar) (exprVarToExpr tyVars)
          let dictVars = exprVarToVar $ filter (not . isTV) vars
          metaE' <- addDictDeps metaE (Var var) dictVars
          let argVars = filter (isMetaPreludeDict mod . varType) dictVars
          return $ mkCoreLams (exprVarToVar tyVars ++ argVars) metaE'
     | otherwise = return $ Var metaVar
     where isFun = isFunTy $ dropForAlls $ varType metaVar
+          addMetaLevelPred metaE | Just t <- getMetaLevelPred mod $ exprType metaE
+                                 = mkCoreApp metaE $ getMetaLevelInstance mod varMap $ getOnlyArgTypeFromDict t
+          addMetaLevelPred metaE = metaE
           addDictDeps metaE e vars | Just (t,_) <- splitFunTy_maybe $ exprType metaE, isPredTy t = addDictDep metaE t e vars
           addDictDeps metaE e _ = return metaE
           addDictDep metaE t e (v:vars) | isMetaPreludeDict mod t = addDictDeps (mkCoreApp metaE $ Var v) e vars -- TODO check type is consistent?
@@ -927,7 +968,7 @@ addDependencies mod varMap tcMap b var mt metaVar
           noMetaDep e vars = return e
           findSuperClass t (v:vars) | Just (cl, _) <- getClassPredTys_maybe $ varType v,
                                       (_, preds, ids, _) <- classBigSig cl,
-                                      Just idx <- findIndex (sameTypes t) preds
+                                      Just idx <- findIndex (sameTypes t) preds -- FIXME can unify??
                                     = do e <- applyExpr (Var $ ids !! idx) (Var v)
                                          return (e, vars)
           findSuperClass t vars = pprPanic "findSuperClass - no super class with proper type found" (ppr t <+> ppr vars)
@@ -966,19 +1007,39 @@ showTyCon :: TyCon -> SDoc
 showTyCon tc = text "'" <> text (occNameString $ nameOccName $ tyConName tc) <> text "'"
 --    <> text "{"
 --    <> ppr (nameUnique $ tyConName tc)
---    <> (whenT (isAlgTyCon tc) "Alg,")
---    <> (whenT (isClassTyCon tc) "Class,")
---    <> (whenT (isFamInstTyCon tc) "FamInst,")
---    <> (whenT (isFunTyCon tc) "Fun, ")
---    <> (whenT (isPrimTyCon tc) "Prim, ")
---    <> (whenT (isTupleTyCon tc) "Tuple, ")
---    <> (whenT (isUnboxedTupleTyCon tc) "UnboxedTyple, ")
---    <> (whenT (isBoxedTupleTyCon tc) "BoxedTyple, ")
---    <> (whenT (isTypeSynonymTyCon tc) "TypeSynonym, ")
---    <> (whenT (isDecomposableTyCon tc) "Decomposable, ")
---    <> (whenT (isPromotedDataCon tc) "PromotedDataCon, ")
---    <> (whenT (isPromotedTyCon tc) "Promoted, ")
---    <> (text "dataConNames:" <+> (vcat $ fmap showName $ fmap dataConName $ tyConDataCons tc))
+--    <> (whenT (isAlgTyCon tc) ",Alg")
+--    <> (whenT (isClassTyCon tc) ",Class")
+--    <> (whenT (isFamInstTyCon tc) ",FamInst")
+--    <> (whenT (isFunTyCon tc) ",Fun")
+--    <> (whenT (isPrimTyCon tc) ",Prim")
+--    <> (whenT (isTupleTyCon tc) ",Tuple")
+--    <> (whenT (isUnboxedTupleTyCon tc) ",UnboxedTuple")
+--    <> (whenT (isBoxedTupleTyCon tc) ",BoxedTuple")
+--    <> (whenT (isTypeSynonymTyCon tc) ",TypeSynonym")
+--    <> (whenT (isDecomposableTyCon tc) ",Decomposable")
+--    <> (whenT (isPromotedDataCon tc) ",PromotedDataCon")
+--    <> (whenT (isPromotedTyCon tc) ",Promoted")
+--    <> (whenT (isDataTyCon tc) ",DataTyCon")
+--    <> (whenT (isProductTyCon tc) ",ProductTyCon")
+--    <> (whenT (isEnumerationTyCon tc) ",EnumerationTyCon")
+--    <> (whenT (isNewTyCon tc) ",NewTyCon")
+--    <> (whenT (isAbstractTyCon tc) ",AbstractTyCon")
+--    <> (whenT (isFamilyTyCon tc) ",FamilyTyCon")
+--    <> (whenT (isOpenFamilyTyCon tc) ",OpenFamilyTyCon")
+--    <> (whenT (isTypeFamilyTyCon tc) ",TypeFamilyTyCon")
+--    <> (whenT (isDataFamilyTyCon tc) ",DataFamilyTyCon")
+--    <> (whenT (isOpenTypeFamilyTyCon tc) ",OpenTypeFamilyTyCon")
+--    <> (whenT (isUnLiftedTyCon tc) ",UnLiftedTyCon")
+--    <> (whenT (isGadtSyntaxTyCon tc) ",GadtSyntaxTyCon")
+--    <> (whenT (isDistinctTyCon tc) ",DistinctTyCon")
+----    <> (whenT (isDistinctAlgRhs tc) ",DistinctAlgRhs")
+----    <> (whenT (isInjectiveTyCon tc) ",InjectiveTyCon")
+----    <> (whenT (isGenerativeTyCon tc) ",GenerativeTyCon")
+----    <> (whenT (isGenInjAlgRhs tc) ",GenInjAlgRhs")
+--    <> (whenT (isTyConAssoc tc) ",TyConAssoc")
+--    <> (whenT (isRecursiveTyCon tc) ",RecursiveTyCon")
+--    <> (whenT (isImplicitTyCon tc) ",ImplicitTyCon")
+--    <> (text ",dataConNames:" <+> (vcat $ fmap showName $ fmap dataConName $ tyConDataCons tc))
 --    <> text "}"
 
 showName :: Name -> SDoc
