@@ -96,7 +96,7 @@ pass env onlyShow guts =
 --            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --            modInfo "module" mg_module guts'
-            modInfo "binds" (sortBinds . mg_binds) guts'
+            modInfo "binds" (bindsToList . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
 --            modInfo "imported" getImportedModules guts'
 --            modInfo "exports" mg_exports guts'
@@ -386,10 +386,10 @@ createClass nameMap varMap tcMap tc cls =
 -- Binds
 ----------------------------------------------------------------------------------------
 
-sortBinds :: CoreProgram -> CoreProgram
-sortBinds = sortWith bindName
-    where bindName (NonRec v _) = getVarNameStr v
-          bindName (Rec bs) = maybe (pprPanic "sortBinds: empty rec binds" (ppr bs)) (getVarNameStr . fst) (listToMaybe bs)
+bindsToList :: CoreProgram -> CoreProgram
+bindsToList bs = sortWith (\(NonRec b _) -> getVarNameStr b) (concatMap toList bs)
+    where toList (Rec bs) = uncurry NonRec <$> bs
+          toList b = [b]
 
 getBindVars :: CoreBind -> [Var]
 getBindVars (NonRec v _) = [v]
@@ -735,7 +735,7 @@ unifyTypes t1 t2 = maybe unifyWithOpenKinds Just (tcUnifyTy t1 t2)
           replaceOpenKinds (LitTy tl) = LitTy tl
 
 canUnifyTypes :: Type -> Type -> Bool
-canUnifyTypes t = isJust . unifyTypes t
+canUnifyTypes t1 t2 = isJust $ unifyTypes (snd $ splitForAllTys t1) (snd $ splitForAllTys t2)
 
 sameTypes :: Type -> Type -> Bool
 sameTypes t1 t2
