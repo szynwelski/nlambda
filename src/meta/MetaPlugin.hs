@@ -33,8 +33,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Meta
 
-import Debug.Trace (trace) --pprTrace
-
 plugin :: Plugin
 plugin = defaultPlugin {
   installCoreToDos = install
@@ -245,6 +243,10 @@ getVarNameStr = getNameStr . varName
 getModuleNameStr :: Var -> String
 getModuleNameStr = maybe "" (moduleNameString . moduleName) . nameModule_maybe . varName
 
+mkVarUnique :: Var -> CoreM Var
+mkVarUnique v = do uniq <- getUniqueM
+                   return $ setVarUnique v uniq
+
 ----------------------------------------------------------------------------------------
 -- Imports
 ----------------------------------------------------------------------------------------
@@ -448,9 +450,11 @@ checkBinds bs = fmap checkBind bs
 newBindType :: MetaModule -> TyConMap -> CoreBndr -> Type
 newBindType mod tcMap = changeType mod tcMap . varType
 
-changeBindType :: MetaModule -> TyConMap -> CoreBndr -> CoreM CoreBndr
-changeBindType mod tcMap x = do uniq <- getUniqueM
-                                return $ setVarUnique (setVarType x $ newBindType mod tcMap x) uniq
+changeBindType :: MetaModule -> TyConMap -> CoreBndr -> CoreBndr
+changeBindType mod tcMap x = setVarType x $ newBindType mod tcMap x
+
+changeBindTypeAndUniq :: MetaModule -> TyConMap -> CoreBndr -> CoreM CoreBndr
+changeBindTypeAndUniq mod tcMap x = mkVarUnique (changeBindType mod tcMap x)
 
 changeType :: MetaModule -> TyConMap -> Type -> Type
 changeType mod tcMap t = go t
@@ -568,7 +572,7 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                         return $ checkTypeConsistency f'' e'' (mkCoreApp f'' e'')
           newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
                                                     return $ Lam x e' -- FIXME new uniq for x (and then replace all occurrences)?
-          newExpr varMap (Lam x e) = do x' <- changeBindType mod tcMap x
+          newExpr varMap (Lam x e) = do x' <- changeBindTypeAndUniq mod tcMap x
                                         e' <- newExpr (insertVar x x' varMap) e
                                         return $ Lam x' e'
           newExpr varMap (Let b e) = do (b', varMap') <- changeLetBind b varMap
@@ -578,30 +582,34 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                               e'' <- valueExpr mod e' -- FIXME always? even for primitive types?
                                               m <- metaExpr mod e'
                                               as' <- mapM (changeAlternative varMap m) as
-                                              return $ Case e'' b t as'
+                                              let t' = changeType mod tcMap t
+                                              return $ Case e'' b t' as'
           newExpr varMap (Cast e c) = do e' <- newExpr varMap e
                                          return $ Cast e' (changeCoercion mod tcMap c)
           newExpr varMap (Tick t e) = do e' <- newExpr varMap e
                                          return $ Tick t e'
           newExpr varMap (Type t) = undefined -- type should be served in (App f (Type t)) case
           newExpr varMap (Coercion c) = return $ Coercion $ changeCoercion mod tcMap c
-          changeLetBind (NonRec b e) varMap = do b' <- changeBindType mod tcMap b
+          changeLetBind (NonRec b e) varMap = do b' <- changeBindTypeAndUniq mod tcMap b
                                                  let varMap' = insertVar b b' varMap
                                                  e' <- newExpr varMap' e
                                                  return (NonRec b' e', varMap')
           changeLetBind (Rec bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
                                              return (Rec bs', varMap')
           changeRecBinds ((b, e):bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
-                                                 b' <- changeBindType mod tcMap b
+                                                 b' <- changeBindTypeAndUniq mod tcMap b
                                                  let varMap'' = insertVar b b' varMap'
                                                  e' <- newExpr varMap'' e
                                                  return ((b',e'):bs', varMap'')
           changeRecBinds [] varMap = return ([], varMap)
-          changeAlternative varMap m (DataAlt con, xs, e) = do xs' <- mapM (changeBindType mod tcMap) xs
+          changeAlternative varMap m (DataAlt con, xs, e) = do xs' <- mapM mkVarUnique xs
+                                                               let xst = changeBindType mod tcMap <$> xs'
                                                                xs'' <- mapM (\x -> createExpr mod (Var x) m) xs'
-                                                               e' <- newExpr (unionVarMaps varMap (Map.fromList $ zip xs xs', [])) e
-                                                               let subst = extendSubstList emptySubst (zip xs' xs'')
-                                                               let e'' = substExpr (ppr subst) subst e' -- replace vars with expressions
+                                                               -- first replace vars by vars with proper type
+                                                               e' <- newExpr (unionVarMaps varMap (Map.fromList $ zip xs xst, [])) e
+                                                               let subst = extendSubstList emptySubst (zip xst xs'')
+                                                               -- now replace vars with expressions
+                                                               let e'' = substExpr (ppr subst) subst e'
                                                                return (DataAlt con, xs', e'')
           changeAlternative varMap m (alt, [], e) = do e' <- newExpr varMap e
                                                        return (alt, [], e')

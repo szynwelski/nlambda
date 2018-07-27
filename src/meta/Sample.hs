@@ -1,7 +1,5 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-
 {-# LANGUAGE DeriveAnyClass, DeriveGeneric #-}
-
 
 module Sample where
 
