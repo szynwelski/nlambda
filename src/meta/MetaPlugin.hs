@@ -93,8 +93,9 @@ pass env onlyShow guts =
 --            putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
 --            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
+            modInfo "test binds" (filter (isPrefixOf "test" . getNonRecName) . bindsToList . mg_binds) guts'
 --            modInfo "module" mg_module guts'
-            modInfo "binds" (bindsToList . mg_binds) guts'
+--            modInfo "binds" (bindsToList . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
 --            modInfo "imported" getImportedModules guts'
 --            modInfo "exports" mg_exports guts'
@@ -389,9 +390,12 @@ createClass nameMap varMap tcMap tc cls =
 ----------------------------------------------------------------------------------------
 
 bindsToList :: CoreProgram -> CoreProgram
-bindsToList bs = sortWith (\(NonRec b _) -> getVarNameStr b) (concatMap toList bs)
+bindsToList bs = sortWith getNonRecName (concatMap toList bs)
     where toList (Rec bs) = uncurry NonRec <$> bs
           toList b = [b]
+
+getNonRecName :: CoreBind -> String
+getNonRecName (NonRec b _) = getVarNameStr b
 
 getBindVars :: CoreBind -> [Var]
 getBindVars (NonRec v _) = [v]
@@ -435,7 +439,7 @@ checkBinds :: CoreProgram -> CoreProgram
 checkBinds bs = fmap checkBind bs
     where checkBind (NonRec b e) = uncurry NonRec $ check (b, e)
           checkBind (Rec bs) = Rec (check <$> bs)
-          check (b,e) | not (varType b `eqType` exprType e) = pprTrace "\n======================= INCONSISTENT TYPES ============================="
+          check (b,e) | not (varType b `sameTypes` exprType e) = pprTrace "\n======================= INCONSISTENT TYPES ============================="
             (vcat [text "var: " <+> showVar b,
                    text "var type:" <+> ppr (varType b),
                    text "expr:" <+> ppr e,
@@ -613,7 +617,7 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                                                return (DataAlt con, xs', e'')
           changeAlternative varMap m (alt, [], e) = do e' <- newExpr varMap e
                                                        return (alt, [], e')
-          checkTypeConsistency f e | not $ eqType (funArgTy $ exprType f) (exprType e)
+          checkTypeConsistency f e | not $ sameTypes (funArgTy $ exprType f) (exprType e)
                                    = pprTrace "\n======================= INCONSISTENT TYPES IN APPLICATION =============="
                                        (vcat [text "fun: " <+> ppr f,
                                               text "fun type: " <+> ppr (exprType f),
@@ -747,6 +751,7 @@ canUnifyTypes t1 t2 = isJust $ unifyTypes (snd $ splitForAllTys t1) (snd $ split
 
 sameTypes :: Type -> Type -> Bool
 sameTypes t1 t2
+    | eqType t1 t2 = True
     | Just s <- unifyTypes t1 t2 = all isTyVarTy $ eltsUFM $ getTvSubstEnv s
     | otherwise = False
 
@@ -837,7 +842,7 @@ getMetaLevelInstance mod (_, vs) t | Just tc <- tyConAppTyCon_maybe t = getInsta
     where getInstance iname
               | Just v <- getMetaVarMaybe mod iname = v
               | Just v <- listToMaybe $ filter ((== iname) . getVarNameStr) vs = Var v
-              | otherwise = pprPanic "getMetaLevelInstance" (text "given type" <+> ppr t <+> text "has no MetaLevel instance")
+              | otherwise = pprPanic "NLambda plungin requires MetaLevel instance for type:" (ppr t)
 
 mkPredVar :: (Class, [Type]) -> CoreM DictId
 mkPredVar (cls, tys) = do uniq <- getUniqueM
@@ -949,13 +954,13 @@ addDependencies mod varMap tcMap b var mt metaVar
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
          let metaE = addMetaLevelPred $ mkCoreApp (Var metaVar) (Type $ fromJust mt)
          let dictVars = (exprVarToVar $ filter (not . isTV) vars) ++ (filter (\x -> isLocalId x && not (isExportedId x) && isDictId x) $ varMapElems varMap)
-         addDictDeps metaE (Var b) dictVars
+         addDictDeps metaE (Var b) dictVars False
     | isDFunId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
          let tyVars = filter isTV vars
          let metaE = addMetaLevelPred $ mkCoreApps (Var metaVar) (exprVarToExpr tyVars)
          let dictVars = exprVarToVar $ filter (not . isTV) vars
-         metaE' <- addDictDeps metaE (Var var) dictVars
+         metaE' <- addDictDeps metaE (Var var) dictVars True
          let argVars = filter (isMetaPreludeDict mod . varType) dictVars
          return $ mkCoreLams (exprVarToVar tyVars ++ argVars) metaE'
     | otherwise = return $ Var metaVar
@@ -963,15 +968,16 @@ addDependencies mod varMap tcMap b var mt metaVar
           addMetaLevelPred metaE | Just t <- getMetaLevelPred mod $ exprType metaE
                                  = mkCoreApp metaE $ getMetaLevelInstance mod varMap $ getOnlyArgTypeFromDict t
           addMetaLevelPred metaE = metaE
-          addDictDeps metaE e vars | Just (t,_) <- splitFunTy_maybe $ exprType metaE, isPredTy t = addDictDep metaE t e vars
-          addDictDeps metaE e _ = return metaE
-          addDictDep metaE t e (v:vars) | isMetaPreludeDict mod t
-                                        = if eqType t $ varType v
-                                          then addDictDeps (mkCoreApp metaE $ Var v) e vars
-                                          else addDictDep metaE t e vars
-          addDictDep metaE t e vars = do dep <- noMetaDep e vars
-                                         let metaExp' = mkCoreApp metaE dep
-                                         addDictDeps metaExp' e vars
+          addDictDeps metaE e vars allowMetaDeps | Just (t,_) <- splitFunTy_maybe $ exprType metaE, isPredTy t
+                                                 = addDictDep metaE t e vars allowMetaDeps
+          addDictDeps metaE e _ allowMetaDeps = return metaE
+          addDictDep metaE t e (v:vars) allowMetaDeps | allowMetaDeps, isMetaPreludeDict mod t -- e.g. for case $fShow_nlambda[]
+                                                      = if sameTypes t $ varType v
+                                                        then addDictDeps (mkCoreApp metaE $ Var v) e vars allowMetaDeps
+                                                        else addDictDep metaE t e vars allowMetaDeps
+          addDictDep metaE t e vars allowMetaDeps = do dep <- noMetaDep e vars
+                                                       let metaExp' = mkCoreApp metaE dep
+                                                       addDictDeps metaExp' e vars allowMetaDeps
           noMetaDep e vars | Just (t,_) <- splitFunTy_maybe $ dropForAlls $ exprType e
                            = do (sc, vars') <- findSuperClass t vars
                                 e' <- applyExpr e sc

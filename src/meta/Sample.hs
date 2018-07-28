@@ -15,7 +15,7 @@ import GHC.Generics
 --data List a = List a deriving Show
 --
 --test :: [String]
---test = [show A, show B, show (List A), show [A], show (A,A), show (A,A,A), show (A,B)]
+--test = [show A, show B, show (List A), show ([]::[Atom]), show [A], show [A,A], show (A,A), show (A,A,A), show (A,B)]
 
 ----------------------------------------------------------------------------
 -- Test Functor
@@ -25,6 +25,8 @@ import GHC.Generics
 --
 --test :: [Atom Int]
 --test = [fmap id (A 1), fmap id B, 1 <$ (A 2), 1 <$ B]
+
+--test = (fmap (+1) [1,2,3], fmap (+1) (Just 0), fmap (+1) (1,2))
 
 ----------------------------------------------------------------------------
 -- Test Eq
