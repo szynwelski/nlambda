@@ -613,7 +613,7 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                                                return (DataAlt con, xs', e'')
           changeAlternative varMap m (alt, [], e) = do e' <- newExpr varMap e
                                                        return (alt, [], e')
-          checkTypeConsistency f e | not $ canUnifyTypes (funArgTy $ exprType f) (exprType e)
+          checkTypeConsistency f e | not $ eqType (funArgTy $ exprType f) (exprType e)
                                    = pprTrace "\n======================= INCONSISTENT TYPES IN APPLICATION =============="
                                        (vcat [text "fun: " <+> ppr f,
                                               text "fun type: " <+> ppr (exprType f),
@@ -965,7 +965,10 @@ addDependencies mod varMap tcMap b var mt metaVar
           addMetaLevelPred metaE = metaE
           addDictDeps metaE e vars | Just (t,_) <- splitFunTy_maybe $ exprType metaE, isPredTy t = addDictDep metaE t e vars
           addDictDeps metaE e _ = return metaE
-          addDictDep metaE t e (v:vars) | isMetaPreludeDict mod t = addDictDeps (mkCoreApp metaE $ Var v) e vars -- TODO check type is consistent?
+          addDictDep metaE t e (v:vars) | isMetaPreludeDict mod t
+                                        = if eqType t $ varType v
+                                          then addDictDeps (mkCoreApp metaE $ Var v) e vars
+                                          else addDictDep metaE t e vars
           addDictDep metaE t e vars = do dep <- noMetaDep e vars
                                          let metaExp' = mkCoreApp metaE dep
                                          addDictDeps metaExp' e vars
@@ -974,12 +977,14 @@ addDependencies mod varMap tcMap b var mt metaVar
                                 e' <- applyExpr e sc
                                 noMetaDep e' vars'
           noMetaDep e vars = return e
-          findSuperClass t (v:vars) | Just (cl, _) <- getClassPredTys_maybe $ varType v,
-                                      (_, preds, ids, _) <- classBigSig cl,
-                                      Just idx <- findIndex (sameTypes t) preds -- FIXME can unify??
-                                    = do e <- applyExpr (Var $ ids !! idx) (Var v)
-                                         return (e, vars)
-          findSuperClass t vars = pprPanic "findSuperClass - no super class with proper type found" (ppr t <+> ppr vars)
+          findSuperClass t (v:vars) | Just (cl, _) <- getClassPredTys_maybe $ varType v, (_, _, ids, _) <- classBigSig cl
+                                    = do es <- mapM (\i -> applyExpr (Var i) (Var v)) ids
+                                         let i = findIndex (sameTypes t . exprType) es
+                                         if isJust i
+                                         then return (es !! fromJust i, vars)
+                                         else findSuperClass t vars
+          findSuperClass t (v:vars) = findSuperClass t vars
+          findSuperClass t [] = pprPanic "findSuperClass - no super class with proper type found" (ppr t)
 
 ----------------------------------------------------------------------------------------
 -- Show
