@@ -664,8 +664,7 @@ data ConvertFun = NoMeta | IdOp | NoMetaArgOp | NoMetaResOp | LeftIdOp | RightId
 convertFunName :: ConvertFun -> String
 convertFunName fun = (toLower $ head $ show fun) : (tail $ show fun)
 
--- FIXME remove FunSuffix and OpSuffix -> should happen automatically
-data MetaEquivalentType = FunSuffix | OpSuffix | SameOp | ConvertFun ConvertFun deriving (Eq, Ord)
+data MetaEquivalentType = SameOp | ConvertFun ConvertFun deriving (Eq, Ord)
 
 data MetaEquivalent = NoEquivalent | MetaFun String | MetaConvertFun String | OrigFun deriving Show
 
@@ -677,15 +676,13 @@ createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> Me
 createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
-preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes]
+preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes, dataTuple]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
 
 metaEquivalent :: ModuleName -> MethodName -> MetaEquivalent
 metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod preludeEquivalents of
-                            Just FunSuffix -> MetaFun (name ++ name_suffix)
-                            Just OpSuffix -> MetaFun (name ++ op_suffix)
                             Just SameOp -> OrigFun
                             Just (ConvertFun fun) -> MetaConvertFun (convertFunName fun)
                             Nothing -> NoEquivalent
@@ -697,15 +694,13 @@ metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod prelude
 
 ghcBase :: MetaEquivalentMap
 ghcBase = createEquivalentsMap "GHC.Base"
-    [(SameOp, ["$", "$!", ".", "id", "const", "$fFunctor[]"]),
+    [(SameOp, ["$", "$!", ".", "id", "const"]),
      (ConvertFun NoMeta, ["Nothing"]),
      (ConvertFun IdOp, ["Just"]),
      (ConvertFun UnionOp, ["*>", "++", "<$", "$dm<$", "<*", "<*>", ">>"])]
 
 ghcClasses :: MetaEquivalentMap
-ghcClasses = createEquivalentsMap "GHC.Classes"
-    [(OpSuffix,  ["==", "/=", "<"]),
-     (FunSuffix, ["$dmmax", "$dmmin", "compare"])]
+ghcClasses = createEquivalentsMap "GHC.Classes" []
 
 ghcEnum :: MetaEquivalentMap
 ghcEnum = createEquivalentsMap "GHC.Enum" []
@@ -729,8 +724,7 @@ ghcReal = createEquivalentsMap "GHC.Real"
     [(ConvertFun UnionOp, ["^", "^^"])]
 
 ghcShow :: MetaEquivalentMap
-ghcShow = createEquivalentsMap "GHC.Show"
-    [(FunSuffix, ["show", "showList__", "showsPrec", "$dmshow"])]
+ghcShow = createEquivalentsMap "GHC.Show" []
 
 ghcTuple :: MetaEquivalentMap
 ghcTuple = createEquivalentsMap "GHC.Tuple"
@@ -741,6 +735,16 @@ ghcTypes :: MetaEquivalentMap
 ghcTypes = createEquivalentsMap "GHC.Types"
     [(ConvertFun NoMeta, ["[]"]),
      (ConvertFun UnionOp, [":"])]
+
+dataTuple :: MetaEquivalentMap
+dataTuple = createEquivalentsMap "Data.Tuple"
+    [(ConvertFun IdOp, ["fst", "snd"])]
+
+curry_nlambda :: (WithMeta (a, b) -> WithMeta c) -> WithMeta a -> WithMeta b -> WithMeta c
+curry_nlambda f x y = f $ unionOp (,) x y
+
+uncurry_nlambda :: (WithMeta a -> WithMeta b -> WithMeta c) -> WithMeta (a, b) -> WithMeta c
+uncurry_nlambda f p = f (idOp fst p) (idOp snd p)
 
 ------------------------------------------------------------------------------------------
 -- Conversion functions for meta types

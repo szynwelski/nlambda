@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-{-# LANGUAGE DeriveAnyClass, DeriveGeneric, DeriveFunctor #-}
+{-# LANGUAGE DeriveAnyClass, DeriveGeneric, DeriveFunctor, StandaloneDeriving #-}
 
 module Sample where
 
@@ -46,7 +46,13 @@ import GHC.Generics
 -- Test Ord
 ----------------------------------------------------------------------------
 
-data Atom = A | B deriving (Show, Eq, Ord)
+--data Atom = A | B deriving (Show, Eq, Ord)
+--
+--test :: [Ordering]
+--test = fmap (uncurry compare) [(A,A), (A,B), (B,A), (B,B)]
 
-test :: [Ordering]
-test = fmap (uncurry compare) [(A,A), (A,B), (B,A), (B,B)]
+--data Atom a = A a | B a | C deriving (Show, Eq)
+--deriving instance Ord a => Ord (Atom a)
+--
+--test :: [Atom Integer]
+--test = fmap (uncurry max) [(A 1, A 1), (A 1, A 2), (A 2, A 1), (A 2, B 1), (A 2, B 1), (A 10, C), (C, B 10), (C, C)]

@@ -760,7 +760,7 @@ applyExpr fun e =
     do (eTyVars, ty) <- splitTypeTyVars $ exprType e
        let (funTyVars, funTy) = splitForAllTys $ exprType fun
        let subst = fromMaybe
-                     (pprPanic "can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
+                     (pprPanic "applyExpr - can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
                      (unifyTypes (funArgTy funTy) ty)
        let funTyVarSubstExprs = fmap (Type . substTyVar subst) funTyVars
        return $ mkCoreLams (exprVarToVar eTyVars) -- FIXME case where length funTyVars > length eTyVars
@@ -975,9 +975,11 @@ addDependencies mod varMap tcMap b var mt metaVar
                                                       = if sameTypes t $ varType v
                                                         then addDictDeps (mkCoreApp metaE $ Var v) e vars allowMetaDeps
                                                         else addDictDep metaE t e vars allowMetaDeps
-          addDictDep metaE t e vars allowMetaDeps = do dep <- noMetaDep e vars
+          addDictDep metaE t e vars allowMetaDeps | not $ isMetaPreludeDict mod t
+                                                  = do dep <- noMetaDep e vars
                                                        let metaExp' = mkCoreApp metaE dep
                                                        addDictDeps metaExp' e vars allowMetaDeps
+          addDictDep metaE t e vars allowMetaDeps = return metaE
           noMetaDep e vars | Just (t,_) <- splitFunTy_maybe $ dropForAlls $ exprType e
                            = do (sc, vars') <- findSuperClass t vars
                                 e' <- applyExpr e sc
