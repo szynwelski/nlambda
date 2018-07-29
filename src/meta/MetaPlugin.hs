@@ -439,7 +439,7 @@ checkBinds :: CoreProgram -> CoreProgram
 checkBinds bs = fmap checkBind bs
     where checkBind (NonRec b e) = uncurry NonRec $ check (b, e)
           checkBind (Rec bs) = Rec (check <$> bs)
-          check (b,e) | not (varType b `sameTypes` exprType e) = pprTrace "\n======================= INCONSISTENT TYPES ============================="
+          check (b,e) | not (varType b `eqType` exprType e) = pprTrace "\n======================= INCONSISTENT TYPES ============================="
             (vcat [text "var: " <+> showVar b,
                    text "var type:" <+> ppr (varType b),
                    text "expr:" <+> ppr e,
@@ -541,7 +541,7 @@ noAtomsTypeVars tcs vs (LitTy _ ) = True
 noAtomsTypeCon :: [TyCon] -> TyCon -> Int -> Bool
 noAtomsTypeCon tcs tc _ | elem tc tcs = True
 noAtomsTypeCon _ tc _| isAtomsTypeName tc = False
-noAtomsTypeCon _ tc _| isClassTyCon tc = False
+noAtomsTypeCon _ tc _| isClassTyCon tc = False -- we do not know without checking if class has methods with atoms
 noAtomsTypeCon _ tc _| isPrimTyCon tc = True
 noAtomsTypeCon tcs tc n| isDataTyCon tc = and $ fmap (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc) $ concatMap dataConOrigArgTys $ tyConDataCons tc
 noAtomsTypeCon _ _ _ = True
@@ -550,7 +550,7 @@ isAtomsTypeName :: TyCon -> Bool
 isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"] -- FIXME check namespace
 
 ----------------------------------------------------------------------------------------
--- Expr
+-- Expression
 ----------------------------------------------------------------------------------------
 
 changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> CoreExpr -> CoreM CoreExpr
@@ -583,7 +583,9 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                         e' <- newExpr varMap' e
                                         return $ Let b' e'
           newExpr varMap (Case e b t as) = do e' <- newExpr varMap e
-                                              e'' <- valueExpr mod e' -- FIXME always? even for primitive types?
+                                              e'' <- if isWithMetaType mod $ exprType e'
+                                                     then valueExpr mod e'
+                                                     else return e'
                                               m <- metaExpr mod e'
                                               as' <- mapM (changeAlternative varMap m) as
                                               let t' = changeType mod tcMap t
@@ -617,7 +619,7 @@ changeExpr mod varMap tcMap b e = newExpr varMap e
                                                                return (DataAlt con, xs', e'')
           changeAlternative varMap m (alt, [], e) = do e' <- newExpr varMap e
                                                        return (alt, [], e')
-          checkTypeConsistency f e | not $ sameTypes (funArgTy $ exprType f) (exprType e)
+          checkTypeConsistency f e | not $ eqType (funArgTy $ exprType f) (exprType e)
                                    = pprTrace "\n======================= INCONSISTENT TYPES IN APPLICATION =============="
                                        (vcat [text "fun: " <+> ppr f,
                                               text "fun type: " <+> ppr (exprType f),
@@ -836,7 +838,6 @@ withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
 unionType :: MetaModule -> Type
 unionType = mkTyConTy . unionC
 
--- TODO search also for instance not in Meta module
 getMetaLevelInstance :: MetaModule -> VarMap -> Type -> CoreExpr
 getMetaLevelInstance mod (_, vs) t | Just tc <- tyConAppTyCon_maybe t = getInstance ("$fMetaLevel" ++ (occNameString $ getOccName tc))
     where getInstance iname
