@@ -93,9 +93,9 @@ pass env onlyShow guts =
 --            putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
 --            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
-            modInfo "test binds" (filter (isPrefixOf "test" . getNonRecName) . bindsToList . mg_binds) guts'
+--            modInfo "test binds" (filter (isPrefixOf "test" . getNonRecName) . bindsToList . mg_binds) guts'
 --            modInfo "module" mg_module guts'
---            modInfo "binds" (bindsToList . mg_binds) guts'
+            modInfo "binds" (bindsToList . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
 --            modInfo "imported" getImportedModules guts'
 --            modInfo "exports" mg_exports guts'
@@ -897,6 +897,10 @@ convertMetaType mod e t | isClassPred t,
 convertMetaType mod e t | length ets == length ts = applyExpr (convertMetaFun mod ets ts) e
     where ets = getFunTypeParts $ getMainType $ exprType e
           ts = getFunTypeParts $ getMainType t
+convertMetaType mod e t | isWithMetaType mod t, Just (_, ts) <- splitTyConApp_maybe (getMainType t), canUnifyTypes (exprType e) (head ts)
+                        = noMetaExpr mod e
+convertMetaType mod e t | isWithMetaType mod (exprType e), Just (_, ts) <- splitTyConApp_maybe (getMainType $ exprType e), canUnifyTypes t (head ts)
+                        = valueExpr mod e
 convertMetaType mod e t = return e
 
 convertMetaFun :: MetaModule -> [Type] -> [Type] -> CoreExpr

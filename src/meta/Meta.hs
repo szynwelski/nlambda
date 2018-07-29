@@ -697,7 +697,7 @@ ghcBase = createEquivalentsMap "GHC.Base"
     [(SameOp, ["$", "$!", ".", "id", "const"]),
      (ConvertFun NoMeta, ["Nothing"]),
      (ConvertFun IdOp, ["Just"]),
-     (ConvertFun UnionOp, ["*>", "++", "<$", "$dm<$", "<*", "<*>", ">>"])]
+     (ConvertFun UnionOp, ["++", "$dm<$", "$dm<*", "$dm*>"])]
 
 ghcClasses :: MetaEquivalentMap
 ghcClasses = createEquivalentsMap "GHC.Classes" []
@@ -707,7 +707,8 @@ ghcEnum = createEquivalentsMap "GHC.Enum" []
 
 ghcErr :: MetaEquivalentMap
 ghcErr = createEquivalentsMap "GHC.Err"
-    [(ConvertFun NoMetaArgOp, ["error"])]
+    [(SameOp, ["undefined"]),
+     (ConvertFun NoMetaArgOp, ["error"])]
 
 ghcFloat :: MetaEquivalentMap
 ghcFloat = createEquivalentsMap "GHC.Float" []
