@@ -61,17 +61,15 @@ import GHC.Generics
 -- Test Applicative
 ----------------------------------------------------------------------------
 
-data Atom a = A a | B deriving (Show, Generic1, MetaLevel, Functor)
-
-instance Applicative Atom where
-    pure = A
-    A f <*> a = fmap f a
-    B <*> _ = B
-
+--data Atom a = A a | B deriving (Show, Generic1, MetaLevel, Functor)
+--
+--instance Applicative Atom where
+--    pure = A
+--    A f <*> a = fmap f a
+--    B <*> _ = B
+--
 --test :: [Atom Int]
 --test = [pure 1, A succ <*> A 1, A succ <*> B, B <*> A 0, A 1 <* A 2, B *> B, A 0 <* B, A 0 *> A 2, B *> A 0]
-test :: Atom Int
-test = A succ <*> A 1
 
 --test :: [[Bool]]
 --test = [pure True, [] <*> [True], [not] <*> [True, False, True], [True, True] *> [False, False], [False] <* [True, False]]

@@ -212,17 +212,8 @@ unionVarMaps (m1,l1) (m2,l2) = (Map.union m1 m2, l1 ++ l2)
 newVar :: VarMap -> Var -> Var
 newVar (map,_) v = Map.findWithDefault (pprPanic "unknown variable: " (ppr v <+> ppr map)) v map
 
-newVarDefault :: VarMap -> Var -> Var
-newVarDefault map v = Map.findWithDefault v v $ fst map
-
 varMapMember :: Var -> VarMap -> Bool
 varMapMember v = Map.member v . fst
-
-varMapElems :: VarMap -> [Var]
-varMapElems = Map.elems . fst
-
-insertVar :: Var -> Var -> VarMap -> VarMap
-insertVar v v' (map, vs) = (Map.insert v v' map, vs)
 
 mkVarMap :: ModGuts -> MetaModule -> NameMap -> TyConMap -> VarMap
 mkVarMap guts mod nameMap tcMap = mkMapWithVars mod nameMap tcMap (getBindsVars guts ++ getClassesVars guts ++ getDataConsVars guts)
@@ -550,75 +541,86 @@ isAtomsTypeName :: TyCon -> Bool
 isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"] -- FIXME check namespace
 
 ----------------------------------------------------------------------------------------
--- Expression
+-- Expressions map
+----------------------------------------------------------------------------------------
+
+type ExprMap = Map Var CoreExpr
+
+mkExprMap :: VarMap -> ExprMap
+mkExprMap = Map.map Var . fst
+
+getExpr :: ExprMap -> Var -> CoreExpr
+getExpr map v = Map.findWithDefault (pprPanic "no expression for variable: " (ppr v <+> ppr map)) v map
+
+insertVarExpr :: Var -> Var -> ExprMap -> ExprMap
+insertVarExpr v v' = Map.insert v (Var v')
+
+----------------------------------------------------------------------------------------
+-- Expressions
 ----------------------------------------------------------------------------------------
 
 changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> CoreExpr -> CoreM CoreExpr
-changeExpr mod varMap tcMap b e = newExpr varMap e
-    where -- newExpr varMap e | pprTrace "newExpr" (ppr e) False = undefined
-          newExpr varMap e | noAtomsSubExpr e = return $ replaceVars varMap e
-          newExpr varMap (Var v) | varMapMember v varMap = return $ Var (newVar varMap v)
-          newExpr varMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod varMap tcMap b v Nothing
-          newExpr varMap (Var v) = pprPanic "unknown variable"
+changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
+    where newExpr :: ExprMap -> CoreExpr -> CoreM CoreExpr
+--          newExpr eMap e | pprTrace "newExpr" (ppr e) False = undefined
+          newExpr eMap e | noAtomsSubExpr e = return $ replaceVars eMap e
+          newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
+          newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod eMap varMap tcMap b v Nothing
+          newExpr eMap (Var v) = pprPanic "unknown variable"
             (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleNameStr v ++ " is not compiled with NLambda Plugin."))
-          newExpr varMap (Lit l) = noMetaExpr mod (Lit l)
-          newExpr varMap (App (Var v) (Type t)) | isMetaEquivalent mod v, isDataConWorkId v = getMetaEquivalent mod varMap tcMap b v $ Just t
-          newExpr varMap (App f (Type t)) = do f' <- newExpr varMap f
-                                               let (tyVars, t') = splitForAllTys $ exprType f'
-                                               let t'' = if isTyVarWrappedByWithMeta mod (head tyVars) t' then t else changeType mod tcMap t
-                                               return $ App f' $ Type t''
-          newExpr varMap (App f e) = do f' <- newExpr varMap f
-                                        f'' <- if isWithMetaType mod $ exprType f'
-                                               then valueExpr mod f'
-                                               else return f'
-                                        e' <- newExpr varMap e
-                                        e'' <- convertMetaType mod e' $ funArgTy $ exprType f''
-                                        return $ checkTypeConsistency f'' e'' (mkCoreApp f'' e'')
-          newExpr varMap (Lam x e) | isTKVar x = do e' <- newExpr varMap e
-                                                    return $ Lam x e' -- FIXME new uniq for x (and then replace all occurrences)?
-          newExpr varMap (Lam x e) = do x' <- changeBindTypeAndUniq mod tcMap x
-                                        e' <- newExpr (insertVar x x' varMap) e
-                                        return $ Lam x' e'
-          newExpr varMap (Let b e) = do (b', varMap') <- changeLetBind b varMap
-                                        e' <- newExpr varMap' e
-                                        return $ Let b' e'
-          newExpr varMap (Case e b t as) = do e' <- newExpr varMap e
-                                              e'' <- if isWithMetaType mod $ exprType e'
-                                                     then valueExpr mod e'
-                                                     else return e'
-                                              m <- metaExpr mod e'
-                                              as' <- mapM (changeAlternative varMap m) as
-                                              let t' = changeType mod tcMap t
-                                              return $ Case e'' b t' as'
-          newExpr varMap (Cast e c) = do e' <- newExpr varMap e
-                                         return $ Cast e' (changeCoercion mod tcMap c)
-          newExpr varMap (Tick t e) = do e' <- newExpr varMap e
-                                         return $ Tick t e'
-          newExpr varMap (Type t) = undefined -- type should be served in (App f (Type t)) case
-          newExpr varMap (Coercion c) = return $ Coercion $ changeCoercion mod tcMap c
-          changeLetBind (NonRec b e) varMap = do b' <- changeBindTypeAndUniq mod tcMap b
-                                                 let varMap' = insertVar b b' varMap
-                                                 e' <- newExpr varMap' e
-                                                 return (NonRec b' e', varMap')
-          changeLetBind (Rec bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
-                                             return (Rec bs', varMap')
-          changeRecBinds ((b, e):bs) varMap = do (bs', varMap') <- changeRecBinds bs varMap
-                                                 b' <- changeBindTypeAndUniq mod tcMap b
-                                                 let varMap'' = insertVar b b' varMap'
-                                                 e' <- newExpr varMap'' e
-                                                 return ((b',e'):bs', varMap'')
-          changeRecBinds [] varMap = return ([], varMap)
-          changeAlternative varMap m (DataAlt con, xs, e) = do xs' <- mapM mkVarUnique xs
-                                                               let xst = changeBindType mod tcMap <$> xs'
-                                                               xs'' <- mapM (\x -> createExpr mod (Var x) m) xs'
-                                                               -- first replace vars by vars with proper type
-                                                               e' <- newExpr (unionVarMaps varMap (Map.fromList $ zip xs xst, [])) e
-                                                               let subst = extendSubstList emptySubst (zip xst xs'')
-                                                               -- now replace vars with expressions
-                                                               let e'' = substExpr (ppr subst) subst e'
-                                                               return (DataAlt con, xs', e'')
-          changeAlternative varMap m (alt, [], e) = do e' <- newExpr varMap e
-                                                       return (alt, [], e')
+          newExpr eMap (Lit l) = noMetaExpr mod (Lit l)
+          newExpr eMap (App (Var v) (Type t)) | isMetaEquivalent mod v, isDataConWorkId v = getMetaEquivalent mod eMap varMap tcMap b v $ Just t
+          newExpr eMap (App f (Type t)) = do f' <- newExpr eMap f
+                                             let (tyVars, t') = splitForAllTys $ exprType f'
+                                             let t'' = if isTyVarWrappedByWithMeta mod (head tyVars) t' then t else changeType mod tcMap t
+                                             return $ App f' $ Type t''
+          newExpr eMap (App f e) = do f' <- newExpr eMap f
+                                      f'' <- if isWithMetaType mod $ exprType f'
+                                             then valueExpr mod f'
+                                             else return f'
+                                      e' <- newExpr eMap e
+                                      e'' <- convertMetaType mod e' $ funArgTy $ exprType f''
+                                      return $ checkTypeConsistency f'' e'' (mkCoreApp f'' e'')
+          newExpr eMap (Lam x e) | isTKVar x = do e' <- newExpr eMap e
+                                                  return $ Lam x e' -- FIXME new uniq for x (and then replace all occurrences)?
+          newExpr eMap (Lam x e) = do x' <- changeBindTypeAndUniq mod tcMap x
+                                      e' <- newExpr (insertVarExpr x x' eMap) e
+                                      return $ Lam x' e'
+          newExpr eMap (Let b e) = do (b', eMap) <- changeLetBind b eMap
+                                      e' <- newExpr eMap e
+                                      return $ Let b' e'
+          newExpr eMap (Case e b t as) = do e' <- newExpr eMap e
+                                            e'' <- if isWithMetaType mod $ exprType e'
+                                                   then valueExpr mod e'
+                                                   else return e'
+                                            m <- metaExpr mod e'
+                                            as' <- mapM (changeAlternative eMap m) as
+                                            let t' = changeType mod tcMap t
+                                            return $ Case e'' b t' as'
+          newExpr eMap (Cast e c) = do e' <- newExpr eMap e
+                                       return $ Cast e' (changeCoercion mod tcMap c)
+          newExpr eMap (Tick t e) = do e' <- newExpr eMap e
+                                       return $ Tick t e'
+          newExpr eMap (Type t) = undefined -- type should be served in (App f (Type t)) case
+          newExpr eMap (Coercion c) = return $ Coercion $ changeCoercion mod tcMap c
+          changeLetBind (NonRec b e) eMap = do b' <- changeBindTypeAndUniq mod tcMap b
+                                               let eMap' = insertVarExpr b b' eMap
+                                               e' <- newExpr eMap' e
+                                               return (NonRec b' e', eMap')
+          changeLetBind (Rec bs) eMap = do (bs', eMap') <- changeRecBinds bs eMap
+                                           return (Rec bs', eMap')
+          changeRecBinds ((b, e):bs) eMap = do (bs', eMap') <- changeRecBinds bs eMap
+                                               b' <- changeBindTypeAndUniq mod tcMap b
+                                               let eMap'' = insertVarExpr b b' eMap'
+                                               e' <- newExpr eMap'' e
+                                               return ((b',e'):bs', eMap'')
+          changeRecBinds [] eMap = return ([], eMap)
+          changeAlternative eMap m (DataAlt con, xs, e) = do xs' <- mapM mkVarUnique xs
+                                                             es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
+                                                             e' <- newExpr (Map.union eMap $ Map.fromList $ zip xs es) e
+                                                             return (DataAlt con, xs', e')
+          changeAlternative eMap m (alt, [], e) = do e' <- newExpr eMap e
+                                                     return (alt, [], e')
           checkTypeConsistency f e | not $ eqType (funArgTy $ exprType f) (exprType e)
                                    = pprTrace "\n======================= INCONSISTENT TYPES IN APPLICATION =============="
                                        (vcat [text "fun: " <+> ppr f,
@@ -634,19 +636,20 @@ noAtomsSubExpr :: CoreExpr -> Bool
 noAtomsSubExpr e = (noAtomsType $ exprType e) && noAtomFreeVars
     where noAtomFreeVars = isEmptyUniqSet $ filterUniqSet (not . noAtomsType . varType) $ exprFreeIds e
 
-replaceVars :: VarMap -> CoreExpr -> CoreExpr
-replaceVars varMap (Var x) = Var (newVarDefault varMap x)
-replaceVars varMap (Lit l) = Lit l
-replaceVars varMap (App f e) = App (replaceVars varMap f) (replaceVars varMap e)
-replaceVars varMap (Lam x e) = Lam (newVarDefault varMap x) (replaceVars varMap e)
-replaceVars varMap (Let b e) = Let (replaceVarsInBind b) (replaceVars varMap e)
-    where replaceVarsInBind (NonRec x e) = NonRec (newVarDefault varMap x) (replaceVars varMap e)
-          replaceVarsInBind (Rec bs) = Rec $ fmap (\(x, e) -> (newVarDefault varMap x, replaceVars varMap e)) bs
-replaceVars varMap (Case e x t as) = Case (replaceVars varMap e) (newVarDefault varMap x) t (replaceVarsInAlt <$> as)
-    where replaceVarsInAlt (con, bs, e) = (con, fmap (newVarDefault varMap) bs, replaceVars varMap e)
-replaceVars varMap (Cast e c) = Cast (replaceVars varMap e) c
-replaceVars varMap (Tick t e) = Tick t (replaceVars varMap e)
-replaceVars varMap e = e
+replaceVars :: ExprMap -> CoreExpr -> CoreExpr
+replaceVars eMap (Var x) | Just e <- Map.lookup x eMap
+                         = if eqType (varType x) (exprType e) then e else pprPanic "replaceVars - inconsistent types: " (ppr x <+> ppr e)
+replaceVars eMap (Lit l) = Lit l
+replaceVars eMap (App f e) = App (replaceVars eMap f) (replaceVars eMap e)
+replaceVars eMap (Lam x e) = Lam x (replaceVars eMap e)
+replaceVars eMap (Let b e) = Let (replaceVarsInBind b) (replaceVars eMap e)
+    where replaceVarsInBind (NonRec x e) = NonRec x (replaceVars eMap e)
+          replaceVarsInBind (Rec bs) = Rec $ fmap (\(x, e) -> (x, replaceVars eMap e)) bs
+replaceVars eMap (Case e x t as) = Case (replaceVars eMap e) x t (replaceVarsInAlt <$> as)
+    where replaceVarsInAlt (con, bs, e) = (con, bs, replaceVars eMap e)
+replaceVars eMap (Cast e c) = Cast (replaceVars eMap e) c
+replaceVars eMap (Tick t e) = Tick t (replaceVars eMap e)
+replaceVars eMap e = e
 
 changeCoercion :: MetaModule -> TyConMap -> Coercion -> Coercion
 changeCoercion mod tcMap c = change c
@@ -942,23 +945,25 @@ isMetaEquivalent mod v = case metaEquivalent (getModuleNameStr v) (getVarNameStr
                            NoEquivalent -> isJust $ getDefinedMetaEquivalentVar mod v
                            _            -> True
 
-getMetaEquivalent :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> CoreM CoreExpr
-getMetaEquivalent mod varMap tcMap b v mt = case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
-                                    OrigFun -> return $ appType $ Var v
-                                    MetaFun name -> return $ appType $ getMetaVar mod name
-                                    MetaConvertFun name -> liftM appType $ applyExpr (getMetaVar mod name) (Var v)
-                                    NoEquivalent -> addDependencies mod varMap tcMap b v mt $ fromMaybe
-                                        (pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleNameStr v)))
-                                        (getDefinedMetaEquivalentVar mod v)
+getMetaEquivalent :: MetaModule -> ExprMap -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> CoreM CoreExpr
+getMetaEquivalent mod eMap varMap tcMap b v mt =
+    case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
+      OrigFun -> return $ appType $ Var v
+      MetaFun name -> return $ appType $ getMetaVar mod name
+      MetaConvertFun name -> liftM appType $ applyExpr (getMetaVar mod name) (Var v)
+      NoEquivalent -> addDependencies mod eMap varMap tcMap b v mt $ fromMaybe
+        (pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleNameStr v)))
+        (getDefinedMetaEquivalentVar mod v)
     where appType :: CoreExpr -> CoreExpr
           appType e = maybe e (mkCoreApp e . Type) mt
 
-addDependencies :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> Var -> CoreM CoreExpr
-addDependencies mod varMap tcMap b var mt metaVar
+addDependencies :: MetaModule -> ExprMap -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> Var -> CoreM CoreExpr
+addDependencies mod eMap varMap tcMap b var mt metaVar | pprTrace "addDependencies" (ppr var <+> ppr metaVar) False = undefined
+addDependencies mod eMap varMap tcMap b var mt metaVar
     | isDataConWorkId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
          let metaE = addMetaLevelPred $ mkCoreApp (Var metaVar) (Type $ fromJust mt)
-         let dictVars = (exprVarToVar $ filter (not . isTV) vars) ++ (filter (\x -> isLocalId x && not (isExportedId x) && isDictId x) $ varMapElems varMap)
+         let dictVars = (exprVarToVar $ filter (not . isTV) vars) ++ (catMaybes $ localDictVar <$> Map.elems eMap)
          addDictDeps metaE (Var b) dictVars False
     | isDFunId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
@@ -970,6 +975,8 @@ addDependencies mod varMap tcMap b var mt metaVar
          return $ mkCoreLams (exprVarToVar tyVars ++ argVars) metaE'
     | otherwise = return $ Var metaVar
     where isFun = isFunTy $ dropForAlls $ varType metaVar
+          localDictVar (Var v) | isLocalId v && not (isExportedId v) && isDictId v = Just v
+          localDictVar _ = Nothing
           addMetaLevelPred metaE | Just t <- getMetaLevelPred mod $ exprType metaE
                                  = mkCoreApp metaE $ getMetaLevelInstance mod varMap $ getOnlyArgTypeFromDict t
           addMetaLevelPred metaE = metaE

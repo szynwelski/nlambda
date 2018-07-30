@@ -676,7 +676,8 @@ createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> Me
 createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
-preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes, dataTuple]
+preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes,
+                                 dataTuple, controlExceptionBase]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
@@ -746,6 +747,9 @@ curry_nlambda f x y = f $ unionOp (,) x y
 
 uncurry_nlambda :: (WithMeta a -> WithMeta b -> WithMeta c) -> WithMeta (a, b) -> WithMeta c
 uncurry_nlambda f p = f (idOp fst p) (idOp snd p)
+
+controlExceptionBase = createEquivalentsMap "Control.Exception.Base"
+    [(SameOp, ["patError"])]
 
 ------------------------------------------------------------------------------------------
 -- Conversion functions for meta types
