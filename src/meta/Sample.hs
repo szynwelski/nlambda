@@ -73,3 +73,17 @@ import GHC.Generics
 
 --test :: [[Bool]]
 --test = [pure True, [] <*> [True], [not] <*> [True, False, True], [True, True] *> [False, False], [False] <* [True, False]]
+
+----------------------------------------------------------------------------
+-- Test Bounded
+----------------------------------------------------------------------------
+
+--data Atom = A | B | C | D deriving (Show, Bounded)
+--
+--test :: [Atom]
+--test = [minBound, maxBound]
+
+--data Atom a = A a deriving (Show, Bounded)
+--
+--test :: [Atom Word]
+--test = [minBound, maxBound]
