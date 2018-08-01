@@ -4,7 +4,7 @@ module Meta where
 
 import Data.Char (toLower)
 import Data.Foldable (fold, foldl', foldr', toList)
-import Data.List (isPrefixOf)
+import Data.List (isPrefixOf, isSuffixOf)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Map (Map)
@@ -683,6 +683,7 @@ preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
 
 metaEquivalent :: ModuleName -> MethodName -> MetaEquivalent
+metaEquivalent mod name | isSuffixOf "#" name = OrigFun
 metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod preludeEquivalents of
                             Just SameOp -> OrigFun
                             Just (ConvertFun fun) -> MetaConvertFun (convertFunName fun)
@@ -699,6 +700,9 @@ ghcBase = createEquivalentsMap "GHC.Base"
      (ConvertFun NoMeta, ["Nothing"]),
      (ConvertFun IdOp, ["Just"]),
      (ConvertFun UnionOp, ["++", "$dm<$", "$dm<*", "$dm*>"])]
+
+map_nlambda :: (WithMeta a -> WithMeta b) -> WithMeta [a] -> WithMeta [b]
+map_nlambda = fmap_nlambda
 
 ghcClasses :: MetaEquivalentMap
 ghcClasses = createEquivalentsMap "GHC.Classes" []

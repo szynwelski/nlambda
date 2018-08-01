@@ -86,8 +86,12 @@ pass env onlyShow guts =
             guts' <- if onlyShow
                      then return guts
                      else do binds <- newBinds mod varMap tcMap (getDataCons guts) (mg_binds guts)
-                             let exps = newExports (mg_exports guts) nameMap
-                             return $ guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap, mg_binds = mg_binds guts ++ binds, mg_exports = mg_exports guts ++ exps}
+                             return $ if checkCoreProgram binds
+                                      then let exps = newExports (mg_exports guts) nameMap
+                                           in guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap,
+                                                    mg_binds = mg_binds guts ++ binds,
+                                                    mg_exports = mg_exports guts ++ exps}
+                                      else guts
 
             -- show info
 --            putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
@@ -401,7 +405,7 @@ getBindsNames = fmap varName . getBindsVars
 newBinds :: MetaModule -> VarMap -> TyConMap -> [DataCon] -> CoreProgram -> CoreM CoreProgram
 newBinds mod varMap tcMap dcs bs = do bs' <- mapM (changeBind mod varMap tcMap) $ filter isInVarMap bs
                                       bs'' <- mapM (dataBind mod varMap) dcs
-                                      return $ checkBinds $ bs' ++ bs''
+                                      return $ bs' ++ bs''
     where isInVarMap (NonRec b e) = varMapMember b varMap
           isInVarMap (Rec bs) = all (`varMapMember` varMap) $ fst <$> bs
 
@@ -424,19 +428,6 @@ dataBind mod varMap dc = do expr <- dataConExpr mod dc
 
 nonRecDataBind :: VarMap -> DataCon -> CoreExpr -> CoreBind
 nonRecDataBind varMap dc = NonRec (newVar varMap $ dataConWrapId dc)
-
--- check var type is equal to expression type in every bind
-checkBinds :: CoreProgram -> CoreProgram
-checkBinds bs = fmap checkBind bs
-    where checkBind (NonRec b e) = uncurry NonRec $ check (b, e)
-          checkBind (Rec bs) = Rec (check <$> bs)
-          check (b,e) | not (varType b `eqType` exprType e) = pprTrace "\n======================= INCONSISTENT TYPES ============================="
-            (vcat [text "var: " <+> showVar b,
-                   text "var type:" <+> ppr (varType b),
-                   text "expr:" <+> ppr e,
-                   text "expr type:" <+> ppr (exprType e),
-                   text "\n=======================================================================|"]) (b, e)
-          check (b,e) = (b,e)
 
 ----------------------------------------------------------------------------------------
 -- Type
@@ -580,7 +571,7 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
                                              else return f'
                                       e' <- newExpr eMap e
                                       e'' <- convertMetaType mod e' $ funArgTy $ exprType f''
-                                      return $ checkTypeConsistency f'' e'' (mkCoreApp f'' e'')
+                                      return $ mkCoreApp f'' e''
           newExpr eMap (Lam x e) | isTKVar x = do e' <- newExpr eMap e
                                                   return $ Lam x e' -- FIXME new uniq for x (and then replace all occurrences)?
           newExpr eMap (Lam x e) = do x' <- changeBindTypeAndUniq mod tcMap x
@@ -621,15 +612,6 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
                                                              return (DataAlt con, xs', e')
           changeAlternative eMap m (alt, [], e) = do e' <- newExpr eMap e
                                                      return (alt, [], e')
-          checkTypeConsistency f e | not $ eqType (funArgTy $ exprType f) (exprType e)
-                                   = pprTrace "\n======================= INCONSISTENT TYPES IN APPLICATION =============="
-                                       (vcat [text "fun: " <+> ppr f,
-                                              text "fun type: " <+> ppr (exprType f),
-                                              text "fun arg type: " <+> ppr (funArgTy $ exprType f),
-                                              text "arg: " <+> ppr e,
-                                              text "arg type: " <+> ppr (exprType e),
-                                              text "\n=======================================================================|"]) id
-          checkTypeConsistency f e = id
 
 -- the type of expression is not open for atoms and there are no free variables open for atoms
 noAtomsSubExpr :: CoreExpr -> Bool
@@ -706,6 +688,64 @@ dataConExpr mod dc = do xs <- mkArgs $ dataConSourceArity dc
                                      return (r : rs)
           mkLam [] e = e
           mkLam (x:xs) e = Lam x $ mkLam xs e
+
+----------------------------------------------------------------------------------------
+-- Core program validation
+----------------------------------------------------------------------------------------
+
+checkCoreProgram :: CoreProgram -> Bool
+checkCoreProgram = and . fmap checkBinds
+    where checkBinds (NonRec b e) = checkBind (b,e)
+          checkBinds (Rec bs) = and $ checkBind <$> bs
+          checkBind (b,e) | not (varType b `eqType` exprType e)
+                          = pprPanic "\n================= INCONSISTENT TYPES IN BIND ==========================="
+                              (vcat [text "var: " <+> showVar b,
+                                     text "var type:" <+> ppr (varType b),
+                                     text "expr:" <+> ppr e,
+                                     text "expr type:" <+> ppr (exprType e),
+                                     text "\n=======================================================================|"])
+          checkBind (b,e) = checkExpr e
+          checkExpr (Var v) = True
+          checkExpr (Lit l) = True
+          checkExpr (App f x) | pprTrace "checkExpr" (ppr f <+> text "::" <+> ppr (exprType f)) False = undefined
+          checkExpr (App f x) | pprTrace "checkExpr" (ppr x <+> text "::" <+> ppr (exprType x)) False = undefined
+          checkExpr (App f (Type t)) | not $ isForAllTy $ exprType f
+                              = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
+                                  (vcat [text "fun expr: " <+> ppr f,
+                                         text "fun type: " <+> ppr (exprType f),
+                                         text "arg: " <+> ppr t,
+                                         text "\n=======================================================================|"])
+          checkExpr (App f (Type t)) = checkExpr f
+          checkExpr (App f x) | not $ isFunTy $ exprType f
+                              = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
+                                  (vcat [text "fun expr: " <+> ppr f,
+                                         text "fun type: " <+> ppr (exprType f),
+                                         text "arg: " <+> ppr x,
+                                         text "arg type: " <+> ppr (exprType x),
+                                         text "\n=======================================================================|"])
+          checkExpr (App f x) | not $ eqType (funArgTy $ exprType f) (exprType x)
+                              = pprPanic "\n================= INCONSISTENT TYPES IN APPLICATION ===================="
+                                  (vcat [text "fun: " <+> ppr f,
+                                         text "fun type: " <+> ppr (exprType f),
+                                         text "fun arg type: " <+> ppr (funArgTy $ exprType f),
+                                         text "arg: " <+> ppr x,
+                                         text "arg type: " <+> ppr (exprType x),
+                                         text "\n=======================================================================|"])
+          checkExpr (App f x) = checkExpr f && checkExpr x
+          checkExpr (Lam x e) = checkExpr e
+          checkExpr (Let b e) = checkBinds b && checkExpr e
+          checkExpr (Case e b t as) = checkBind (b,e) && and (checkAlternative t <$> as)
+          checkExpr (Cast e c) = checkExpr e
+          checkExpr (Tick t e) = checkExpr e
+          checkExpr (Type t) = undefined -- type should be handled in (App f (Type t)) case
+          checkExpr (Coercion c) = True
+          checkAlternative t (ac, xs, e) | not $ eqType t $ exprType e
+                                         = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
+                                             (vcat [text "type in case: " <+> ppr t,
+                                                    text "case expression: " <+> ppr e,
+                                                    text "case expression type: " <+> ppr (exprType e),
+                                                    text "\n=======================================================================|"])
+          checkAlternative t (ac, xs, e) = checkExpr e
 
 ----------------------------------------------------------------------------------------
 -- Apply expression
