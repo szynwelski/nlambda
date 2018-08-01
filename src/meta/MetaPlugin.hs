@@ -510,26 +510,25 @@ isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPri
 
 noAtomsType :: Type -> Bool
 noAtomsType t = noAtomsTypeVars [] [] t
-
-noAtomsTypeVars :: [TyCon] -> [TyVar] -> Type -> Bool
-noAtomsTypeVars tcs vs t | Just t' <- coreView t = noAtomsTypeVars tcs vs t'
-noAtomsTypeVars tcs vs (TyVarTy v) = elem v vs
-noAtomsTypeVars tcs vs (AppTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
-noAtomsTypeVars tcs vs (TyConApp tc ts) = noAtomsTypeCon tcs tc (length ts) && (and $ fmap (noAtomsTypeVars tcs vs) ts)
-noAtomsTypeVars tcs vs (FunTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
-noAtomsTypeVars tcs vs (ForAllTy _ _) = False
-noAtomsTypeVars tcs vs (LitTy _ ) = True
-
-noAtomsTypeCon :: [TyCon] -> TyCon -> Int -> Bool
-noAtomsTypeCon tcs tc _ | elem tc tcs = True
-noAtomsTypeCon _ tc _| isAtomsTypeName tc = False
-noAtomsTypeCon _ tc _| isClassTyCon tc = False -- we do not know without checking if class has methods with atoms
-noAtomsTypeCon _ tc _| isPrimTyCon tc = True
-noAtomsTypeCon tcs tc n| isDataTyCon tc = and $ fmap (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc) $ concatMap dataConOrigArgTys $ tyConDataCons tc
-noAtomsTypeCon _ _ _ = True
-
-isAtomsTypeName :: TyCon -> Bool
-isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"] -- FIXME check namespace
+    where noAtomsTypeVars :: [TyCon] -> [TyVar] -> Type -> Bool
+          noAtomsTypeVars tcs vs t | Just t' <- coreView t = noAtomsTypeVars tcs vs t'
+          noAtomsTypeVars tcs vs (TyVarTy v) = elem v vs
+          noAtomsTypeVars tcs vs (AppTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
+          noAtomsTypeVars tcs vs (TyConApp tc ts) = noAtomsTypeCon tcs tc (length ts) && (and $ fmap (noAtomsTypeVars tcs vs) ts)
+          noAtomsTypeVars tcs vs (FunTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
+          noAtomsTypeVars tcs vs (ForAllTy v _) = elem v vs
+          noAtomsTypeVars tcs vs (LitTy _ ) = True
+          -- tcs - for recursive definitions, n - number of applied args to tc
+          noAtomsTypeCon :: [TyCon] -> TyCon -> Int -> Bool
+          noAtomsTypeCon tcs tc _ | elem tc tcs = True
+          noAtomsTypeCon _ tc _ | isAtomsTypeName tc = False
+          noAtomsTypeCon _ tc _ | isClassTyCon tc = False -- classes should be replaced by meta equivalent
+          noAtomsTypeCon _ tc _ | isPrimTyCon tc = True
+          noAtomsTypeCon tcs tc n | isDataTyCon tc = and $ (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc)
+                                                         <$> (concatMap dataConOrigArgTys $ tyConDataCons tc)
+          noAtomsTypeCon _ _ _ = True
+          isAtomsTypeName :: TyCon -> Bool
+          isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"] -- FIXME check namespace
 
 ----------------------------------------------------------------------------------------
 -- Expressions map
@@ -721,7 +720,7 @@ checkCoreProgram = and . fmap checkBinds
                                          text "arg: " <+> ppr x,
                                          text "arg type: " <+> ppr (exprType x),
                                          text "\n=======================================================================|"])
-          checkExpr (App f x) | not $ eqType (funArgTy $ exprType f) (exprType x)
+          checkExpr (App f x) | not $ sameTypes (funArgTy $ exprType f) (exprType x)
                               = pprPanic "\n================= INCONSISTENT TYPES IN APPLICATION ===================="
                                   (vcat [text "fun: " <+> ppr f,
                                          text "fun type: " <+> ppr (exprType f),

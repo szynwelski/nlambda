@@ -62,7 +62,6 @@ import GHC.Generics
 ----------------------------------------------------------------------------
 
 --data Atom a = A a | B deriving (Show, Generic1, MetaLevel, Functor)
---
 --instance Applicative Atom where
 --    pure = A
 --    A f <*> a = fmap f a
@@ -98,7 +97,7 @@ import GHC.Generics
 --test = [[succ B], [pred D], [toEnum 1], [toEnum $ fromEnum E], enumFrom C, enumFromThen A C, enumFromTo C E, enumFromThenTo A C D]
 
 ----------------------------------------------------------------------------
--- Test Num
+-- Test Num & Floating & Fractional
 ----------------------------------------------------------------------------
 
 --data Atom = A deriving Show
@@ -110,6 +109,31 @@ import GHC.Generics
 --    abs A = A
 --    signum A = A
 --    fromInteger _ = A
+--instance Fractional Atom where
+--    A / A = A
+--    recip A = A
+--    fromRational _ = A
+--instance Floating Atom where
+--    pi = A
+--    exp A = A
+--    log A = A
+--    sqrt A = A
+--    A ** A = A
+--    logBase A A = A
+--    sin A = A
+--    cos A = A
+--    tan A = A
+--    asin A = A
+--    acos A = A
+--    atan A = A
+--    sinh A = A
+--    cosh A = A
+--    tanh A = A
+--    asinh A = A
+--    acosh A = A
+--    atanh A = A
 --
 --test :: [Atom]
 --test = [A + A, A - A, A * A, negate A, abs A, signum A, fromInteger 0]
+--test = [A / A, recip A, fromRational 1]
+--test = [pi, exp A, log A, sqrt A, A ** A, logBase A A, sin A, cos A, tan A, asin A, acos A, atan A, sinh A, cosh A, tanh A, asinh A, acosh A, atanh A]

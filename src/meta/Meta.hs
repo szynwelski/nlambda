@@ -9,6 +9,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Map (Map)
 import Data.Set (Set)
+import Data.Ratio (Ratio)
 import GHC.Generics
 import GHC.Read (readPrec, readListPrec)
 import GHC.Show (showList__)
@@ -492,6 +493,7 @@ instance Num_nlambda Integer -- Defined in ‘GHC.Num’
 instance Num_nlambda Int -- Defined in ‘GHC.Num’
 instance Num_nlambda Float -- Defined in ‘GHC.Float’
 instance Num_nlambda Double -- Defined in ‘GHC.Float’
+instance Integral_nlambda a => Num_nlambda (Ratio a)
 
 class (Ord a, Eq_nlambda a) => Ord_nlambda a where
   compare_nlambda :: WithMeta a -> WithMeta a -> Ordering
