@@ -701,7 +701,7 @@ ghcBase = createEquivalentsMap "GHC.Base"
     [(SameOp, ["$", "$!", ".", "id", "const"]),
      (ConvertFun NoMeta, ["Nothing"]),
      (ConvertFun IdOp, ["Just"]),
-     (ConvertFun UnionOp, ["++", "$dm<$", "$dm<*", "$dm*>"])]
+     (ConvertFun UnionOp, ["++", "$dm<$", "$dm<*", "$dm*>", "$dm>>"])]
 
 map_nlambda :: (WithMeta a -> WithMeta b) -> WithMeta [a] -> WithMeta [b]
 map_nlambda = fmap_nlambda

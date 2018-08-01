@@ -58,7 +58,7 @@ import GHC.Generics
 --test = fmap (uncurry max) [(A 1, A 1), (A 1, A 2), (A 2, A 1), (A 2, B 1), (A 2, B 1), (A 10, C), (C, B 10), (C, C)]
 
 ----------------------------------------------------------------------------
--- Test Applicative
+-- Test Applicative && Monad
 ----------------------------------------------------------------------------
 
 --data Atom a = A a | B deriving (Show, Generic1, MetaLevel, Functor)
@@ -66,12 +66,17 @@ import GHC.Generics
 --    pure = A
 --    A f <*> a = fmap f a
 --    B <*> _ = B
+--instance Monad Atom where
+--    (A x) >>= k = k x
+--    B >>= _ = B
 --
 --test :: [Atom Int]
 --test = [pure 1, A succ <*> A 1, A succ <*> B, B <*> A 0, A 1 <* A 2, B *> B, A 0 <* B, A 0 *> A 2, B *> A 0]
+--test = [A 0 >>= A, B >>= A, A 1 >> A 0, A 1 >> B, B >> A 0, B >> B, return 0]
 
 --test :: [[Bool]]
 --test = [pure True, [] <*> [True], [not] <*> [True, False, True], [True, True] *> [False, False], [False] <* [True, False]]
+--test = [[] >>= (:[]), [True,False] >>= (:[]), [True, False] >> [], [] >> [True, False], [True, True] >> [False, False], return True, return False]
 
 ----------------------------------------------------------------------------
 -- Test Bounded
@@ -97,7 +102,7 @@ import GHC.Generics
 --test = [[succ B], [pred D], [toEnum 1], [toEnum $ fromEnum E], enumFrom C, enumFromThen A C, enumFromTo C E, enumFromThenTo A C D]
 
 ----------------------------------------------------------------------------
--- Test Num & Floating & Fractional
+-- Test Num & Floating & Fractional & Real & Integral
 ----------------------------------------------------------------------------
 
 --data Atom = A deriving (Show, Eq, Ord)--, Enum) -- FIXME
