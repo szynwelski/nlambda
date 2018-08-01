@@ -73,10 +73,12 @@ import GHC.Generics
 --test :: [Atom Int]
 --test = [pure 1, A succ <*> A 1, A succ <*> B, B <*> A 0, A 1 <* A 2, B *> B, A 0 <* B, A 0 *> A 2, B *> A 0]
 --test = [A 0 >>= A, B >>= A, A 1 >> A 0, A 1 >> B, B >> A 0, B >> B, return 0]
+--test = [do {x <- A 0; return $ x + 1}, do {x <- B; return $ x + 1}]
 
 --test :: [[Bool]]
 --test = [pure True, [] <*> [True], [not] <*> [True, False, True], [True, True] *> [False, False], [False] <* [True, False]]
 --test = [[] >>= (:[]), [True,False] >>= (:[]), [True, False] >> [], [] >> [True, False], [True, True] >> [False, False], return True, return False]
+--test = [do {x <- []; return $ not x}, do {x <- [True]; return $ not x}, do {x <- [False, True]; return $ not x}]
 
 ----------------------------------------------------------------------------
 -- Test Bounded
