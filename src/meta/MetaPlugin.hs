@@ -86,12 +86,10 @@ pass env onlyShow guts =
             guts' <- if onlyShow
                      then return guts
                      else do binds <- newBinds mod varMap tcMap (getDataCons guts) (mg_binds guts)
-                             return $ if checkCoreProgram binds
-                                      then let exps = newExports (mg_exports guts) nameMap
-                                           in guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap,
-                                                    mg_binds = mg_binds guts ++ binds,
-                                                    mg_exports = mg_exports guts ++ exps}
-                                      else guts
+                             let exps = newExports (mg_exports guts) nameMap
+                             return $ guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap,
+                                            mg_binds = mg_binds guts ++ binds,
+                                            mg_exports = mg_exports guts ++ exps}
 
             -- show info
 --            putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
@@ -118,7 +116,7 @@ pass env onlyShow guts =
 --            modInfo "implicit binds" getImplicitBinds guts'
 --            modInfo "annotations" mg_anns guts'
             putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:" <+> (ppr $ mg_module guts')
-            return guts'
+            return $ if checkCoreProgram (mg_binds guts') then guts' else guts
 
 ----------------------------------------------------------------------------------------
 -- Annotation
@@ -556,7 +554,7 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
           newExpr eMap e | noAtomsSubExpr e = return $ replaceVars eMap e
           newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod eMap varMap tcMap b v Nothing
-          newExpr eMap (Var v) = pprPanic "unknown variable"
+          newExpr eMap (Var v) = pprPanic "Unknown variable:"
             (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleNameStr v ++ " is not compiled with NLambda Plugin."))
           newExpr eMap (Lit l) = noMetaExpr mod (Lit l)
           newExpr eMap (App (Var v) (Type t)) | isMetaEquivalent mod v, isDataConWorkId v = getMetaEquivalent mod eMap varMap tcMap b v $ Just t
@@ -584,8 +582,8 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
                                                    then valueExpr mod e'
                                                    else return e'
                                             m <- metaExpr mod e'
-                                            as' <- mapM (changeAlternative eMap m) as
                                             let t' = changeType mod tcMap t
+                                            as' <- mapM (changeAlternative eMap m t') as
                                             return $ Case e'' b t' as'
           newExpr eMap (Cast e c) = do e' <- newExpr eMap e
                                        return $ Cast e' (changeCoercion mod tcMap c)
@@ -605,12 +603,13 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
                                                e' <- newExpr eMap'' e
                                                return ((b',e'):bs', eMap'')
           changeRecBinds [] eMap = return ([], eMap)
-          changeAlternative eMap m (DataAlt con, xs, e) = do xs' <- mapM mkVarUnique xs
-                                                             es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
-                                                             e' <- newExpr (Map.union eMap $ Map.fromList $ zip xs es) e
-                                                             return (DataAlt con, xs', e')
-          changeAlternative eMap m (alt, [], e) = do e' <- newExpr eMap e
-                                                     return (alt, [], e')
+          changeAlternative eMap m t (DataAlt con, xs, e) = do xs' <- mapM mkVarUnique xs
+                                                               es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
+                                                               e' <- newExpr (Map.union eMap $ Map.fromList $ zip xs es) e
+                                                               e'' <- convertMetaType mod e' t
+                                                               return (DataAlt con, xs', e'')
+          changeAlternative eMap m t (alt, [], e) = do e' <- newExpr eMap e
+                                                       return (alt, [], e')
 
 -- the type of expression is not open for atoms and there are no free variables open for atoms
 noAtomsSubExpr :: CoreExpr -> Bool
@@ -703,46 +702,50 @@ checkCoreProgram = and . fmap checkBinds
                                      text "expr:" <+> ppr e,
                                      text "expr type:" <+> ppr (exprType e),
                                      text "\n=======================================================================|"])
-          checkBind (b,e) = checkExpr e
-          checkExpr (Var v) = True
-          checkExpr (Lit l) = True
-          checkExpr (App f (Type t)) | not $ isForAllTy $ exprType f
+          checkBind (b,e) = checkExpr b e
+          checkExpr b (Var v) = True
+          checkExpr b (Lit l) = True
+          checkExpr b (App f (Type t)) | not $ isForAllTy $ exprType f
                               = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
                                   (vcat [text "fun expr: " <+> ppr f,
                                          text "fun type: " <+> ppr (exprType f),
                                          text "arg: " <+> ppr t,
+                                         text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
                                          text "\n=======================================================================|"])
-          checkExpr (App f (Type t)) = checkExpr f
-          checkExpr (App f x) | not $ isFunTy $ exprType f
+          checkExpr b (App f (Type t)) = checkExpr b f
+          checkExpr b (App f x) | not $ isFunTy $ exprType f
                               = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
                                   (vcat [text "fun expr: " <+> ppr f,
                                          text "fun type: " <+> ppr (exprType f),
                                          text "arg: " <+> ppr x,
                                          text "arg type: " <+> ppr (exprType x),
+                                         text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
                                          text "\n=======================================================================|"])
-          checkExpr (App f x) | not $ sameTypes (funArgTy $ exprType f) (exprType x)
+          checkExpr b (App f x) | not $ sameTypes (funArgTy $ exprType f) (exprType x)
                               = pprPanic "\n================= INCONSISTENT TYPES IN APPLICATION ===================="
                                   (vcat [text "fun: " <+> ppr f,
                                          text "fun type: " <+> ppr (exprType f),
                                          text "fun arg type: " <+> ppr (funArgTy $ exprType f),
                                          text "arg: " <+> ppr x,
                                          text "arg type: " <+> ppr (exprType x),
+                                         text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
                                          text "\n=======================================================================|"])
-          checkExpr (App f x) = checkExpr f && checkExpr x
-          checkExpr (Lam x e) = checkExpr e
-          checkExpr (Let b e) = checkBinds b && checkExpr e
-          checkExpr (Case e b t as) = checkBind (b,e) && and (checkAlternative t <$> as)
-          checkExpr (Cast e c) = checkExpr e
-          checkExpr (Tick t e) = checkExpr e
-          checkExpr (Type t) = undefined -- type should be handled in (App f (Type t)) case
-          checkExpr (Coercion c) = True
-          checkAlternative t (ac, xs, e) | not $ eqType t $ exprType e
+          checkExpr b (App f x) = checkExpr b f && checkExpr b x
+          checkExpr b (Lam x e) = checkExpr b e
+          checkExpr b (Let x e) = checkBinds x && checkExpr b e
+          checkExpr b (Case e x t as) = checkBind (x,e) && and (checkAlternative b t <$> as)
+          checkExpr b (Cast e c) = checkExpr b e
+          checkExpr b (Tick t e) = checkExpr b e
+          checkExpr b (Type t) = undefined -- type should be handled in (App f (Type t)) case
+          checkExpr b (Coercion c) = True
+          checkAlternative b t (ac, xs, e) | not $ eqType t $ exprType e
                                          = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
                                              (vcat [text "type in case: " <+> ppr t,
                                                     text "case expression: " <+> ppr e,
                                                     text "case expression type: " <+> ppr (exprType e),
+                                                    text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
                                                     text "\n=======================================================================|"])
-          checkAlternative t (ac, xs, e) = checkExpr e
+          checkAlternative b t (ac, xs, e) = checkExpr b e
 
 ----------------------------------------------------------------------------------------
 -- Apply expression

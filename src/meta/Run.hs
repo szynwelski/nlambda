@@ -1,6 +1,6 @@
 import Sample
 import Meta
-import Prelude (print, null)
+import Prelude (print)
 import System.Environment (getArgs)
 
 main = do args <- getArgs

@@ -88,7 +88,7 @@ import GHC.Generics
 --test = [minBound, maxBound]
 
 ----------------------------------------------------------------------------
--- Test Enum - NOT WORKING!
+-- Test Enum - FIXME
 ----------------------------------------------------------------------------
 
 --data Atom = A | B | C | D | E | F deriving (Show, Enum)
@@ -100,7 +100,7 @@ import GHC.Generics
 -- Test Num & Floating & Fractional
 ----------------------------------------------------------------------------
 
---data Atom = A deriving Show
+--data Atom = A deriving (Show, Eq, Ord)--, Enum) -- FIXME
 --instance Num Atom where
 --    A + A = A
 --    A - A = A
@@ -132,8 +132,20 @@ import GHC.Generics
 --    asinh A = A
 --    acosh A = A
 --    atanh A = A
+--instance Real Atom where
+--    toRational A = 0
+--instance Integral Atom where
+--  quot A A = A
+--  rem A A = A
+--  div A A = A
+--  mod A A = A
+--  quotRem A A = (A,A)
+--  divMod A A = (A,A)
+--  toInteger A = 0
 --
 --test :: [Atom]
 --test = [A + A, A - A, A * A, negate A, abs A, signum A, fromInteger 0]
 --test = [A / A, recip A, fromRational 1]
 --test = [pi, exp A, log A, sqrt A, A ** A, logBase A A, sin A, cos A, tan A, asin A, acos A, atan A, sinh A, cosh A, tanh A, asinh A, acosh A, atanh A]
+--test = [fromRational $ toRational A]
+--test = [quot A A, rem A A, div A A, mod A A, fst $ quotRem A A, snd $ quotRem A A, fst $ divMod A A, snd $ divMod A A, fromInteger $ toInteger A]
