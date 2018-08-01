@@ -58,6 +58,23 @@ import GHC.Generics
 --test = fmap (uncurry max) [(A 1, A 1), (A 1, A 2), (A 2, A 1), (A 2, B 1), (A 2, B 1), (A 10, C), (C, B 10), (C, C)]
 
 ----------------------------------------------------------------------------
+-- Test Monoid
+----------------------------------------------------------------------------
+
+--data Atom a = A a | B deriving Show
+--instance Monoid a => Monoid (Atom a) where
+--    mempty = B
+--    B `mappend` a = a
+--    a `mappend` B = a
+--    A a1 `mappend` A a2 = A (a1 `mappend` a2)
+--
+--test :: [Atom Ordering]
+--test = [mempty, A EQ `mappend` A LT, A EQ `mappend` B, B `mappend` A GT, B `mappend` B, mconcat [], mconcat [A LT, A EQ, A GT]]
+
+--test :: [[Bool]]
+--test = [mempty, mappend [True] [False], mconcat [[True],[False]]]
+
+----------------------------------------------------------------------------
 -- Test Applicative && Monad
 ----------------------------------------------------------------------------
 

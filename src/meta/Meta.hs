@@ -755,7 +755,7 @@ uncurry_nlambda :: (WithMeta a -> WithMeta b -> WithMeta c) -> WithMeta (a, b) -
 uncurry_nlambda f p = f (idOp fst p) (idOp snd p)
 
 controlExceptionBase = createEquivalentsMap "Control.Exception.Base"
-    [(SameOp, ["patError"])]
+    [(SameOp, ["patError", "noMethodBindingError"])]
 
 ------------------------------------------------------------------------------------------
 -- Conversion functions for meta types
