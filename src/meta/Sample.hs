@@ -87,3 +87,29 @@ import GHC.Generics
 --
 --test :: [Atom Word]
 --test = [minBound, maxBound]
+
+----------------------------------------------------------------------------
+-- Test Enum - NOT WORKING!
+----------------------------------------------------------------------------
+
+--data Atom = A | B | C | D | E | F deriving (Show, Enum)
+--
+--test :: [[Atom]]
+--test = [[succ B], [pred D], [toEnum 1], [toEnum $ fromEnum E], enumFrom C, enumFromThen A C, enumFromTo C E, enumFromThenTo A C D]
+
+----------------------------------------------------------------------------
+-- Test Num
+----------------------------------------------------------------------------
+
+--data Atom = A deriving Show
+--instance Num Atom where
+--    A + A = A
+--    A - A = A
+--    A * A = A
+--    negate A = A
+--    abs A = A
+--    signum A = A
+--    fromInteger _ = A
+--
+--test :: [Atom]
+--test = [A + A, A - A, A * A, negate A, abs A, signum A, fromInteger 0]

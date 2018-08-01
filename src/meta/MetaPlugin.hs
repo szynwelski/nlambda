@@ -707,8 +707,6 @@ checkCoreProgram = and . fmap checkBinds
           checkBind (b,e) = checkExpr e
           checkExpr (Var v) = True
           checkExpr (Lit l) = True
-          checkExpr (App f x) | pprTrace "checkExpr" (ppr f <+> text "::" <+> ppr (exprType f)) False = undefined
-          checkExpr (App f x) | pprTrace "checkExpr" (ppr x <+> text "::" <+> ppr (exprType x)) False = undefined
           checkExpr (App f (Type t)) | not $ isForAllTy $ exprType f
                               = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
                                   (vcat [text "fun expr: " <+> ppr f,
@@ -998,7 +996,6 @@ getMetaEquivalent mod eMap varMap tcMap b v mt =
           appType e = maybe e (mkCoreApp e . Type) mt
 
 addDependencies :: MetaModule -> ExprMap -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> Var -> CoreM CoreExpr
-addDependencies mod eMap varMap tcMap b var mt metaVar | pprTrace "addDependencies" (ppr var <+> ppr metaVar) False = undefined
 addDependencies mod eMap varMap tcMap b var mt metaVar
     | isDataConWorkId metaVar, isFun
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
