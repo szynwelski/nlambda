@@ -1,10 +1,11 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-{-# LANGUAGE DeriveAnyClass, DeriveGeneric, DeriveFunctor, StandaloneDeriving #-}
+{-# LANGUAGE DeriveAnyClass, DeriveGeneric, DeriveFunctor, DeriveFoldable, StandaloneDeriving #-}
 
 module Sample where
 
 import Meta
 import GHC.Generics
+import Data.Foldable (fold, foldr', foldl', toList)
 
 ----------------------------------------------------------------------------
 -- Test Show
@@ -16,17 +17,6 @@ import GHC.Generics
 --
 --test :: [String]
 --test = [show A, show B, show (List A), show ([]::[Atom]), show [A], show [A,A], show (A,A), show (A,A,A), show (A,B)]
-
-----------------------------------------------------------------------------
--- Test Functor
-----------------------------------------------------------------------------
-
---data Atom a = A a | B deriving (Show, Generic1, MetaLevel, Functor)
---
---test :: [Atom Int]
---test = [fmap id (A 1), fmap id B, 1 <$ (A 2), 1 <$ B]
-
---test = (fmap (+1) [1,2,3], fmap (+1) (Just 0), fmap (+1) (1,2))
 
 ----------------------------------------------------------------------------
 -- Test Eq
@@ -56,6 +46,62 @@ import GHC.Generics
 --
 --test :: [Atom Integer]
 --test = fmap (uncurry max) [(A 1, A 1), (A 1, A 2), (A 2, A 1), (A 2, B 1), (A 2, B 1), (A 10, C), (C, B 10), (C, C)]
+
+----------------------------------------------------------------------------
+-- Test Functor
+----------------------------------------------------------------------------
+
+--data Atom a = A a | B deriving (Show, Generic1, MetaLevel, Functor)
+--
+--test :: [Atom Int]
+--test = [fmap id (A 1), fmap id B, 1 <$ (A 2), 1 <$ B]
+
+--test = (fmap (+1) [1,2,3], fmap (+1) (Just 0), fmap (+1) (1,2))
+
+----------------------------------------------------------------------------
+-- Test Foldable
+----------------------------------------------------------------------------
+
+--data Atom a = A a (Atom a) | B deriving (Show, Generic1, MetaLevel, Foldable)
+--
+--test :: [Ordering]
+--test = [fold (A LT (A EQ (A GT B))), foldMap (uncurry compare) (A (1,0) (A (1,1) (A (1,2) B)))]
+--test :: [Int]
+--test = [foldr (+) 0 B, foldr (+) 0 (A 1 B), foldr (+) 0 (A 1 (A 2 (A 3 B))),
+--        foldr' (*) 1 B, foldr' (*) 1 (A 1 B), foldr' (*) 1 (A 1 (A 2 (A 3 B))),
+--        foldl (+) 0 B, foldl (+) 0 (A 1 B), foldl (+) 0 (A 1 (A 2 (A 3 B))),
+--        foldl' (*) 1 B, foldl' (*) 1 (A 1 B), foldl' (*) 1 (A 1 (A 2 (A 3 B))),
+--        foldr1 (+) (A 1 B), foldr1 (+) (A 1 (A 2 (A 3 B))),
+--        foldl1 (+) (A 1 B), foldl1 (+) (A 1 (A 2 (A 3 B))),
+--        length B, length (A 1 B), length (A 1 (A 2 (A 3 B))),
+--        maximum (A 1 B), maximum (A 1 (A 2 B)), maximum (A 1 (A 2 (A 3 B))),
+--        minimum (A 1 B), minimum (A 1 (A 2 B)), minimum (A 1 (A 2 (A 3 B))),
+--        sum B, sum (A 1 B), sum (A 1 (A 2 B)), sum (A 1 (A 2 (A 3 B))),
+--        product B, product (A 1 B), product (A 1 (A 2 B)), product (A 1 (A 2 (A 3 B)))]
+--        ++ toList B ++ toList (A 1 B) ++ toList (A 1 (A 2 (A 3 B)))
+--test :: [Bool]
+--test = [null B, null (A 1 B), null (A 1 (A 2 B)), null (A 1 (A 2 (A 3 B))),
+--        elem 0 B, elem 0 (A 1 B), elem 1 (A 1 (A 2 B)), elem 0 (A 1 (A 2 (A 3 B)))]
+
+--test :: [Ordering]
+--test = [fold [LT,EQ,GT], foldMap (uncurry compare) [(1,0),(1,1),(1,2)]]
+--test :: [Int]
+--test = [foldr (+) 0 [], foldr (+) 0 [1], foldr (+) 0 [1,2,3],
+--        foldr' (*) 1 [], foldr' (*) 1 [1], foldr' (*) 1 [1,2,3],
+--        foldl (+) 0 [], foldl (+) 0 [1], foldl (+) 0 [1,2,3],
+--        foldl' (*) 1 [], foldl' (*) 1 [1], foldl' (*) 1 [1,2,3],
+--        foldr1 (+) [1], foldr1 (+) [1,2,3],
+--        foldl1 (+) [1], foldl1 (+) [1,2,3],
+--        length [], length [1], length [1,2,3],
+--        maximum [1], maximum [1,2], maximum [1,2,3],
+--        minimum [1], minimum [1,2], minimum [1,2,3],
+--        sum [], sum [1], sum [1,2], sum [1,2,3],
+--        product [], product [1], product [1,2], product [1,2,3]]
+--        ++ toList [] ++ toList [1] ++ toList [1,2,3]
+--test :: [Bool]
+--test = [null [], null [1], null [1,2], null [1,2,3],
+--        elem 0 [], elem 0 [1], elem 1 [1,2], elem 0 [1,2,3]]
+
 
 ----------------------------------------------------------------------------
 -- Test Monoid
@@ -122,6 +168,7 @@ import GHC.Generics
 
 ----------------------------------------------------------------------------
 -- Test Num & Floating & Fractional & Real & Integral
+-- TODO RealFrac and RealFloat
 ----------------------------------------------------------------------------
 
 --data Atom = A deriving (Show, Eq, Ord)--, Enum) -- FIXME
