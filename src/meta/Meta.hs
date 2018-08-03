@@ -117,7 +117,7 @@ getMeta = fst
 
 rename :: Union -> Int -> a -> a
 rename (_, idMaps) n x = let idMap = idMaps !! n
-                         in if null idMap then x else x
+                         in if null idMap then x else x -- TODO call replaceVariablesIds
 
 emptyList :: [a]
 emptyList = []
@@ -238,8 +238,8 @@ instance MetaLevel IO where
 class (Applicative f, Functor_nlambda f) => Applicative_nlambda (f :: * -> *) where
   pure_nlambda :: WithMeta a -> WithMeta (f a)
   pure_nlambda = idOp pure
-  (<*>###) :: WithMeta (f (a -> b)) -> WithMeta (f a) -> WithMeta (f b)
-  (<*>###) = unionOp (<*>)
+  (<*>###) :: WithMeta (f (WithMeta a -> WithMeta b)) -> WithMeta (f a) -> WithMeta (f b)
+  (<*>###) f x = let (WithMeta (f',x') m) = unionOp (,) f x in liftMeta (fmap (metaFun m) f' <*> x')
   (*>###) :: WithMeta (f a) -> WithMeta (f b) -> WithMeta (f b)
   (*>###) = unionOp (*>)
   (<*###) :: WithMeta (f a) -> WithMeta (f b) -> WithMeta (f a)

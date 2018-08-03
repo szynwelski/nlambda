@@ -32,8 +32,11 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test :: [Bool]
 --test = [(A :: Atom Int) == A, A == B 1, B 1 == A, B 1 == B 1, (A :: Atom Int) /= A, A /= B 1, B 1 /= A, B 1 /= B 1]
 
+--data Atom a = A a deriving (Show, Eq)
+--
 --test :: [Bool]
---test = [[] == ([]::[Int]), [1,2,3] == [1,2,3], [1] == [2], Nothing /= (Nothing::Maybe Bool), Just True /= Just True, Just True /= Just False, Just True /= Nothing]
+--test = [[] == ([]::[Atom Int]), [A 1,A 2,A 3] == [A 1,A 2,A 3], [A 1] == [A 2],
+--        Nothing /= (Nothing::Maybe (Atom Bool)), Just (A True) /= Just (A True), Just (A True) /= Just (A False), Just (A True) /= Nothing]
 
 ----------------------------------------------------------------------------
 -- Test Ord
@@ -102,8 +105,6 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --
 --test :: [Ordering]
 --test = [fold [LT,EQ,GT], foldMap (uncurry compare) [(A 1,A 0),(A 1,A 1),(A 1,A 2)]]
-
--- FIXME replaceVars - inconsistent types:  A A_nlambda
 --test :: [Atom Int]
 --test = [foldr (+) (A 0) [], foldr (+) (A 0) [A 1], foldr (+) (A 0) [A 1,A 2,A 3],
 --        foldr' (*) (A 1) [], foldr' (*) 1 [A 1], foldr' (*) (A 1) [A 1,A 2,A 3],
@@ -117,8 +118,6 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --        sum [], sum [A 1], sum [A 1,A 2], sum [A 1,A 2,A 3],
 --        product [], product [A 1], product [A 1,A 2], product [A 1,A 2,A 3]]
 --        ++ toList [] ++ toList [A 1] ++ toList [A 1,A 2,A 3]
-
--- FIXME replaceVars - inconsistent types:  A A_nlambda
 --test :: [Bool]
 --test = [null [], null [A 1], null [A 1,A 2], null [A 1,A 2,A 3],
 --        elem (A 0) [], elem (A 0) [A 1], elem (A 1) [A 1,A 2], elem (A 0) [A 1,A 2,A 3]]
@@ -165,6 +164,7 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --    (A x) >>= k = k x
 --    B >>= _ = B
 --
+-- FIXME can't unify meta types: [WithMeta (Atom (Int -> Int))] [WithMeta (Atom (WithMeta Int -> WithMeta Int))]
 --test :: [Atom Int]
 --test = [pure 1, A succ <*> A 1, A succ <*> B, B <*> A 0, A 1 <* A 2, B *> B, A 0 <* B, A 0 *> A 2, B *> A 0]
 --test = [A 0 >>= A, B >>= A, A 1 >> A 0, A 1 >> B, B >> A 0, B >> B, return 0]
@@ -176,12 +176,8 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --notA (A False) = A True
 --
 --test :: [[Atom Bool]]
-
--- FIXME replaceVars - inconsistent types
 --test = [pure $ A True, [] <*> [A True], [notA] <*> [A True, A False, A True], [A True, A True] *> [A False, A False], [A False] <* [A True, A False]]
 --test = [[] >>= (:[]), [A True,A False] >>= (:[]), [A True, A False] >> [], [] >> [A True, A False], [A True, A True] >> [A False, A False], return $ A True, return $ A False]
-
--- FIXME replaceVars - inconsistent types
 --test = [do {x <- []; return $ notA x}, do {x <- [A True]; return $ notA x}, do {x <- [A False, A True]; return $ notA x}]
 
 ----------------------------------------------------------------------------
