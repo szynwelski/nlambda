@@ -54,6 +54,14 @@ modInfo label fun guts = putMsg $ text label <> text ": " <> (ppr $ fun guts)
 showMap :: String -> Map a a -> (a -> SDoc) -> CoreM ()
 showMap header map showElem = putMsg $ text (header ++ ":") <+> (doubleQuotes $ vcat (concatMap (\(x,y) -> [showElem x <+> text "->" <+> showElem y]) $ Map.toList map))
 
+headPanic :: String -> SDoc -> [a] -> a
+headPanic msg doc [] = pprPanic ("headPanic - " ++ msg) doc
+headPanic _ _ l = head l
+
+tailPanic :: String -> SDoc -> [a] -> [a]
+tailPanic msg doc [] = pprPanic ("tailPanic - " ++ msg) doc
+tailPanic _ _ l = tail l
+
 pass :: HscEnv -> Bool -> ModGuts -> CoreM ModGuts
 pass env onlyShow guts =
     if withMetaAnnotation guts
@@ -446,7 +454,7 @@ changeType mod tcMap t = go t
           go t | (Just (tv, t')) <- splitForAllTy_maybe t = mkForAllTy tv (go t')
           go t | (Just (t1, t2)) <- splitFunTy_maybe t = mkFunTy (go t1) (go t2)
           go t | isVoidTy t || isPredTy t || isPrimitiveType t = t
-          go t = withMetaType mod t -- FIXME other cases?, maybe use makeTyVarUnique?
+          go t = withMetaType mod t -- TODO other cases?, maybe use makeTyVarUnique?
 
 changePredType :: MetaModule -> TyConMap -> PredType -> PredType
 changePredType mod tcMap t | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc = mkTyConApp (newTyCon mod tcMap tc) ts
@@ -457,12 +465,13 @@ getMainType t = if t == t' then t else getMainType t'
     where (tvs, ps ,t') = tcSplitSigmaTy t
 
 getForAllTyVar :: Type -> TyVar
-getForAllTyVar t = fromMaybe (pprPanic "getForAllTyVar" $ ppr t) $ listToMaybe $ fst $ splitForAllTys t
+getForAllTyVar t = headPanic "getForAllTyVar" (ppr t) $ fst $ splitForAllTys t
 
 getFunTypeParts :: Type -> [Type]
+getFunTypeParts t | t /= getMainType t = getFunTypeParts $ getMainType t
 getFunTypeParts t | not $ isFunTy t = [t]
 getFunTypeParts t = argTys ++ [resTy]
-    where (argTys, resTy) = splitFunTys $ getMainType t
+    where (argTys, resTy) = splitFunTys t
 
 isTyVarWrappedByWithMeta :: MetaModule -> TyVar -> Type -> Bool
 isTyVarWrappedByWithMeta mod tv = all wrappedByWithMeta . getFunTypeParts
@@ -482,15 +491,20 @@ addWithMetaType :: MetaModule -> Type -> Type
 addWithMetaType mod t = mkTyConApp (withMetaC mod) [t]
 
 getMetaLevelPred :: MetaModule -> Type -> Maybe Type
-getMetaLevelPred mod t = maybe Nothing metaLevelPred $ listToMaybe preds
-    where (preds, t') = tcSplitPhiTy t
-          metaLevelPred pred
+getMetaLevelPred mod = maybe Nothing metaLevelPred . listToMaybe . getAllPreds
+    where metaLevelPred pred
             | Just tc <- tyConAppTyCon_maybe pred, isClassTyCon tc, tc == metaLevelC mod = Just pred
             | otherwise = Nothing
 
+getAllPreds :: Type -> ThetaType
+getAllPreds t
+    | null preds = []
+    | otherwise = preds ++ getAllPreds t'
+    where (preds, t') = tcSplitPhiTy $ dropForAlls t
+
 getOnlyArgTypeFromDict :: Type -> Type
 getOnlyArgTypeFromDict t
-    | isDictTy t, Just ts <- tyConAppArgs_maybe t, length ts == 1 = head ts
+    | isDictTy t, Just ts <- tyConAppArgs_maybe t, length ts == 1 = headPanic "getOnlyArgTypeFromDict" (ppr t) ts
     | otherwise = pprPanic "getOnlyArgTypeFromDict" (text "given type" <+> ppr t <+> text " is not dict or has more than one arguments")
 
 isPreludeDictType :: Type -> Bool
@@ -549,7 +563,7 @@ insertVarExpr v v' = Map.insert v (Var v')
 changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> CoreExpr -> CoreM CoreExpr
 changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
     where newExpr :: ExprMap -> CoreExpr -> CoreM CoreExpr
---          newExpr eMap e | pprTrace "newExpr" (ppr e) False = undefined
+--          newExpr eMap e | pprTrace "newExpr" (ppr e <+> text "::" <+> ppr (exprType e)) False = undefined
           newExpr eMap e | noAtomsSubExpr e = return $ replaceVars eMap e
           newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod eMap varMap tcMap b v Nothing
@@ -559,7 +573,9 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
           newExpr eMap (App (Var v) (Type t)) | isMetaEquivalent mod v, isDataConWorkId v = getMetaEquivalent mod eMap varMap tcMap b v $ Just t
           newExpr eMap (App f (Type t)) = do f' <- newExpr eMap f
                                              let (tyVars, t') = splitForAllTys $ exprType f'
-                                             let t'' = if isTyVarWrappedByWithMeta mod (head tyVars) t' then t else changeType mod tcMap t
+                                             let t'' = if isTyVarWrappedByWithMeta mod (headPanic "(App f (Type t)" (ppr f <+> ppr t) tyVars) t'
+                                                       then t
+                                                       else changeType mod tcMap t
                                              return $ App f' $ Type t''
           newExpr eMap (App f e) = do f' <- newExpr eMap f
                                       f'' <- if isWithMetaType mod $ exprType f'
@@ -943,11 +959,15 @@ convertMetaType mod e t | isClassPred t,
                           Just idx <- findIndex (canUnifyTypes t) preds
                         = applyExpr (Var $ ids !! idx) e
 convertMetaType mod e t | length ets == length ts = applyExpr (convertMetaFun mod ets ts) e
-    where ets = getFunTypeParts $ getMainType $ exprType e
-          ts = getFunTypeParts $ getMainType t
-convertMetaType mod e t | isWithMetaType mod t, Just (_, ts) <- splitTyConApp_maybe (getMainType t), canUnifyTypes (exprType e) (head ts)
+    where ets = getFunTypeParts $ exprType e
+          ts = getFunTypeParts t
+convertMetaType mod e t | isWithMetaType mod t
+                        , Just (_, ts) <- splitTyConApp_maybe (getMainType t)
+                        , canUnifyTypes (exprType e) (headPanic "convertMetaType" (ppr e <+> ppr t) ts)
                         = noMetaExpr mod e
-convertMetaType mod e t | isWithMetaType mod (exprType e), Just (_, ts) <- splitTyConApp_maybe (getMainType $ exprType e), canUnifyTypes t (head ts)
+convertMetaType mod e t | isWithMetaType mod (exprType e)
+                        , Just (_, ts) <- splitTyConApp_maybe (getMainType $ exprType e)
+                        , canUnifyTypes t (headPanic "convertMetaType" (ppr e <+> ppr t) ts)
                         = valueExpr mod e
 convertMetaType mod e t = return e
 
@@ -990,6 +1010,7 @@ isMetaEquivalent mod v = case metaEquivalent (getModuleNameStr v) (getVarNameStr
                            _            -> True
 
 getMetaEquivalent :: MetaModule -> ExprMap -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> CoreM CoreExpr
+--getMetaEquivalent mod eMap varMap tcMap b v mt | pprTrace "getMetaEquivalent" (ppr v <+> text "::" <+> ppr (varType v)) False = undefined
 getMetaEquivalent mod eMap varMap tcMap b v mt =
     case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
       OrigFun -> return $ appType $ Var v
@@ -1001,52 +1022,52 @@ getMetaEquivalent mod eMap varMap tcMap b v mt =
     where appType :: CoreExpr -> CoreExpr
           appType e = maybe e (mkCoreApp e . Type) mt
 
-addDependencies :: MetaModule -> ExprMap -> VarMap -> TyConMap -> CoreBndr -> Var -> Maybe Type -> Var -> CoreM CoreExpr
+addDependencies :: MetaModule -> ExprMap -> VarMap -> TyConMap -> CoreBndr -> CoreBndr -> Maybe Type -> CoreBndr -> CoreM CoreExpr
 addDependencies mod eMap varMap tcMap b var mt metaVar
+--    | pprTrace "addDependencies" (ppr var <+> ppr metaVar) False = undefined
     | isDataConWorkId metaVar, isFun -- D:...
-    = do let metaE = addMetaLevelPred $ mkCoreApp (Var metaVar) (Type $ fromJust mt)
-         let dictVars = catMaybes $ localDictVar <$> Map.elems eMap
-         addDictDeps metaE (Var b) dictVars False
+    = deps [] [] b [] (fmap Var $ catMaybes $ fmap localDictVar $ Map.elems eMap) (appType metaVar)
     | isDFunId metaVar, isFun -- $f...
     = do vars <- liftM fst $ splitTypeTyVars $ changeType mod tcMap $ varType var
-         let tyVars = filter isTV vars
-         let metaE = addMetaLevelPred $ mkCoreApps (Var metaVar) (exprVarsToExprs emptyTvSubst tyVars)
-         let dictVars = exprVarsToVars emptyTvSubst $ filter (not . isTV) vars
-         metaE' <- addDictDeps metaE (Var var) dictVars True
-         let argVars = filter (isMetaPreludeDict mod . varType) dictVars
-         return $ mkCoreLams (exprVarsToVars emptyTvSubst tyVars ++ argVars) metaE'
-    | otherwise = return $ Var metaVar
+         let (ts, preds) = partition isTypeArg $ exprVarsToExprs emptyTvSubst vars
+         metaE <- deps ts preds var ts preds (appType metaVar)
+         return $ mkCoreLams (exprVarsToVars emptyTvSubst vars) metaE
+    | otherwise = return $ appType metaVar
     where isFun = isFunTy $ dropForAlls $ varType metaVar
           localDictVar (Var v) | isLocalId v && not (isExportedId v) && isDictId v = Just v
           localDictVar _ = Nothing
-          addMetaLevelPred metaE | Just t <- getMetaLevelPred mod $ exprType metaE
-                                 = mkCoreApp metaE $ getMetaLevelInstance mod varMap $ getOnlyArgTypeFromDict t
-          addMetaLevelPred metaE = metaE
-          addDictDeps metaE e vars allowMetaDeps | Just (t,_) <- splitFunTy_maybe $ exprType metaE, isPredTy t
-                                                 = addDictDep metaE t e vars allowMetaDeps
-          addDictDeps metaE e _ allowMetaDeps = return metaE
-          addDictDep metaE t e (v:vars) allowMetaDeps | allowMetaDeps, isMetaPreludeDict mod t -- e.g. for case $fShow_nlambda[]
-                                                      = if sameTypes t $ varType v
-                                                        then addDictDeps (mkCoreApp metaE $ Var v) e vars allowMetaDeps
-                                                        else addDictDep metaE t e vars allowMetaDeps
-          addDictDep metaE t e vars allowMetaDeps | not $ isMetaPreludeDict mod t
-                                                  = do dep <- noMetaDep e vars
-                                                       let metaExp' = mkCoreApp metaE dep
-                                                       addDictDeps metaExp' e vars allowMetaDeps
-          addDictDep metaE t e vars allowMetaDeps = return metaE
-          noMetaDep e vars | Just (t,_) <- splitFunTy_maybe $ dropForAlls $ exprType e
-                           = do (sc, vars') <- findSuperClass t vars
-                                e' <- applyExpr e sc
-                                noMetaDep e' vars'
-          noMetaDep e vars = return e
-          findSuperClass t (v:vars) | Just (cl, _) <- getClassPredTys_maybe $ varType v, (_, _, ids, _) <- classBigSig cl
-                                    = do es <- mapM (\i -> applyExpr (Var i) (Var v)) ids
-                                         let i = findIndex (sameTypes t . exprType) es
-                                         if isJust i
-                                         then return (es !! fromJust i, vars)
-                                         else findSuperClass t vars
-          findSuperClass t (v:vars) = findSuperClass t vars
-          findSuperClass t [] = pprPanic "findSuperClass - no super class with proper type found" (ppr t)
+          appType :: Var -> CoreExpr
+          appType v = maybe (Var v) (mkCoreApp (Var v) . Type) mt
+          deps :: [CoreExpr] -> [CoreExpr] -> CoreBndr -> [CoreExpr] -> [CoreExpr] -> CoreExpr -> CoreM CoreExpr
+--          deps ts preds b bts bpreds e | pprTrace "deps" (ppr ts <+> text "|" <+> ppr preds <+> text "|" <+> ppr b <+> text "::" <+> ppr (varType b) <+> text "|" <+> ppr bts <+> text "|" <+> ppr bpreds <+> text "|" <+> ppr e <+> text "::" <+> ppr (exprType e)) False = undefined
+          deps ts preds b bts bpreds e | isForAllTy $ exprType e
+                                       = deps (tailPanic "deps" (ppr e) ts) preds b bts bpreds $ mkCoreApp e $ headPanic "deps - ForAllTy" (ppr e) ts
+          deps ts preds b bts bpreds e | Just t <- getMetaLevelPred mod $ exprType e
+                                       = let ml = getMetaLevelInstance mod varMap $ getOnlyArgTypeFromDict t
+                                             tvs = fst $ splitForAllTys $ exprType ml
+                                             tml = mkCoreApps ml $ take (length tvs) bts
+                                         in deps ts preds b bts bpreds $ mkCoreApp e tml
+          deps ts preds b bts bpreds e | Just (t,_) <- splitFunTy_maybe $ exprType e, sameTypes t $ last $ getFunTypeParts $ varType b
+                                       = do b' <- saturate bts bpreds $ Var b
+                                            deps ts preds b bts bpreds $ mkCoreApp e b'
+          deps ts (pred:preds) b bts bpreds e | Just (t',_) <- splitFunTy_maybe $ exprType e, sameTypes t' $ exprType pred
+                                       = deps ts preds b bts bpreds $ mkCoreApp e pred
+          deps ts preds b bts bpreds e = return e
+          saturate :: [CoreExpr] -> [CoreExpr] -> CoreExpr -> CoreM CoreExpr
+--          saturate ts preds e | pprTrace "saturate" (ppr ts <+> text "|" <+> ppr preds <+> text "|" <+> ppr e <+> text "::" <+> ppr (exprType e)) False = undefined
+          saturate (t:ts) preds e | isForAllTy $ exprType e = saturate ts preds $ mkCoreApp e t
+          saturate ts preds e | Just (t',_) <- splitFunTy_maybe $ dropForAlls $ exprType e
+                              = do sc <- findSuperClass t' preds
+                                   e' <- applyExpr e sc
+                                   saturate ts preds e'
+          saturate ts preds e = return e
+          findSuperClass :: Type -> [CoreExpr] -> CoreM CoreExpr
+--          findSuperClass t preds | pprTrace "findSuperClass" (ppr t <+> vcat (fmap (\p -> ppr p <+> text "::" <+> ppr (exprType p)) preds)) False = undefined
+          findSuperClass t (pred:preds) | sameTypes t $ exprType pred = return pred
+          findSuperClass t (pred:preds) | Just (cl, _) <- getClassPredTys_maybe $ exprType pred, (_, _, ids, _) <- classBigSig cl
+                                        = do es <- mapM (\i -> applyExpr (Var i) pred) ids
+                                             maybe (findSuperClass t preds) return (find (sameTypes t . exprType) es)
+          findSuperClass t [] = pprPanic "findSuperClass - no super class with proper type found:" (ppr t)
 
 ----------------------------------------------------------------------------------------
 -- Show

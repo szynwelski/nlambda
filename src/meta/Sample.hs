@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-{-# LANGUAGE DeriveAnyClass, DeriveGeneric, DeriveFunctor, DeriveFoldable, StandaloneDeriving #-}
+{-# LANGUAGE DeriveAnyClass, DeriveGeneric, DeriveFunctor, DeriveFoldable, DeriveTraversable, StandaloneDeriving, TupleSections #-}
 
 module Sample where
 
@@ -32,6 +32,9 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test :: [Bool]
 --test = [(A :: Atom Int) == A, A == B 1, B 1 == A, B 1 == B 1, (A :: Atom Int) /= A, A /= B 1, B 1 /= A, B 1 /= B 1]
 
+--test :: [Bool]
+--test = [[] == ([]::[Int]), [1,2,3] == [1,2,3], [1] == [2], Nothing /= (Nothing::Maybe Bool), Just True /= Just True, Just True /= Just False, Just True /= Nothing]
+
 ----------------------------------------------------------------------------
 -- Test Ord
 ----------------------------------------------------------------------------
@@ -46,6 +49,11 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --
 --test :: [Atom Integer]
 --test = fmap (uncurry max) [(A 1, A 1), (A 1, A 2), (A 2, A 1), (A 2, B 1), (A 2, B 1), (A 10, C), (C, B 10), (C, C)]
+--test :: [Bool]
+--test = fmap (uncurry (<=)) [((A 1,A 2),(A 1,A 2)),((A 1,A 2),(A 2,A 1))]
+--       ++ fmap (uncurry (<)) [([],[A 1]),([A 1],[]),([A 1,A 2,B 3],[A 1,A 2,B 3])]
+--       ++ fmap (uncurry (>)) [(Nothing, Just $ A 1), (Just $ A 1, Just $ B 2),(Nothing, Nothing)]
+--       ++ fmap (uncurry (>=)) [(Left $ A 1, Left $ A 1), (Left $ A 1, Right $ A 1), (Right $ A 1, Right $ B 2)]
 
 ----------------------------------------------------------------------------
 -- Test Functor
@@ -55,11 +63,11 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --
 --test :: [Atom Int]
 --test = [fmap id (A 1), fmap id B, 1 <$ (A 2), 1 <$ B]
-
---test = (fmap (+1) [1,2,3], fmap (+1) (Just 0), fmap (+1) (1,2))
+--test :: ([Maybe (Atom Int)], Maybe (Atom Int, Atom Int), (Atom Int, Atom Int))
+--test = (fmap Just [B, A 1], fmap (,B) (Just $ A 1), fmap (const B) (A 1, A 2))
 
 ----------------------------------------------------------------------------
--- Test Foldable
+-- Test Foldable & Num
 ----------------------------------------------------------------------------
 
 --data Atom a = A a (Atom a) | B deriving (Show, Generic1, MetaLevel, Foldable)
@@ -83,25 +91,44 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test = [null B, null (A 1 B), null (A 1 (A 2 B)), null (A 1 (A 2 (A 3 B))),
 --        elem 0 B, elem 0 (A 1 B), elem 1 (A 1 (A 2 B)), elem 0 (A 1 (A 2 (A 3 B)))]
 
+--data Atom a = A a deriving (Show, Eq, Ord)
+--instance Num a => Num (Atom a) where
+--    A x + A y = A (x + y)
+--    A x * A y = A (x * y)
+--    abs (A x) = A (abs x)
+--    signum (A x) = A (signum x)
+--    negate (A x) = A (negate x)
+--    fromInteger x = A (fromInteger x)
+--
 --test :: [Ordering]
---test = [fold [LT,EQ,GT], foldMap (uncurry compare) [(1,0),(1,1),(1,2)]]
---test :: [Int]
---test = [foldr (+) 0 [], foldr (+) 0 [1], foldr (+) 0 [1,2,3],
---        foldr' (*) 1 [], foldr' (*) 1 [1], foldr' (*) 1 [1,2,3],
---        foldl (+) 0 [], foldl (+) 0 [1], foldl (+) 0 [1,2,3],
---        foldl' (*) 1 [], foldl' (*) 1 [1], foldl' (*) 1 [1,2,3],
---        foldr1 (+) [1], foldr1 (+) [1,2,3],
---        foldl1 (+) [1], foldl1 (+) [1,2,3],
---        length [], length [1], length [1,2,3],
---        maximum [1], maximum [1,2], maximum [1,2,3],
---        minimum [1], minimum [1,2], minimum [1,2,3],
---        sum [], sum [1], sum [1,2], sum [1,2,3],
---        product [], product [1], product [1,2], product [1,2,3]]
---        ++ toList [] ++ toList [1] ++ toList [1,2,3]
---test :: [Bool]
---test = [null [], null [1], null [1,2], null [1,2,3],
---        elem 0 [], elem 0 [1], elem 1 [1,2], elem 0 [1,2,3]]
+--test = [fold [LT,EQ,GT], foldMap (uncurry compare) [(A 1,A 0),(A 1,A 1),(A 1,A 2)]]
 
+-- FIXME replaceVars - inconsistent types:  A A_nlambda
+--test :: [Atom Int]
+--test = [foldr (+) (A 0) [], foldr (+) (A 0) [A 1], foldr (+) (A 0) [A 1,A 2,A 3],
+--        foldr' (*) (A 1) [], foldr' (*) 1 [A 1], foldr' (*) (A 1) [A 1,A 2,A 3],
+--        foldl (+) (A 0) [], foldl (+) (A 0) [A 1], foldl (+) (A 0) [A 1,A 2,A 3],
+--        foldl' (*) (A 1) [], foldl' (*) (A 1) [A 1], foldl' (*) (A 1) [A 1,A 2,A 3],
+--        foldr1 (+) [A 1], foldr1 (+) [A 1,A 2,A 3],
+--        foldl1 (+) [A 1], foldl1 (+) [A 1,A 2,A 3],
+--        A $ length [], A $ length [A 1], A $ length [A 1,A 2,A 3],
+--        maximum [A 1], maximum [A 1,A 2], maximum [A 1,A 2,A 3],
+--        minimum [A 1], minimum [A 1,A 2], minimum [A 1,A 2,A 3],
+--        sum [], sum [A 1], sum [A 1,A 2], sum [A 1,A 2,A 3],
+--        product [], product [A 1], product [A 1,A 2], product [A 1,A 2,A 3]]
+--        ++ toList [] ++ toList [A 1] ++ toList [A 1,A 2,A 3]
+
+-- FIXME replaceVars - inconsistent types:  A A_nlambda
+--test :: [Bool]
+--test = [null [], null [A 1], null [A 1,A 2], null [A 1,A 2,A 3],
+--        elem (A 0) [], elem (A 0) [A 1], elem (A 1) [A 1,A 2], elem (A 0) [A 1,A 2,A 3]]
+
+----------------------------------------------------------------------------
+-- Test Traversable
+----------------------------------------------------------------------------
+
+-- FIXME convertMetaFun - can't unify meta types: [Applicative_nlambda f] [MetaLevel f]
+--data Atom a = A a (Atom a) | B deriving (Show, Generic1, MetaLevel, Functor, Foldable, Traversable)
 
 ----------------------------------------------------------------------------
 -- Test Monoid
@@ -117,8 +144,13 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test :: [Atom Ordering]
 --test = [mempty, A EQ `mappend` A LT, A EQ `mappend` B, B `mappend` A GT, B `mappend` B, mconcat [], mconcat [A LT, A EQ, A GT]]
 
---test :: [[Bool]]
---test = [mempty, mappend [True] [False], mconcat [[True],[False]]]
+--data Atom a = A a deriving Show
+--instance Monoid a => Monoid (Atom a) where
+--    mempty = A mempty
+--    (A x) `mappend` (A y) = A (x `mappend` y)
+--
+--test :: [[Atom Bool]]
+--test = [mempty, mappend [A True] [A False], mconcat [[A True],[A False]]]
 
 ----------------------------------------------------------------------------
 -- Test Applicative && Monad
@@ -138,10 +170,19 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test = [A 0 >>= A, B >>= A, A 1 >> A 0, A 1 >> B, B >> A 0, B >> B, return 0]
 --test = [do {x <- A 0; return $ x + 1}, do {x <- B; return $ x + 1}]
 
---test :: [[Bool]]
---test = [pure True, [] <*> [True], [not] <*> [True, False, True], [True, True] *> [False, False], [False] <* [True, False]]
---test = [[] >>= (:[]), [True,False] >>= (:[]), [True, False] >> [], [] >> [True, False], [True, True] >> [False, False], return True, return False]
---test = [do {x <- []; return $ not x}, do {x <- [True]; return $ not x}, do {x <- [False, True]; return $ not x}]
+--data Atom a = A a deriving (Show)
+--notA :: Atom Bool -> Atom Bool
+--notA (A True) = A False
+--notA (A False) = A True
+--
+--test :: [[Atom Bool]]
+
+-- FIXME replaceVars - inconsistent types
+--test = [pure $ A True, [] <*> [A True], [notA] <*> [A True, A False, A True], [A True, A True] *> [A False, A False], [A False] <* [A True, A False]]
+--test = [[] >>= (:[]), [A True,A False] >>= (:[]), [A True, A False] >> [], [] >> [A True, A False], [A True, A True] >> [A False, A False], return $ A True, return $ A False]
+
+-- FIXME replaceVars - inconsistent types
+--test = [do {x <- []; return $ notA x}, do {x <- [A True]; return $ notA x}, do {x <- [A False, A True]; return $ notA x}]
 
 ----------------------------------------------------------------------------
 -- Test Bounded
@@ -158,11 +199,12 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test = [minBound, maxBound]
 
 ----------------------------------------------------------------------------
--- Test Enum - FIXME
+-- Test Enum
 ----------------------------------------------------------------------------
 
 --data Atom = A | B | C | D | E | F deriving (Show, Enum)
---
+
+--FIXME undefined reference
 --test :: [[Atom]]
 --test = [[succ B], [pred D], [toEnum 1], [toEnum $ fromEnum E], enumFrom C, enumFromThen A C, enumFromTo C E, enumFromThenTo A C D]
 
@@ -171,7 +213,7 @@ import Data.Foldable (fold, foldr', foldl', toList)
 -- TODO RealFrac and RealFloat
 ----------------------------------------------------------------------------
 
---data Atom = A deriving (Show, Eq, Ord)--, Enum) -- FIXME
+--data Atom = A deriving (Show, Eq, Ord)--, Enum) -- FIXME undefined reference
 --instance Num Atom where
 --    A + A = A
 --    A - A = A

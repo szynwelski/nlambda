@@ -679,7 +679,7 @@ createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes,
-                                 dataTuple, controlExceptionBase]
+                                 dataEither, dataTuple, controlExceptionBase]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
@@ -725,7 +725,8 @@ ghcList = createEquivalentsMap "GHC.List"
     [(ConvertFun LeftIdOp, ["!!"])]
 
 ghcNum :: MetaEquivalentMap
-ghcNum = createEquivalentsMap "GHC.Num" []
+ghcNum = createEquivalentsMap "GHC.Num"
+    [(ConvertFun UnionOp, ["$dm-"])]
 
 ghcReal :: MetaEquivalentMap
 ghcReal = createEquivalentsMap "GHC.Real"
@@ -743,6 +744,10 @@ ghcTypes :: MetaEquivalentMap
 ghcTypes = createEquivalentsMap "GHC.Types"
     [(ConvertFun NoMeta, ["[]"]),
      (ConvertFun UnionOp, [":"])]
+
+dataEither :: MetaEquivalentMap
+dataEither = createEquivalentsMap "Data.Either"
+    [(ConvertFun IdOp, ["Left", "Right"])]
 
 dataTuple :: MetaEquivalentMap
 dataTuple = createEquivalentsMap "Data.Tuple"
