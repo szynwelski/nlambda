@@ -564,7 +564,7 @@ changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> CoreExpr -> CoreM 
 changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
     where newExpr :: ExprMap -> CoreExpr -> CoreM CoreExpr
 --          newExpr eMap e | pprTrace "newExpr" (ppr e <+> text "::" <+> ppr (exprType e)) False = undefined
-          newExpr eMap e | noAtomsSubExpr e = return $ replaceVars eMap e
+          newExpr eMap e | noAtomsSubExpr e = replaceVars mod eMap e
           newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod eMap varMap tcMap b v Nothing
           newExpr eMap (Var v) = pprPanic "Unknown variable:"
@@ -631,20 +631,33 @@ noAtomsSubExpr :: CoreExpr -> Bool
 noAtomsSubExpr e = (noAtomsType $ exprType e) && noAtomFreeVars
     where noAtomFreeVars = isEmptyUniqSet $ filterUniqSet (not . noAtomsType . varType) $ exprFreeIds e
 
-replaceVars :: ExprMap -> CoreExpr -> CoreExpr
-replaceVars eMap (Var x) | Just e <- Map.lookup x eMap
-                         = if eqType (varType x) (exprType e) then e else pprPanic "replaceVars - inconsistent types: " (ppr x <+> ppr e)
-replaceVars eMap (Lit l) = Lit l
-replaceVars eMap (App f e) = App (replaceVars eMap f) (replaceVars eMap e)
-replaceVars eMap (Lam x e) = Lam x (replaceVars eMap e)
-replaceVars eMap (Let b e) = Let (replaceVarsInBind b) (replaceVars eMap e)
-    where replaceVarsInBind (NonRec x e) = NonRec x (replaceVars eMap e)
-          replaceVarsInBind (Rec bs) = Rec $ fmap (\(x, e) -> (x, replaceVars eMap e)) bs
-replaceVars eMap (Case e x t as) = Case (replaceVars eMap e) x t (replaceVarsInAlt <$> as)
-    where replaceVarsInAlt (con, bs, e) = (con, bs, replaceVars eMap e)
-replaceVars eMap (Cast e c) = Cast (replaceVars eMap e) c
-replaceVars eMap (Tick t e) = Tick t (replaceVars eMap e)
-replaceVars eMap e = e
+replaceVars :: MetaModule -> ExprMap -> CoreExpr -> CoreM CoreExpr
+replaceVars mod eMap e = replace e
+    where replace (Var x) | Just e <- Map.lookup x eMap = convertMetaType mod e $ varType x
+          replace (App f e) = do f' <- replace f
+                                 e' <- replace e
+                                 return $ App f' e'
+          replace (Lam x e) = do e' <- replace e
+                                 return $ Lam x e'
+          replace (Let b e) = do b' <- replaceInBind b
+                                 e' <- replace e
+                                 return $ Let b' e'
+          replace (Case e x t as) = do e' <- replace e
+                                       as' <- mapM replaceInAlt as
+                                       return $ Case e' x t as'
+          replace (Cast e c) = do e' <- replace e
+                                  return $ Cast e' c
+          replace (Tick t e) = do e' <- replace e
+                                  return $ Tick t e'
+          replace e = return e
+          replaceInBind (NonRec x e) = do e' <- replace e
+                                          return $ NonRec x e'
+          replaceInBind (Rec bs) = do bs' <- mapM replaceInRecBind bs
+                                      return $ Rec bs'
+          replaceInRecBind (b, e) = do e' <- replace e
+                                       return (b, e')
+          replaceInAlt (con, bs, e) = do e' <- replace e
+                                         return (con, bs, e')
 
 changeCoercion :: MetaModule -> TyConMap -> Coercion -> Coercion
 changeCoercion mod tcMap c = change c
