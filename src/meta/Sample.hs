@@ -3,7 +3,7 @@
 
 module Sample where
 
-import Meta
+import Meta (MetaLevel)
 import GHC.Generics
 import Data.Foldable (fold, foldr', foldl', toList)
 
@@ -126,7 +126,7 @@ import Data.Foldable (fold, foldr', foldl', toList)
 -- Test Traversable
 ----------------------------------------------------------------------------
 
--- FIXME convertMetaFun - can't unify meta types: [Applicative_nlambda f] [MetaLevel f]
+-- FIXME infinite running
 --data Atom a = A a (Atom a) | B deriving (Show, Generic1, MetaLevel, Functor, Foldable, Traversable)
 
 ----------------------------------------------------------------------------
@@ -164,7 +164,6 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --    (A x) >>= k = k x
 --    B >>= _ = B
 --
--- FIXME can't unify meta types: [WithMeta (Atom (Int -> Int))] [WithMeta (Atom (WithMeta Int -> WithMeta Int))]
 --test :: [Atom Int]
 --test = [pure 1, A succ <*> A 1, A succ <*> B, B <*> A 0, A 1 <* A 2, B *> B, A 0 <* B, A 0 *> A 2, B *> A 0]
 --test = [A 0 >>= A, B >>= A, A 1 >> A 0, A 1 >> B, B >> A 0, B >> B, return 0]

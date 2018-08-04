@@ -1,5 +1,5 @@
 module MetaPlugin where
-import GhcPlugins
+import GhcPlugins hiding (mkLocalVar)
 import PprCore
 import Data.IORef
 import System.IO.Unsafe
@@ -210,7 +210,7 @@ getDataConsNames :: ModGuts -> [Name]
 getDataConsNames = concatMap (\dc -> dataConName dc : (idName <$> dataConImplicitIds dc)) . getDataCons
 
 ----------------------------------------------------------------------------------------
--- Variables map
+-- Variables
 ----------------------------------------------------------------------------------------
 
 type VarMap = (Map Var Var, [Var])
@@ -231,7 +231,7 @@ mkMapWithVars :: MetaModule -> NameMap -> TyConMap -> [Var] -> VarMap
 mkMapWithVars mod nameMap tcMap vars = (Map.fromList $ zip vars' $ fmap newVar vars', vars'')
     where (vars',vars'') = partition (not . isIgnoreImportType . varType) vars
           newVar v = let newIdInfo = setInlinePragInfo vanillaIdInfo (inlinePragInfo $ idInfo v)
-                         v' = mkLocalIdWithInfo (newName nameMap $ varName v) (newBindType mod tcMap v) newIdInfo
+                         v' = mkLocalIdWithInfo (newName nameMap $ varName v) (changeType mod tcMap $ varType v) newIdInfo
                      in if isExportedId v then setIdExported v' else setIdNotExported v'
 
 primVarName :: Var -> CoreM Var
@@ -247,6 +247,11 @@ getModuleNameStr = maybe "" (moduleNameString . moduleName) . nameModule_maybe .
 mkVarUnique :: Var -> CoreM Var
 mkVarUnique v = do uniq <- getUniqueM
                    return $ setVarUnique v uniq
+
+mkLocalVar :: String -> Type -> CoreM Var
+mkLocalVar varName ty = do uniq <- getUniqueM
+                           let nm = mkInternalName uniq (mkVarOcc varName) noSrcSpan
+                           return $ mkLocalId nm ty
 
 ----------------------------------------------------------------------------------------
 -- Imports
@@ -438,14 +443,11 @@ nonRecDataBind varMap dc = NonRec (newVar varMap $ dataConWrapId dc)
 -- Type
 ----------------------------------------------------------------------------------------
 
-newBindType :: MetaModule -> TyConMap -> CoreBndr -> Type
-newBindType mod tcMap = changeType mod tcMap . varType
-
-changeBindType :: MetaModule -> TyConMap -> CoreBndr -> CoreBndr
-changeBindType mod tcMap x = setVarType x $ newBindType mod tcMap x
-
 changeBindTypeAndUniq :: MetaModule -> TyConMap -> CoreBndr -> CoreM CoreBndr
-changeBindTypeAndUniq mod tcMap x = mkVarUnique (changeBindType mod tcMap x)
+changeBindTypeAndUniq mod tcMap x = mkVarUnique $ setVarType x $ changeType mod tcMap $ varType x
+
+changeBindTypeUnderWithMetaAndUniq :: MetaModule -> TyConMap -> CoreBndr -> CoreM CoreBndr
+changeBindTypeUnderWithMetaAndUniq mod tcMap x = mkVarUnique $ setVarType x $ changeTypeUnderWithMeta mod tcMap False $ varType x
 
 -- TODO maybe use makeTyVarUnique?
 changeType :: MetaModule -> TyConMap -> Type -> Type
@@ -527,6 +529,11 @@ isWithMetaType mod t
     | Just (tc, _) <- splitTyConApp_maybe (getMainType t) = tc == withMetaC mod
     | otherwise = False
 
+getWithoutWithMetaType :: MetaModule -> Type -> Maybe Type
+getWithoutWithMetaType mod t
+    | isWithMetaType mod t, Just ts <- tyConAppArgs_maybe t = Just $ headPanic "getWithoutWithMetaType" (ppr t) ts
+    | otherwise = Nothing
+
 addWithMetaType :: MetaModule -> Type -> Type
 addWithMetaType mod t = mkTyConApp (withMetaC mod) [t]
 
@@ -566,7 +573,7 @@ noAtomsType t = noAtomsTypeVars [] [] t
           noAtomsTypeVars tcs vs t | Just t' <- coreView t = noAtomsTypeVars tcs vs t'
           noAtomsTypeVars tcs vs (TyVarTy v) = elem v vs
           noAtomsTypeVars tcs vs (AppTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
-          noAtomsTypeVars tcs vs (TyConApp tc ts) = noAtomsTypeCon tcs tc (length ts) && (and $ fmap (noAtomsTypeVars tcs vs) ts)
+          noAtomsTypeVars tcs vs (TyConApp tc ts) = noAtomsTypeCon tcs tc (length ts) && (all (noAtomsTypeVars tcs vs) ts)
           noAtomsTypeVars tcs vs (FunTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
           noAtomsTypeVars tcs vs (ForAllTy v _) = elem v vs
           noAtomsTypeVars tcs vs (LitTy _ ) = True
@@ -576,8 +583,8 @@ noAtomsType t = noAtomsTypeVars [] [] t
           noAtomsTypeCon _ tc _ | isAtomsTypeName tc = False
           noAtomsTypeCon _ tc _ | isClassTyCon tc = False -- classes should be replaced by meta equivalent
           noAtomsTypeCon _ tc _ | isPrimTyCon tc = True
-          noAtomsTypeCon tcs tc n | isDataTyCon tc = and $ (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc)
-                                                         <$> (concatMap dataConOrigArgTys $ tyConDataCons tc)
+          noAtomsTypeCon tcs tc n | isDataTyCon tc = all (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc)
+                                                         (concatMap dataConOrigArgTys $ tyConDataCons tc)
           noAtomsTypeCon _ _ _ = True
           isAtomsTypeName :: TyCon -> Bool
           isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"] -- FIXME check namespace
@@ -640,7 +647,7 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
                                             e'' <- if isWithMetaType mod $ exprType e'
                                                    then valueExpr mod e'
                                                    else return e'
-                                            let b' = setVarType b $ changeTypeUnderWithMeta mod tcMap True $ varType b
+                                            b' <- changeBindTypeUnderWithMetaAndUniq mod tcMap b
                                             m <- metaExpr mod e'
                                             let t' = changeType mod tcMap t
                                             as' <- mapM (changeAlternative eMap m t') as
@@ -663,7 +670,7 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
                                                e' <- newExpr eMap'' e
                                                return ((b',e'):bs', eMap'')
           changeRecBinds [] eMap = return ([], eMap)
-          changeAlternative eMap m t (DataAlt con, xs, e) = do xs' <- mapM mkVarUnique xs
+          changeAlternative eMap m t (DataAlt con, xs, e) = do xs' <- mapM (changeBindTypeUnderWithMetaAndUniq mod tcMap) xs
                                                                es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
                                                                e' <- newExpr (Map.union eMap $ Map.fromList $ zip xs es) e
                                                                e'' <- convertMetaType mod e' t
@@ -730,7 +737,7 @@ dataConExpr mod dc | dataConSourceArity dc == 1 = idOpExpr mod (Var $ dataConWra
 dataConExpr mod dc = do (tyVars, subst) <- makeTyVarsUnique $ fst $ splitForAllTys $ dataConRepType dc
                         xs <- mkArgs subst $ dataConSourceArity dc
                         ms <- mkMetaList xs
-                        ux <- mkUnionVar
+                        ux <- mkLocalVar "u" $ unionType mod
                         ue <- unionExpr mod ms
                         rs <- renameValues (Var ux) xs
                         m <- getMetaExpr mod (Var ux)
@@ -738,19 +745,14 @@ dataConExpr mod dc = do (tyVars, subst) <- makeTyVarsUnique $ fst $ splitForAllT
                         me <- createExpr mod e m
                         return $ mkCoreLams tyVars $ mkCoreLams xs $ bindNonRec ux ue me
     where mkArgs subst 0 = return []
-          mkArgs subst n = do uniq <- getUniqueM
-                              let xnm = mkInternalName uniq (mkVarOcc $ "x" ++ show n) noSrcSpan
-                              let ty = substTy subst $ withMetaType mod $ dataConOrigArgTys dc !! (dataConSourceArity dc - n)
-                              let x = mkLocalId xnm ty
+          mkArgs subst n = do let ty = substTy subst $ withMetaType mod $ dataConOrigArgTys dc !! (dataConSourceArity dc - n)
+                              x <- mkLocalVar ("x" ++ show n) ty
                               args <- mkArgs subst $ pred n
                               return $ x : args
           mkMetaList [] = return $ emptyListV mod
           mkMetaList (x:xs) = do meta <- metaExpr mod $ Var x
                                  list <- mkMetaList xs
                                  colonExpr mod meta list -- FIXME use mkListExpr
-          mkUnionVar = do uniq <- getUniqueM
-                          let nm = mkInternalName uniq (mkVarOcc "u") noSrcSpan
-                          return $ mkLocalId nm $ unionType mod
           renameValues u [] = return []
           renameValues u (x:xs) = do df <- getDynFlags
                                      let n = mkConApp intDataCon [Lit $ mkMachInt df $ toInteger (dataConSourceArity dc - length xs - 1)]
@@ -764,9 +766,9 @@ dataConExpr mod dc = do (tyVars, subst) <- makeTyVarsUnique $ fst $ splitForAllT
 ----------------------------------------------------------------------------------------
 
 checkCoreProgram :: CoreProgram -> Bool
-checkCoreProgram = and . fmap checkBinds
+checkCoreProgram = all checkBinds
     where checkBinds (NonRec b e) = checkBind (b,e)
-          checkBinds (Rec bs) = and $ checkBind <$> bs
+          checkBinds (Rec bs) = all checkBind bs
           checkBind (b,e) | not (varType b `eqType` exprType e)
                           = pprPanic "\n================= INCONSISTENT TYPES IN BIND ==========================="
                               (vcat [text "bind: " <+> showVar b,
@@ -805,7 +807,7 @@ checkCoreProgram = and . fmap checkBinds
           checkExpr b (App f x) = checkExpr b f && checkExpr b x
           checkExpr b (Lam x e) = checkExpr b e
           checkExpr b (Let x e) = checkBinds x && checkExpr b e
-          checkExpr b (Case e x t as) = checkBind (x,e) && and (checkAlternative b t <$> as)
+          checkExpr b (Case e x t as) = checkBind (x,e) && all (checkAlternative b t) as && all (checkAltConType b $ exprType e) as
           checkExpr b (Cast e c) = checkExpr b e
           checkExpr b (Tick t e) = checkExpr b e
           checkExpr b (Type t) = undefined -- type should be handled in (App f (Type t)) case
@@ -813,11 +815,23 @@ checkCoreProgram = and . fmap checkBinds
           checkAlternative b t (ac, xs, e) | not $ eqType t $ exprType e
                                          = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
                                              (vcat [text "type in case: " <+> ppr t,
-                                                    text "case expression: " <+> ppr e,
-                                                    text "case expression type: " <+> ppr (exprType e),
+                                                    text "case alternative expression: " <+> ppr e,
+                                                    text "case alternative expression type: " <+> ppr (exprType e),
                                                     text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
                                                     text "\n=======================================================================|"])
           checkAlternative b t (ac, xs, e) = checkExpr b e
+          checkAltConType b t (DataAlt dc, xs, e) = checkAltConTypes b (ppr dc) (dataConOrigResTy dc) t xs -- FIXME better evaluation of pattern type
+          checkAltConType b t (LitAlt l, xs, e) = checkAltConTypes b (ppr l) (literalType l) t xs
+          checkAltConType b _ _ = True
+          checkAltConTypes b conDoc pt vt xs | not $ canUnifyTypes pt vt
+                                             = pprPanic "\n========== INCONSISTENT TYPES IN CASE ALTERNATIVE PATTERN =============="
+                                                 (vcat [text "type of value: " <+> ppr vt,
+                                                        text "case alternative constructor: " <+> conDoc,
+                                                        text "case alternative arguments: " <+> hcat ((\x -> ppr x <+> text "::" <+> ppr (varType x)) <$> xs),
+                                                        text "case alternative pattern type: " <+> ppr pt,
+                                                        text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
+                                                        text "\n=======================================================================|"])
+          checkAltConTypes b conDoc pt vt xs = True
 
 ----------------------------------------------------------------------------------------
 -- Apply expression
@@ -1009,35 +1023,25 @@ idOpExpr mod e = applyExpr (idOpV mod) e
 -- Convert meta types
 ----------------------------------------------------------------------------------------
 
--- TODO generate convert function and make nested conversion
 convertMetaType :: MetaModule -> CoreExpr -> Type -> CoreM CoreExpr
-convertMetaType mod e t | canUnifyTypes (getMainType $ exprType e) (getMainType t) = return e
-convertMetaType mod e t | isClassPred t,
-                          Just (cl, _) <- getClassPredTys_maybe $ exprType e,
-                          (_, preds, ids, _) <- classBigSig cl,
-                          Just idx <- findIndex (canUnifyTypes t) preds
-                        = applyExpr (Var $ ids !! idx) e
-convertMetaType mod e t | length ets == length ts = applyExpr (convertMetaFun mod ets ts) e
-    where ets = getFunTypeParts $ exprType e
-          ts = getFunTypeParts t
-convertMetaType mod e t | isWithMetaType mod t
-                        , Just (_, ts) <- splitTyConApp_maybe (getMainType t)
-                        , canUnifyTypes (exprType e) (headPanic "convertMetaType" (ppr e <+> ppr t) ts)
-                        = noMetaExpr mod e
-convertMetaType mod e t | isWithMetaType mod (exprType e)
-                        , Just (_, ts) <- splitTyConApp_maybe (getMainType $ exprType e)
-                        , canUnifyTypes t (headPanic "convertMetaType" (ppr e <+> ppr t) ts)
-                        = valueExpr mod e
-convertMetaType mod e t = return e
-
-convertMetaFun :: MetaModule -> [Type] -> [Type] -> CoreExpr
-convertMetaFun mod ts1 ts2 = getMetaVar mod $ funName "convert" ts1 ts2
-    where funName name (t1:ts1) (t2:ts2)
-            | canUnifyTypes t1 t2 = funName (name ++ "x") ts1 ts2
-            | isWithMetaType mod t1 && canUnifyTypes t1 (addWithMetaType mod t2) = funName (name ++ "0") ts1 ts2
-            | isWithMetaType mod t2 && canUnifyTypes (addWithMetaType mod t1) t2 = funName (name ++ "1") ts1 ts2
-            | otherwise = pprPanic "convertMetaFun - can't unify meta types:" (ppr (t1:ts1) <+> ppr (t2:ts2))
-          funName name [] [] = name
+convertMetaType mod e t
+    | canUnifyTypes (getMainType et) (getMainType t) = return e
+    | isClassPred t, Just (cl, _) <- getClassPredTys_maybe et, (_, preds, ids, _) <- classBigSig cl, Just idx <- findIndex (canUnifyTypes t) preds
+    = applyExpr (Var $ ids !! idx) e
+    | not (isWithMetaType mod et), Just t' <- getWithoutWithMetaType mod t = do e' <- convertMetaType mod e t'
+                                                                                noMetaExpr mod e'
+    | isWithMetaType mod et, not (isWithMetaType mod t) = do e' <- valueExpr mod e
+                                                             convertMetaType mod e' t
+    | length ets == length ts = convertMetaFun tvs ets ts [] []
+    | otherwise = pprPanic "convertMetaType" (text "can't convert (" <+> ppr e <+> text "::" <+> ppr (exprType e) <+> text ")_to type:" <+> ppr t)
+    where (et, ets, ts, tvs) = (exprType e, getFunTypeParts et, getFunTypeParts t, fst $ splitForAllTys t)
+          convertMetaFun tvs [et] [t] xs exs = do e' <- applyExprs e $ reverse exs
+                                                  let (tvs', e'') = collectTyBinders e'
+                                                  e''' <- convertMetaType mod e'' t
+                                                  return $ mkCoreLams (tvs' ++ reverse xs) e'''
+          convertMetaFun tvs (et:ets) (t:ts) xs exs = do x <- mkLocalVar ("x" ++ show (length ts)) t
+                                                         ex <- convertMetaType mod (Var x) et
+                                                         convertMetaFun tvs ets ts (x:xs) (ex:exs)
 
 ----------------------------------------------------------------------------------------
 -- Meta Equivalents
