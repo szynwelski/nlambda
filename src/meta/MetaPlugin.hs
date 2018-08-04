@@ -449,19 +449,28 @@ changeBindTypeAndUniq mod tcMap x = mkVarUnique (changeBindType mod tcMap x)
 
 -- TODO maybe use makeTyVarUnique?
 changeType :: MetaModule -> TyConMap -> Type -> Type
-changeType mod tcMap t = change t
-    where change t | noAtomsType t || isVoidTy t || isPrimitiveType t = t
+changeType mod tcMap = changeTypeOrSkip mod tcMap True
+
+changeTypeOrSkip :: MetaModule -> TyConMap -> Bool -> Type -> Type
+changeTypeOrSkip mod tcMap skipNoAtoms t = change t
+    where change t | skipNoAtoms, noAtomsType t = t
+          change t | isVoidTy t = t
+          change t | isPrimitiveType t = t
           change t | isPredTy t = changePredType mod tcMap t
           change t | (Just (tv, t')) <- splitForAllTy_maybe t = mkForAllTy tv (change t')
           change t | (Just (t1, t2)) <- splitFunTy_maybe t = mkFunTy (change t1) (change t2)
-          change t | (Just (tc, ts)) <- splitTyConApp_maybe t = withMetaType mod $ mkTyConApp tc (changeTypeUnderWithMeta mod tcMap <$> ts)
+          change t | (Just (t1, t2)) <- splitAppTy_maybe t
+                   = withMetaType mod $ mkAppTy t1 (changeTypeUnderWithMeta mod tcMap skipNoAtoms t2)
+          change t | (Just (tc, ts)) <- splitTyConApp_maybe t
+                   = withMetaType mod $ mkTyConApp tc (changeTypeUnderWithMeta mod tcMap skipNoAtoms <$> ts)
           change t = withMetaType mod t
 
-changeTypeUnderWithMeta :: MetaModule -> TyConMap -> Type -> Type
-changeTypeUnderWithMeta mod tcMap t = change t
-    where change t | noAtomsType t = t
+changeTypeUnderWithMeta :: MetaModule -> TyConMap -> Bool -> Type -> Type
+changeTypeUnderWithMeta mod tcMap skipNoAtoms t = change t
+    where change t | skipNoAtoms, noAtomsType t = t
           change t | (Just (tv, t')) <- splitForAllTy_maybe t = mkForAllTy tv (change t')
-          change t | (Just (t1, t2)) <- splitFunTy_maybe t = mkFunTy (changeType mod tcMap t1) (changeType mod tcMap t2)
+          change t | (Just (t1, t2)) <- splitFunTy_maybe t
+                   = mkFunTy (changeTypeOrSkip mod tcMap skipNoAtoms t1) (changeTypeOrSkip mod tcMap skipNoAtoms t2)
           change t | (Just (t1, t2)) <- splitAppTy_maybe t = mkAppTy (change t1) (change t2)
           change t | (Just (tc, ts)) <- splitTyConApp_maybe t = mkTyConApp tc (change <$> ts)
           change t = t
@@ -472,10 +481,13 @@ changePredType mod tcMap t = t
 
 changeTypeAndApply :: MetaModule -> TyConMap -> Maybe Type -> CoreExpr -> CoreExpr
 changeTypeAndApply mod tcMap mt e = maybe e (mkCoreApp e . Type . change) mt
-    where change t = let (tyVars, eTy) = splitForAllTys $ exprType e
-                     in if isFunTy t || (not $ isTyVarWrappedByWithMeta mod (headPanic "changeTypeAndApply" (ppr t <+> ppr eTy) tyVars) eTy)
-                        then changeType mod tcMap t
-                        else t
+    where (tyVars, eTy) = splitForAllTys $ exprType e
+          tyVar = headPanic "changeTypeAndApply" (ppr e <+> text "::" <+> ppr (exprType e)) tyVars
+          change t
+            | isFunTy t, isTyVarNested tyVar eTy = changeTypeOrSkip mod tcMap False t
+            | isFunTy t = changeType mod tcMap t
+            | not $ isTyVarWrappedByWithMeta mod tyVar eTy = changeType mod tcMap t
+            | otherwise = t
 
 getMainType :: Type -> Type
 getMainType t = if t == t' then t else getMainType t'
@@ -499,6 +511,16 @@ isTyVarWrappedByWithMeta mod tv = all wrappedByWithMeta . getFunTypeParts
           wrappedByWithMeta (FunTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
           wrappedByWithMeta (ForAllTy _ t') = wrappedByWithMeta t'
           wrappedByWithMeta (LitTy _) = True
+
+-- is ty var under app type
+isTyVarNested :: TyVar -> Type -> Bool
+isTyVarNested tv t = isNested False t
+    where isNested nested (TyVarTy tv') = nested && (tv == tv')
+          isNested nested (AppTy t1 t2) = isNested nested t1 || isNested True t2
+          isNested nested (TyConApp tc ts) = any (isNested True) ts
+          isNested nested (FunTy t1 t2) = isNested nested t1 || isNested nested t2
+          isNested nested (ForAllTy _ t) = isNested nested t
+          isNested nested (LitTy _) = False
 
 isWithMetaType :: MetaModule -> Type -> Bool
 isWithMetaType mod t
@@ -538,6 +560,7 @@ isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPri
 ----------------------------------------------------------------------------------------
 
 noAtomsType :: Type -> Bool
+noAtomsType t | hasNestedFunType t = False
 noAtomsType t = noAtomsTypeVars [] [] t
     where noAtomsTypeVars :: [TyCon] -> [TyVar] -> Type -> Bool
           noAtomsTypeVars tcs vs t | Just t' <- coreView t = noAtomsTypeVars tcs vs t'
@@ -558,6 +581,14 @@ noAtomsType t = noAtomsTypeVars [] [] t
           noAtomsTypeCon _ _ _ = True
           isAtomsTypeName :: TyCon -> Bool
           isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"] -- FIXME check namespace
+
+hasNestedFunType :: Type -> Bool
+hasNestedFunType (TyVarTy v) = False
+hasNestedFunType (AppTy _ t) = isFunTy t || hasNestedFunType t
+hasNestedFunType (TyConApp _ ts) = any (\t -> isFunTy t || hasNestedFunType t) ts
+hasNestedFunType (FunTy t1 t2) = hasNestedFunType t1 || hasNestedFunType t2
+hasNestedFunType (ForAllTy _ t) = hasNestedFunType t
+hasNestedFunType (LitTy _ ) = False
 
 ----------------------------------------------------------------------------------------
 -- Expressions map
@@ -609,7 +640,7 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
                                             e'' <- if isWithMetaType mod $ exprType e'
                                                    then valueExpr mod e'
                                                    else return e'
-                                            let b' = setVarType b $ changeTypeUnderWithMeta mod tcMap $ varType b
+                                            let b' = setVarType b $ changeTypeUnderWithMeta mod tcMap True $ varType b
                                             m <- metaExpr mod e'
                                             let t' = changeType mod tcMap t
                                             as' <- mapM (changeAlternative eMap m t') as
@@ -978,6 +1009,7 @@ idOpExpr mod e = applyExpr (idOpV mod) e
 -- Convert meta types
 ----------------------------------------------------------------------------------------
 
+-- TODO generate convert function and make nested conversion
 convertMetaType :: MetaModule -> CoreExpr -> Type -> CoreM CoreExpr
 convertMetaType mod e t | canUnifyTypes (getMainType $ exprType e) (getMainType t) = return e
 convertMetaType mod e t | isClassPred t,
@@ -998,7 +1030,6 @@ convertMetaType mod e t | isWithMetaType mod (exprType e)
                         = valueExpr mod e
 convertMetaType mod e t = return e
 
--- TODO generate convert function
 convertMetaFun :: MetaModule -> [Type] -> [Type] -> CoreExpr
 convertMetaFun mod ts1 ts2 = getMetaVar mod $ funName "convert" ts1 ts2
     where funName name (t1:ts1) (t2:ts2)

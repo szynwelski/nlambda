@@ -30,7 +30,7 @@ data WithMeta a = WithMeta {value :: a, meta :: Meta}
 
 instance Show a => Show (WithMeta a) where
     showsPrec n = noMetaResOp $ showsPrec n
-    show = noMetaResOp show
+    show (WithMeta x m) = show x ++ " | meta:" ++ show m
     showList = showList . value . liftMeta
 
 --instance Eq a => Eq (WithMeta a) where
