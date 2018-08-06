@@ -5,7 +5,9 @@ module Sample where
 
 import Meta (MetaLevel)
 import GHC.Generics
+import Data.Either
 import Data.Foldable (fold, foldr', foldl', toList)
+import Data.Maybe
 
 ----------------------------------------------------------------------------
 -- Test Show
@@ -260,3 +262,23 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test = [pi, exp A, log A, sqrt A, A ** A, logBase A A, sin A, cos A, tan A, asin A, acos A, atan A, sinh A, cosh A, tanh A, asinh A, acosh A, atanh A]
 --test = [fromRational $ toRational A]
 --test = [quot A A, rem A A, div A A, mod A A, fst $ quotRem A A, snd $ quotRem A A, fst $ divMod A A, snd $ divMod A A, fromInteger $ toInteger A]
+--test :: [Bool]
+--test = [even A, odd A]
+
+----------------------------------------------------------------------------
+-- Test Prelude functions
+----------------------------------------------------------------------------
+
+--data Atom = A deriving (Show, Eq)
+--
+--test :: [Atom]
+--test = [id $ A, const A $! A, [A]!!0, (id . const A) A, seq A A, head [A,A], last [A], either id id (Left A), fst (flip (,) A A), curry snd A A,
+--        fromJust $ lookup A [(A,A)], fromMaybe A Nothing]
+--test :: [[Atom]]
+--test = [tail $ concat [[A]], concatMap (:[]) [A], take 4 $ drop 10 $ cycle [A], dropWhile (const True) [A], filter (const True) [A], init [A],
+--        reverse $ replicate 5 A, fst $ splitAt 4 $ repeat A, scanl const A [A], scanl1 const [A], scanr const A [A], scanr1 const [A],
+--        fst $ span (const True) [A,A,A], takeWhile (const False) $ repeat A, map id [A,A], snd $ unzip $ zip [A,A][A],
+--        (\(x,_,_) -> x) $ unzip3 $ zip3 [A][A][A], catMaybes $ filter isJust [Just A, Nothing]]
+--test :: [Bool]
+--test = [A == A && A /= A, A == A || A /= A, and [A == A, A /= A], or [A == A, A /= A], all (== A) [A], any (== A) [], elem A [A], notElem A [A],
+--        isLeft (if A == A then Left A else Right A), isRight (if A == A then Left A else Right A)]

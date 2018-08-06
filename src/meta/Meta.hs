@@ -642,8 +642,8 @@ createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> Me
 createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
-preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcReal, ghcShow, ghcTuple, ghcTypes,
-                                 dataEither, dataTuple, controlExceptionBase]
+preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcPrim, ghcReal, ghcShow, ghcTuple, ghcTypes,
+                                 dataEither, dataFoldable, dataMaybe, dataTuple, controlExceptionBase]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
@@ -662,7 +662,7 @@ metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod prelude
 
 ghcBase :: MetaEquivalentMap
 ghcBase = createEquivalentsMap "GHC.Base"
-    [(SameOp, ["$", "$!", ".", "id", "const"]),
+    [(SameOp, ["$", "$!", ".", "const", "flip", "id"]),
      (ConvertFun NoMeta, ["Nothing"]),
      (ConvertFun IdOp, ["Just"]),
      (ConvertFun UnionOp, ["++", "$dm<$", "$dm<*", "$dm*>", "$dm>>"])]
@@ -686,15 +686,37 @@ ghcFloat = createEquivalentsMap "GHC.Float" []
 
 ghcList :: MetaEquivalentMap
 ghcList = createEquivalentsMap "GHC.List"
-    [(ConvertFun LeftIdOp, ["!!"])]
+    [(ConvertFun LeftIdOp, ["!!"]),
+     (ConvertFun IdOp, ["cycle", "head", "init", "last", "repeat", "reverse", "tail", "unzip", "unzip3"]),
+     (ConvertFun RightIdOp, ["drop", "replicate", "splitAt", "take"]),
+     (ConvertFun UnionOp, ["lookup", "zip"]),
+     (ConvertFun Union3Op, ["zip3"]),
+     (ConvertFun NoMetaResFunOp, ["dropWhile", "filter", "span", "takeWhile"])]
+
+scanl_nlambda :: (WithMeta b -> WithMeta a -> WithMeta b) -> WithMeta b -> WithMeta [a] -> WithMeta [b]
+scanl_nlambda f x = liftMeta . scanl f x . dropMeta
+
+scanl1_nlambda :: (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta [a] -> WithMeta [a]
+scanl1_nlambda f = liftMeta . scanl1 f . dropMeta
+
+scanr_nlambda :: (WithMeta a -> WithMeta b -> WithMeta b) -> WithMeta b -> WithMeta [a] -> WithMeta [b]
+scanr_nlambda f x = liftMeta . scanr f x . dropMeta
+
+scanr1_nlambda :: (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta [a] -> WithMeta [a]
+scanr1_nlambda f = liftMeta . scanr1 f . dropMeta
 
 ghcNum :: MetaEquivalentMap
 ghcNum = createEquivalentsMap "GHC.Num"
     [(ConvertFun UnionOp, ["$dm-"])]
 
+ghcPrim :: MetaEquivalentMap
+ghcPrim = createEquivalentsMap "GHC.Prim"
+    [(ConvertFun RightIdOp, ["seq"])]
+
 ghcReal :: MetaEquivalentMap
 ghcReal = createEquivalentsMap "GHC.Real"
-    [(ConvertFun UnionOp, ["^", "^^"])]
+    [(ConvertFun UnionOp, ["^", "^^"]),
+     (ConvertFun NoMetaResOp, ["even", "odd"])]
 
 ghcShow :: MetaEquivalentMap
 ghcShow = createEquivalentsMap "GHC.Show" []
@@ -711,7 +733,25 @@ ghcTypes = createEquivalentsMap "GHC.Types"
 
 dataEither :: MetaEquivalentMap
 dataEither = createEquivalentsMap "Data.Either"
-    [(ConvertFun IdOp, ["Left", "Right"])]
+    [(ConvertFun IdOp, ["Left", "Right"]),
+     (ConvertFun NoMetaResOp, ["isLeft", "isRight"])]
+
+either_nlambda :: (WithMeta a -> WithMeta c) -> (WithMeta b -> WithMeta c) -> WithMeta (Either a b) -> WithMeta c
+either_nlambda f1 f2 (WithMeta e m) = either (metaFun m f1) (metaFun m f2) e
+
+dataFoldable :: MetaEquivalentMap
+dataFoldable = createEquivalentsMap "Data.Foldable"
+    [(ConvertFun NoMetaResFunOp, ["all", "any"]),
+     (ConvertFun IdOp, ["concat", "notElem"])]
+
+concatMap_nlambda :: Foldable_nlambda t => (WithMeta a -> WithMeta [b]) -> WithMeta (t a) -> WithMeta [b]
+concatMap_nlambda f = liftMeta . concatMap (dropMeta . f) . dropMeta
+
+dataMaybe :: MetaEquivalentMap
+dataMaybe = createEquivalentsMap "Data.Maybe"
+    [(ConvertFun NoMetaResOp, ["isJust", "isNothing"]),
+     (ConvertFun IdOp, ["catMaybes", "fromJust", "listToMaybe", "maybeToList"]),
+     (ConvertFun UnionOp, ["fromMaybe"])]
 
 dataTuple :: MetaEquivalentMap
 dataTuple = createEquivalentsMap "Data.Tuple"
