@@ -69,6 +69,12 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test :: ([Maybe (Atom Int)], Maybe (Atom Int, Atom Int), (Atom Int, Atom Int))
 --test = (fmap Just [B, A 1], fmap (,B) (Just $ A 1), fmap (const B) (A 1, A 2))
 
+--data Atom a = A a (Atom a) | B deriving (Show, Generic1, MetaLevel, Functor)
+--
+--test :: [Atom Int]
+--test = [fmap id B, fmap id (A 1 B), fmap id (A 1 (A 2 B)), fmap id (A 1 (A 2 (A 3 B))),
+--        1 <$ B, 1 <$ (A 1 B), 1 <$ (A 1 (A 2 B)), 1 <$ (A 1 (A 2 (A 3 B)))]
+
 ----------------------------------------------------------------------------
 -- Test Foldable & Num
 ----------------------------------------------------------------------------
@@ -123,13 +129,6 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --        elem (A 0) [], elem (A 0) [A 1], elem (A 1) [A 1,A 2], elem (A 0) [A 1,A 2,A 3]]
 
 ----------------------------------------------------------------------------
--- Test Traversable
-----------------------------------------------------------------------------
-
--- FIXME infinite running
---data Atom a = A a (Atom a) | B deriving (Show, Generic1, MetaLevel, Functor, Foldable, Traversable)
-
-----------------------------------------------------------------------------
 -- Test Monoid
 ----------------------------------------------------------------------------
 
@@ -152,10 +151,10 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test = [mempty, mappend [A True] [A False], mconcat [[A True],[A False]]]
 
 ----------------------------------------------------------------------------
--- Test Applicative && Monad
+-- Test Applicative && Monad && Traversable
 ----------------------------------------------------------------------------
 
---data Atom a = A a | B deriving (Show, Generic1, MetaLevel, Functor)
+--data Atom a = A a | B deriving (Show, Generic1, MetaLevel, Functor, Foldable, Traversable)
 --instance Applicative Atom where
 --    pure = A
 --    A f <*> a = fmap f a
@@ -168,6 +167,11 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test = [pure 1, A succ <*> A 1, A succ <*> B, B <*> A 0, A 1 <* A 2, B *> B, A 0 <* B, A 0 *> A 2, B *> A 0]
 --test = [A 0 >>= A, B >>= A, A 1 >> A 0, A 1 >> B, B >> A 0, B >> B, return 0]
 --test = [do {x <- A 0; return $ x + 1}, do {x <- B; return $ x + 1}]
+--test = sequenceA (A [0,1,2]) ++ sequence (A [0,1,2])
+--test :: [Atom [Int]]
+--test = [sequenceA [], sequenceA [A 0, B], sequenceA [A 0, A 1, A 2],
+--        sequence [], sequence [A 0, B], sequence [A 0, A 1, A 2],
+--        traverse A [0,1,2], mapM A [0,1,2]]
 
 --data Atom a = A a deriving (Show)
 --notA :: Atom Bool -> Atom Bool
@@ -178,6 +182,7 @@ import Data.Foldable (fold, foldr', foldl', toList)
 --test = [pure $ A True, [] <*> [A True], [notA] <*> [A True, A False, A True], [A True, A True] *> [A False, A False], [A False] <* [A True, A False]]
 --test = [[] >>= (:[]), [A True,A False] >>= (:[]), [A True, A False] >> [], [] >> [A True, A False], [A True, A True] >> [A False, A False], return $ A True, return $ A False]
 --test = [do {x <- []; return $ notA x}, do {x <- [A True]; return $ notA x}, do {x <- [A False, A True]; return $ notA x}]
+--test = sequenceA [[A True], [A False]] ++ sequence [[A True], [A False]] ++ mapM (:[]) [A True, A False] ++ traverse (:[]) [A True, A False]
 
 ----------------------------------------------------------------------------
 -- Test Bounded

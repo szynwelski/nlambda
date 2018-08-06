@@ -633,7 +633,7 @@ instance Show_nlambda Float -- Defined in ‘GHC.Float’
 instance Show_nlambda Double -- Defined in ‘GHC.Float’
 
 class (Traversable t, Functor_nlambda t, Foldable_nlambda t) => Traversable_nlambda (t :: * -> *) where
-  traverse_nlambda :: (MetaLevel f, Applicative_nlambda f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
+  traverse_nlambda :: Applicative_nlambda f => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
   traverse_nlambda f (WithMeta x m) = liftMeta $ fmap liftMeta $ traverse (dropMeta . metaFun m f) x
   sequenceA_nlambda :: Applicative_nlambda f => WithMeta (t (f a)) -> WithMeta (f (t a))
   sequenceA_nlambda = idOp sequenceA
