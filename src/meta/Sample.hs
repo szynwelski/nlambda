@@ -203,17 +203,15 @@ import Data.Foldable (fold, foldr', foldl', toList)
 ----------------------------------------------------------------------------
 
 --data Atom = A | B | C | D | E | F deriving (Show, Enum)
-
---FIXME undefined reference
+--
 --test :: [[Atom]]
 --test = [[succ B], [pred D], [toEnum 1], [toEnum $ fromEnum E], enumFrom C, enumFromThen A C, enumFromTo C E, enumFromThenTo A C D]
 
 ----------------------------------------------------------------------------
 -- Test Num & Floating & Fractional & Real & Integral
--- TODO RealFrac and RealFloat
 ----------------------------------------------------------------------------
 
---data Atom = A deriving (Show, Eq, Ord)--, Enum) -- FIXME undefined reference
+--data Atom = A deriving (Show, Eq, Ord, Enum)
 --instance Num Atom where
 --    A + A = A
 --    A - A = A

@@ -33,42 +33,6 @@ instance Show a => Show (WithMeta a) where
     show (WithMeta x m) = show x ++ " | meta:" ++ show m
     showList = showList . value . liftMeta
 
---instance Eq a => Eq (WithMeta a) where
---    (==) = noMetaResUnionOp (==)
---    (/=) = noMetaResUnionOp (/=)
---
---instance Ord a => Ord (WithMeta a) where
---    compare = noMetaResUnionOp compare
---    (<) = noMetaResUnionOp (<)
---    (<=) = noMetaResUnionOp (<=)
---    (>) = noMetaResUnionOp (>)
---    (>=) = noMetaResUnionOp (>=)
---    max = unionOp max
---    min = unionOp min
---
---instance Bounded a => Bounded (WithMeta a) where
---    minBound = noMeta minBound
---    maxBound = noMeta maxBound
---
---instance Enum a => Enum (WithMeta a) where
---    succ = idOp succ
---    pred = idOp pred
---    toEnum = noMeta . toEnum
---    fromEnum = noMetaResOp fromEnum
---    enumFrom = fmap noMeta . enumFrom . value
---    enumFromThen x = fmap noMeta . enumFromThen (value x). value
---    enumFromTo x = fmap noMeta . enumFromTo (value x). value
---    enumFromThenTo x y = fmap noMeta . enumFromThenTo (value x) (value y) . value
---
---instance Num a => Num (WithMeta a) where
---    (+) = unionOp (+)
---    (-) = unionOp (-)
---    (*) = unionOp (*)
---    negate = idOp negate
---    abs = idOp abs
---    signum = idOp signum
---    fromInteger = noMeta . fromInteger
---
 instance Monoid a => Monoid (WithMeta a) where
     mempty = noMeta mempty
     mappend = unionOp mappend

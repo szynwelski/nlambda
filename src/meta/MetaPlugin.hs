@@ -486,6 +486,7 @@ changeTypeAndApply mod tcMap mt e = maybe e (mkCoreApp e . Type . change) mt
     where (tyVars, eTy) = splitForAllTys $ exprType e
           tyVar = headPanic "changeTypeAndApply" (ppr e <+> text "::" <+> ppr (exprType e)) tyVars
           change t
+            | (Var v) <- e, isPrimOpId v = t -- e.g. tagToEnum#
             | isFunTy t, isTyVarNested tyVar eTy = changeTypeOrSkip mod tcMap False t
             | isFunTy t = changeType mod tcMap t
             | not $ isTyVarWrappedByWithMeta mod tyVar eTy = changeType mod tcMap t
