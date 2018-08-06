@@ -282,3 +282,16 @@ import Data.Maybe
 --test :: [Bool]
 --test = [A == A && A /= A, A == A || A /= A, and [A == A, A /= A], or [A == A, A /= A], all (== A) [A], any (== A) [], elem A [A], notElem A [A],
 --        isLeft (if A == A then Left A else Right A), isRight (if A == A then Left A else Right A)]
+
+----------------------------------------------------------------------------
+-- Test user class
+----------------------------------------------------------------------------
+
+data Atom a = A a deriving Show
+class App f where
+    app :: f (a -> b) -> f a -> f b
+instance App Atom where
+    app (A f) (A x) = A (f x)
+
+test :: Atom Int
+test = app (A succ) (A 0)
