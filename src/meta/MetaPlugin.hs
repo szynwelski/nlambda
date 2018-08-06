@@ -645,7 +645,7 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
                                             b' <- changeBindTypeUnderWithMetaAndUniq mod tcMap b
                                             m <- metaExpr mod e'
                                             let t' = changeType mod tcMap t
-                                            as' <- mapM (changeAlternative eMap m t') as
+                                            as' <- mapM (changeAlternative (insertVarExpr b b' eMap) m t') as
                                             return $ Case e'' b' t' as'
           newExpr eMap (Cast e c) = do e' <- newExpr eMap e
                                        return $ Cast e' (changeCoercion mod tcMap c)
