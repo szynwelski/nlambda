@@ -8,6 +8,7 @@ import GHC.Generics
 import Data.Either
 import Data.Foldable (fold, foldr', foldl', toList)
 import Data.Maybe
+import Data.Set
 
 ----------------------------------------------------------------------------
 -- Test Show
@@ -287,11 +288,29 @@ import Data.Maybe
 -- Test user class
 ----------------------------------------------------------------------------
 
-data Atom a = A a deriving Show
-class App f where
-    app :: f (a -> b) -> f a -> f b
-instance App Atom where
-    app (A f) (A x) = A (f x)
+--data Atom a = A a deriving Show
+--class App f where
+--    app :: f (a -> b) -> f a -> f b
+--instance App Atom where
+--    app (A f) (A x) = A (f x)
+--
+--test :: Atom Int
+--test = app (A succ) (A 0)
 
-test :: Atom Int
-test = app (A succ) (A 0)
+----------------------------------------------------------------------------
+-- Test Data.Set
+----------------------------------------------------------------------------
+
+--data Atom = A | B | C deriving (Show, Eq, Ord)
+--(emp, sing, set) = (empty, singleton A, fromList [A, B, B, C, C, C])
+--
+--test :: [Set Atom]
+--test = [emp, sing, set, insert A emp, insert B sing, insert C set, delete A emp, delete A sing, delete A set,
+--        union sing set, unions [emp,sing,set], intersection sing set, difference set sing, Data.Set.filter (/= C) set,
+--        fst $ partition (< C) set, snd $ split B set, Data.Set.map (const A) set, deleteMin set, deleteMax set,
+--        fromList $ Data.Set.toList set, fromAscList $ Data.Set.toAscList set]
+--test :: [Atom]
+--test = [Data.Set.foldr const A set, Data.Set.foldl seq A set, findMin set, findMax set]
+--test :: [Bool]
+--test = [Data.Set.null set, Data.Set.null sing, size set == 3, size sing == 1, size emp == 0, member A set, notMember B set,
+--        isSubsetOf set set, isSubsetOf sing set, isProperSubsetOf set set, isProperSubsetOf sing set]

@@ -62,6 +62,12 @@ tailPanic :: String -> SDoc -> [a] -> [a]
 tailPanic msg doc [] = pprPanic ("tailPanic - " ++ msg) doc
 tailPanic _ _ l = tail l
 
+pprE :: String -> CoreExpr -> CoreM ()
+pprE n e = putMsg $ text (n ++ " =") <+> ppr e <+> text "::" <+> ppr (exprType e)
+
+pprV :: String -> CoreBndr -> CoreM ()
+pprV n v = putMsg $ text (n ++ " =") <+> ppr v <+> text "::" <+> ppr (varType v)
+
 pass :: HscEnv -> Bool -> ModGuts -> CoreM ModGuts
 pass env onlyShow guts =
     if withMetaAnnotation guts
@@ -230,9 +236,9 @@ mkVarMap guts mod nameMap tcMap = mkMapWithVars mod nameMap tcMap (getBindsVars 
 mkMapWithVars :: MetaModule -> NameMap -> TyConMap -> [Var] -> VarMap
 mkMapWithVars mod nameMap tcMap vars = (Map.fromList $ zip vars' $ fmap newVar vars', vars'')
     where (vars',vars'') = partition (not . isIgnoreImportType . varType) vars
-          newVar v = let newIdInfo = setInlinePragInfo vanillaIdInfo (inlinePragInfo $ idInfo v)
-                         v' = mkLocalIdWithInfo (newName nameMap $ varName v) (changeType mod tcMap $ varType v) newIdInfo
+          newVar v = let v' = mkLocalIdWithInfo (newName nameMap $ varName v) (changeType mod tcMap $ varType v) (newIdInfo $ idInfo v)
                      in if isExportedId v then setIdExported v' else setIdNotExported v'
+          newIdInfo old = vanillaIdInfo `setInlinePragInfo` (inlinePragInfo old) -- TODO maybe rewrite also other info
 
 primVarName :: Var -> CoreM Var
 primVarName v = do name <- createNewName (const "'") (varName v)
@@ -668,7 +674,7 @@ changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
           changeRecBinds [] eMap = return ([], eMap)
           changeAlternative eMap m t (DataAlt con, xs, e) = do xs' <- mapM (changeBindTypeUnderWithMetaAndUniq mod tcMap) xs
                                                                es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
-                                                               e' <- newExpr (Map.union eMap $ Map.fromList $ zip xs es) e
+                                                               e' <- newExpr (Map.union (Map.fromList $ zip xs es) eMap) e
                                                                e'' <- convertMetaType mod e' t
                                                                return (DataAlt con, xs', e'')
           changeAlternative eMap m t (alt, [], e) = do e' <- newExpr eMap e
@@ -1065,6 +1071,7 @@ getMetaPreludeTyCon mod tc = (getTyCon mod . getNameStr . snd) <$> findNamePair 
 
 getDefinedMetaEquivalentVar :: MetaModule -> Var -> Maybe Var
 getDefinedMetaEquivalentVar mod v
+    | notElem (getModuleNameStr v) preludeModules = Nothing
     -- super class selectors should be shift by one because of additional dependency for meta classes
     | isPrefixOf "$p" $ getVarNameStr v, isJust metaVar = Just $ getVar mod $ nlambdaName ("$p" ++ (show $ succ superClassNr) ++ drop 3 (getVarNameStr v))
     | otherwise = metaVar

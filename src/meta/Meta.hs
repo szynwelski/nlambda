@@ -624,13 +624,14 @@ name_suffix = "_nlambda"
 op_suffix :: String
 op_suffix = "###"
 
+-- TODO ConvertFun could be selected automatically by type
 data ConvertFun = NoMeta | IdOp | NoMetaArgOp | NoMetaResOp | LeftIdOp | RightIdOp | UnionOp | Union3Op
     | NoMetaResUnionOp | MetaFunOp | NoMetaResFunOp | LiftMeta | DropMeta deriving (Show, Eq, Ord)
 
 convertFunName :: ConvertFun -> String
 convertFunName fun = (toLower $ head $ show fun) : (tail $ show fun)
 
-data MetaEquivalentType = SameOp | ConvertFun ConvertFun deriving (Eq, Ord)
+data MetaEquivalentType = SameOp | ConvertFun ConvertFun | CustomFun String deriving (Eq, Ord)
 
 data MetaEquivalent = NoEquivalent | MetaFun String | MetaConvertFun String | OrigFun deriving Show
 
@@ -643,7 +644,7 @@ createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcPrim, ghcReal, ghcShow, ghcTuple, ghcTypes,
-                                 dataEither, dataFoldable, dataMaybe, dataTuple, controlExceptionBase]
+                                 dataEither, dataFoldable, dataMaybe, dataSetBase, dataTuple, controlExceptionBase]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
@@ -653,6 +654,7 @@ metaEquivalent mod name | isSuffixOf "#" name = OrigFun
 metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod preludeEquivalents of
                             Just SameOp -> OrigFun
                             Just (ConvertFun fun) -> MetaConvertFun (convertFunName fun)
+                            Just (CustomFun fun) -> MetaFun fun
                             Nothing -> NoEquivalent
     where findMethod = maybe Nothing (Just . fst . fst) . Map.minViewWithKey . Map.filter (elem name)
 
@@ -752,6 +754,29 @@ dataMaybe = createEquivalentsMap "Data.Maybe"
     [(ConvertFun NoMetaResOp, ["isJust", "isNothing"]),
      (ConvertFun IdOp, ["catMaybes", "fromJust", "listToMaybe", "maybeToList"]),
      (ConvertFun UnionOp, ["fromMaybe"])]
+
+dataSetBase :: MetaEquivalentMap
+dataSetBase = createEquivalentsMap "Data.Set.Base"
+    [(ConvertFun NoMeta, ["empty"]),
+     (ConvertFun NoMetaResOp, ["null", "size"]),
+     (ConvertFun IdOp, ["delete", "deleteMax", "deleteMin", "elems", "findMax", "findMin", "fromAscList", "fromDescList",
+                        "fromDistinctAscList", "fromDistinctDescList", "fromList", "insert", "singleton", "toAscList", "toDescList", "toList", "unions"]),
+     (ConvertFun UnionOp, ["difference", "intersection", "split", "union"]),
+     (ConvertFun NoMetaResUnionOp, ["disjoint", "member", "notMember", "isProperSubsetOf", "isSubsetOf"]),
+     (ConvertFun NoMetaResFunOp, ["filter", "partition"]),
+     (CustomFun "set_map_nlambda", ["map"]),
+     (CustomFun "set_foldr_nlambda", ["foldr"]),
+     (CustomFun "set_foldl_nlambda", ["foldl"])]
+
+set_map_nlambda :: Ord b => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
+set_map_nlambda f (WithMeta s m) = create (Set.fromAscList list) m'
+    where (WithMeta list m') = map_nlambda f $ create (Set.toAscList s) m
+
+set_foldr_nlambda :: (WithMeta a -> WithMeta b -> WithMeta b) -> WithMeta b -> WithMeta (Set a) -> WithMeta b
+set_foldr_nlambda f x (WithMeta s m) = foldr_nlambda f x $ create (Set.toAscList s) m
+
+set_foldl_nlambda :: (WithMeta a -> WithMeta b -> WithMeta a) -> WithMeta a -> WithMeta (Set b) -> WithMeta a
+set_foldl_nlambda f x (WithMeta s m) = foldl_nlambda f x $ create (Set.toAscList s) m
 
 dataTuple :: MetaEquivalentMap
 dataTuple = createEquivalentsMap "Data.Tuple"
