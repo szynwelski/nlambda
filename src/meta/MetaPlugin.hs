@@ -62,11 +62,11 @@ tailPanic :: String -> SDoc -> [a] -> [a]
 tailPanic msg doc [] = pprPanic ("tailPanic - " ++ msg) doc
 tailPanic _ _ l = tail l
 
-pprE :: String -> CoreExpr -> CoreM ()
-pprE n e = putMsg $ text (n ++ " =") <+> ppr e <+> text "::" <+> ppr (exprType e)
+pprE :: String -> CoreExpr -> SDoc
+pprE n e = text (n ++ " =") <+> ppr e <+> text "::" <+> ppr (exprType e)
 
-pprV :: String -> CoreBndr -> CoreM ()
-pprV n v = putMsg $ text (n ++ " =") <+> ppr v <+> text "::" <+> ppr (varType v)
+pprV :: String -> CoreBndr -> SDoc
+pprV n v = text (n ++ " =") <+> ppr v <+> text "::" <+> ppr (varType v)
 
 pass :: HscEnv -> Bool -> ModGuts -> CoreM ModGuts
 pass env onlyShow guts =
@@ -438,12 +438,13 @@ changeBindExpr mod varMap tcMap (b, e) = do e' <- changeExpr mod varMap tcMap b 
                                             return (b', e'')
 
 dataBind :: MetaModule -> VarMap -> DataCon -> CoreM CoreBind
-dataBind mod varMap dc | noAtomsType $ dataConOrigResTy dc = return $ nonRecDataBind varMap dc $ Var $ dataConWrapId dc
-dataBind mod varMap dc = do expr <- dataConExpr mod dc
-                            return $ nonRecDataBind varMap dc expr
-
-nonRecDataBind :: VarMap -> DataCon -> CoreExpr -> CoreBind
-nonRecDataBind varMap dc = NonRec (newVar varMap $ dataConWrapId dc)
+dataBind mod varMap dc
+    | noAtomsType $ dataConOrigResTy dc = return $ NonRec b' (Var b)
+    | otherwise = do e <- dataConExpr mod dc
+                     e' <- convertMetaType mod e $ varType b'
+                     return $ NonRec b' e'
+    where b = dataConWrapId dc
+          b' = newVar varMap b
 
 ----------------------------------------------------------------------------------------
 -- Type
@@ -621,7 +622,6 @@ insertVarExpr v v' = Map.insert v (Var v')
 changeExpr :: MetaModule -> VarMap -> TyConMap -> CoreBndr -> CoreExpr -> CoreM CoreExpr
 changeExpr mod varMap tcMap b e = newExpr (mkExprMap varMap) e
     where newExpr :: ExprMap -> CoreExpr -> CoreM CoreExpr
---          newExpr eMap e | pprTrace "newExpr" (ppr e <+> text "::" <+> ppr (exprType e)) False = undefined
           newExpr eMap e | noAtomsSubExpr e = replaceVars mod eMap e
           newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod eMap varMap tcMap b v Nothing

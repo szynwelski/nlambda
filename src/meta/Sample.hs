@@ -284,6 +284,9 @@ import Data.Set
 --test = [A == A && A /= A, A == A || A /= A, and [A == A, A /= A], or [A == A, A /= A], all (== A) [A], any (== A) [], elem A [A], notElem A [A],
 --        isLeft (if A == A then Left A else Right A), isRight (if A == A then Left A else Right A)]
 
+--data Atom = A Int deriving Show
+--test = id id (A 1)
+
 ----------------------------------------------------------------------------
 -- Test user class
 ----------------------------------------------------------------------------
