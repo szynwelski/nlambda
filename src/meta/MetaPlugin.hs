@@ -590,7 +590,7 @@ noAtomsType t = noAtomsTypeVars [] [] t
                                                          (concatMap dataConOrigArgTys $ tyConDataCons tc)
           noAtomsTypeCon _ _ _ = True
           isAtomsTypeName :: TyCon -> Bool
-          isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula"] -- FIXME check namespace
+          isAtomsTypeName tc = let nm = occNameString $ nameOccName $ tyConName tc in elem nm ["Atom", "Formula", "Variable"] -- FIXME check namespace
 
 hasNestedFunType :: Type -> Bool
 hasNestedFunType (TyVarTy v) = False

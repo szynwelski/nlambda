@@ -4,64 +4,46 @@ module Meta where
 
 import Data.Char (toLower)
 import Data.Foldable (fold, foldl', foldr', toList)
-import Data.List (isPrefixOf, isSuffixOf)
+import Data.List (isSuffixOf)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Map (Map)
+import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
 import Data.Set (Set)
 import Data.Ratio (Ratio)
 import GHC.Generics
 import GHC.Read (readPrec, readListPrec)
 import GHC.Show (showList__)
+import Var
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 
-import Debug.Trace
+------------------------------------------------------------------------------------------
+-- Meta information
+------------------------------------------------------------------------------------------
+
+data Meta = Meta {toRename :: IdMap, renamed :: IdPairSet, renameTree :: RenameTree} deriving Show
+
+metaFromMap :: IdMap -> Meta
+metaFromMap map = Meta map Set.empty Empty
+
+emptyMeta :: Meta
+emptyMeta = metaFromMap Map.empty
 
 ------------------------------------------------------------------------------------------
 -- Class WithMeta and instances
 ------------------------------------------------------------------------------------------
 
-type Identifier = Int
-type IdMap = Map Identifier Identifier
-type IdPairSet = Set (Identifier, Identifier)
-type Meta = (IdMap, IdPairSet)
-
 data WithMeta a = WithMeta {value :: a, meta :: Meta}
 
-instance Show a => Show (WithMeta a) where
+instance (Var a, Show a) => Show (WithMeta a) where
     showsPrec n = noMetaResOp $ showsPrec n
     show (WithMeta x m) = show x ++ " | meta:" ++ show m
-    showList = showList . value . liftMeta
+    showList = showList . value . lift
 
-instance Monoid a => Monoid (WithMeta a) where
+instance (Monoid a, Var a) => Monoid (WithMeta a) where
     mempty = noMeta mempty
     mappend = unionOp mappend
-    mconcat = idOp mconcat . liftMeta
-
-------------------------------------------------------------------------------------------
--- Methods to handle meta information in expressions
-------------------------------------------------------------------------------------------
-
-type Union = (Meta, [IdMap])
-
--- TODO
-replaceVariablesIds :: IdMap -> a -> a
-replaceVariablesIds = undefined
-
-splitMapping :: IdPairSet -> IdMap -> (IdMap, IdMap)
-splitMapping s m = if Set.null s then (Map.empty, m) else Map.partitionWithKey (\k v -> Set.member (k, v) s) m
-
-renameMaps :: Meta -> Meta -> (Meta, IdMap, IdMap)
-renameMaps (m1, s1) (m2, s2) = ((Map.union m1b m2c, Set.unions [s1, s2, Set.fromList $ Map.assocs m2d]), m1a, Map.union m2a m2d)
-    where (m1a, m1b) = splitMapping s2 m1
-          (m2a, m2b) = splitMapping s1 m2
-          (m2c, m2d) = if Map.null m1b then (m2b, Map.empty) else Map.partitionWithKey (\k v -> v == Map.findWithDefault v k m1b) m2b
-
-metaFromMap :: IdMap -> Meta
-metaFromMap map = (map, Set.empty)
-
-emptyMeta :: Meta
-emptyMeta = (Map.empty, Set.empty)
+    mconcat = idOp mconcat . lift
 
 noMeta :: a -> WithMeta a
 noMeta x = WithMeta x emptyMeta
@@ -69,25 +51,61 @@ noMeta x = WithMeta x emptyMeta
 create :: a -> Meta -> WithMeta a
 create x m = WithMeta x m
 
-union :: [Meta] -> Union
-union [] = (emptyMeta, [])
-union [m] = (m, [Map.empty])
-union (m:ms) = let (m', idMap:idMaps) = union ms
-                   (m'', idMap1, idMap2) = renameMaps m m'
-               in (m'', idMap1 : (Map.union idMap2 idMap) : idMaps)
-
-getMeta :: Union -> Meta
-getMeta = fst
-
-rename :: Union -> Int -> a -> a
-rename (_, idMaps) n x = let idMap = idMaps !! n
-                         in if null idMap then x else x -- TODO call replaceVariablesIds
-
 emptyList :: [a]
 emptyList = []
 
 colon :: a -> [a] -> [a]
 colon = (:)
+
+------------------------------------------------------------------------------------------
+-- Rename methods
+------------------------------------------------------------------------------------------
+
+union :: Bool -> Meta -> Meta -> Meta
+union join (Meta map1 set1 tree1) (Meta map2 set2 tree2)
+    = Meta (Map.union (Map.difference map1 toRenameNow1) (Map.difference map2 toRenameNow2))
+           (Set.unions [set1, set2, Set.fromList $ Map.assocs toRenameNow1, Set.fromList $ Map.assocs toRenameNow2])
+           (createNode (not join) children)
+    where partitionByRenamed map set = Map.partitionWithKey (\k v -> Set.member (k,v) set) map
+          findConflicts mapToRestrict map = Map.filterWithKey (\k v -> Map.findWithDefault v k map /= v) mapToRestrict
+          (inRenamed1, notInRenamed1) = partitionByRenamed map1 set2
+          (inRenamed2, notInRenamed2) = partitionByRenamed map2 set1
+          (conflicts1, conflicts2) = (findConflicts notInRenamed1 notInRenamed2, findConflicts notInRenamed2 notInRenamed1)
+          (toRenameNow1, toRenameNow2) = if Map.null inRenamed1
+                                         then (Map.empty, Map.union inRenamed2 conflicts2)
+                                         else (Map.union inRenamed1 conflicts1, inRenamed2)
+          tree1' = addMapToTree toRenameNow1 tree1
+          tree2' = addMapToTree toRenameNow2 tree2
+          children = if join then getChildrenOrNode tree1' ++ getChildrenOrNode tree2' else [tree1', tree2']
+
+unions :: [Meta] -> Meta
+unions [] = emptyMeta
+unions ms = foldr1 (union True) ms
+
+rename :: Var a => WithMeta a -> WithMeta a
+rename (WithMeta x m)
+    | isTreeEmpty tree = create x m {renameTree = Empty}
+    | otherwise = create (renameVariables tree x) metaAfterRename
+    where tree = renameTree m
+          metaAfterRename = Meta (toRename m) (Set.union (renamed m) (pairsFromTree tree)) Empty
+
+rename2 :: (Var a, Var b) => (WithMeta a, WithMeta b) -> WithMeta (a,b)
+rename2 (WithMeta x1 m1, WithMeta x2 m2) = rename $ create (x1,x2) (unions [m1, m2])
+
+rename3 :: (Var a, Var b, Var c) => (WithMeta a, WithMeta b, WithMeta c) -> WithMeta (a, b, c)
+rename3 (WithMeta x1 m1, WithMeta x2 m2, WithMeta x3 m3) = rename $ create (x1, x2, x3) (unions [m1, m2, m3])
+
+rename4 :: (Var a, Var b, Var c, Var d) => (WithMeta a, WithMeta b, WithMeta c, WithMeta d) -> WithMeta (a, b, c, d)
+rename4 (WithMeta x1 m1, WithMeta x2 m2, WithMeta x3 m3, WithMeta x4 m4) = rename $ create (x1, x2, x3, x4) (unions [m1, m2, m3, m4])
+
+renameAndApply1 :: Var a => (a -> b) -> WithMeta a -> WithMeta b
+renameAndApply1 f x = let (WithMeta x' m) = rename x in create (f x') m
+
+renameAndApply2 :: (Var a, Var b) => (a -> b -> c) -> WithMeta a -> WithMeta b -> WithMeta c
+renameAndApply2 f x1 x2 = let (WithMeta (x1',x2') m) = rename2 (x1, x2) in create (f x1' x2') m
+
+renameAndApply3 :: (Var a, Var b, Var c) => (a -> b -> c -> d) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d
+renameAndApply3 f x1 x2 x3 = let (WithMeta (x1',x2',x3') m) = rename3 (x1, x2, x3) in create (f x1' x2' x3') m
 
 ------------------------------------------------------------------------------------------
 -- Conversion functions to meta operations
@@ -108,20 +126,15 @@ leftIdOp op (WithMeta x m) y = WithMeta (op x y) m
 rightIdOp :: (a -> b -> c) -> a -> WithMeta b -> WithMeta c
 rightIdOp op x (WithMeta y m) = WithMeta (op x y) m
 
-unionOp :: (a -> b -> c) -> WithMeta a -> WithMeta b -> WithMeta c
-unionOp op (WithMeta x m1) (WithMeta y m2) = WithMeta (op x' y') (getMeta u)
-    where u = union [m1, m2]
-          x' = rename u 0 x
-          y' = rename u 1 y
+unionOp :: (Var a, Var b) => (a -> b -> c) -> WithMeta a -> WithMeta b -> WithMeta c
+unionOp op (WithMeta x m1) (WithMeta y m2) = WithMeta (op x' y') m
+    where WithMeta (x',y') m = rename $ create (x,y) (union False m1 m2)
 
-union3Op :: (a -> b -> c -> d) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d
-union3Op op (WithMeta x m1) (WithMeta y m2) (WithMeta z m3) = WithMeta (op x' y' z') (getMeta u)
-    where u = union [m1, m2, m3]
-          x' = rename u 0 x
-          y' = rename u 1 y
-          z' = rename u 2 z
+union3Op :: (Var a, Var b, Var c) => (a -> b -> c -> d) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d
+union3Op op (WithMeta x m1) (WithMeta y m2) (WithMeta z m3) = WithMeta (op x' y' z') m
+    where WithMeta (x', y', z') m = rename $ create (x,y,z) (unions [m1, m2, m3])
 
-noMetaResUnionOp :: (a -> b -> c) -> WithMeta a -> WithMeta b -> c
+noMetaResUnionOp :: (Var a, Var b) => (a -> b -> c) -> WithMeta a -> WithMeta b -> c
 noMetaResUnionOp op x = value . unionOp op x
 
 (.*) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
@@ -153,14 +166,15 @@ instance MetaLevel Par1 where
     dropMeta (WithMeta (Par1 x) m) = Par1 (WithMeta x m)
 
 instance MetaLevel f => MetaLevel (Rec1 f) where
-    liftMeta (Rec1 x) = let (WithMeta y m) = liftMeta x in WithMeta (Rec1 y) m
+    liftMeta (Rec1 x) = let (WithMeta y m) = liftMeta x in WithMeta (Rec1 y) (addTreeLevel m)
+        where addTreeLevel m = m {renameTree = createNode False [renameTree m]}
     dropMeta (WithMeta (Rec1 x) m) = Rec1 (dropMeta (WithMeta x m))
 
 instance MetaLevel U1 where
     liftMeta U1 = noMeta U1
     dropMeta (WithMeta U1 _) = U1
 
-instance MetaLevel (K1 i c) where
+instance MetaLevel (K1 i a) where
     liftMeta (K1 x) = noMeta $ K1 x
     dropMeta (WithMeta (K1 x) m) = K1 x
 
@@ -177,10 +191,7 @@ instance (MetaLevel f, MetaLevel g) => MetaLevel (f :+: g) where
 instance (MetaLevel f, MetaLevel g) => MetaLevel (f :*: g) where
     liftMeta (x :*: y) = let (WithMeta x' m1) = liftMeta x
                              (WithMeta y' m2) = liftMeta y
-                             u = union [m1, m2]
-                             x'' = rename u 0 x'
-                             y'' = rename u 1 y'
-                         in WithMeta (x'' :*: y'') (getMeta u)
+                         in WithMeta (x' :*: y') (union True m1 m2)
     dropMeta (WithMeta (x :*: y) m) = dropMeta (WithMeta x m) :*: dropMeta (WithMeta y m)
 
 instance MetaLevel Maybe
@@ -195,6 +206,10 @@ instance MetaLevel IO where
     liftMeta x = noMeta $ fmap value x -- noMeta ???
     dropMeta (WithMeta x m) = fmap (`WithMeta` m) x
 
+
+lift :: (MetaLevel f, Var (f a)) => f (WithMeta a) -> WithMeta (f a)
+lift = rename . liftMeta
+
 ------------------------------------------------------------------------------------------
 -- Meta classes from Prelude
 ------------------------------------------------------------------------------------------
@@ -202,11 +217,11 @@ instance MetaLevel IO where
 class (Applicative f, Functor_nlambda f) => Applicative_nlambda (f :: * -> *) where
   pure_nlambda :: WithMeta a -> WithMeta (f a)
   pure_nlambda = idOp pure
-  (<*>###) :: WithMeta (f (WithMeta a -> WithMeta b)) -> WithMeta (f a) -> WithMeta (f b)
-  (<*>###) f x = let (WithMeta (f', x') m) = unionOp (,) f x in liftMeta (fmap (metaFun m) f' <*> x')
-  (*>###) :: WithMeta (f a) -> WithMeta (f b) -> WithMeta (f b)
+  (<*>###) :: (Var (f (WithMeta a -> WithMeta b)), Var (f a), Var (f b)) => WithMeta (f (WithMeta a -> WithMeta b)) -> WithMeta (f a) -> WithMeta (f b)
+  (<*>###) f x = let (WithMeta (f', x') m) = unionOp (,) f x in lift (fmap (metaFun m) f' <*> x')
+  (*>###) :: (Var (f a), Var (f b)) => WithMeta (f a) -> WithMeta (f b) -> WithMeta (f b)
   (*>###) = unionOp (*>)
-  (<*###) :: WithMeta (f a) -> WithMeta (f b) -> WithMeta (f a)
+  (<*###) :: (Var (f a), Var (f b)) => WithMeta (f a) -> WithMeta (f b) -> WithMeta (f a)
   (<*###) = unionOp (<*)
 
 instance Applicative_nlambda (Either e) -- Defined in ‘Data.Either’
@@ -231,7 +246,7 @@ instance Bounded_nlambda () -- Defined in ‘GHC.Enum’
 instance (Bounded_nlambda a, Bounded_nlambda b) => Bounded_nlambda (a, b)  -- Defined in ‘GHC.Enum’
 instance (Bounded_nlambda a, Bounded_nlambda b, Bounded_nlambda c) => Bounded_nlambda (a, b, c)  -- Defined in ‘GHC.Enum’
 
-class Enum a => Enum_nlambda a where
+class (Var a, Enum a) => Enum_nlambda a where
   succ_nlambda :: WithMeta a -> WithMeta a
   succ_nlambda = idOp succ
   pred_nlambda :: WithMeta a -> WithMeta a
@@ -259,9 +274,9 @@ instance Enum_nlambda () -- Defined in ‘GHC.Enum’
 instance Enum_nlambda Float -- Defined in ‘GHC.Float’
 instance Enum_nlambda Double -- Defined in ‘GHC.Float’
 
-class Eq a => Eq_nlambda a where
+class (Var a, Eq a) => Eq_nlambda a where
   (==###) :: WithMeta a -> WithMeta a -> Bool
-  (==###) = noMetaResUnionOp (==) -- FIXME replace vars and then compare?
+  (==###) = noMetaResUnionOp (==)
   (/=###) :: WithMeta a -> WithMeta a -> Bool
   (/=###) = noMetaResUnionOp (/=)
 
@@ -279,6 +294,7 @@ instance Eq_nlambda () -- Defined in ‘GHC.Classes’
 instance (Eq_nlambda a, Eq_nlambda b) => Eq_nlambda (a, b) -- Defined in ‘GHC.Classes’
 instance (Eq_nlambda a, Eq_nlambda b, Eq_nlambda c) => Eq_nlambda (a, b, c)  -- Defined in ‘GHC.Classes’
 instance Eq_nlambda a => Eq_nlambda (Maybe a) -- Defined in ‘GHC.Base’
+instance Eq_nlambda Variable
 
 class (Floating a, Fractional_nlambda a) => Floating_nlambda a where
   pi_nlambda :: WithMeta a
@@ -344,7 +360,7 @@ class (MetaLevel t, Foldable t) => Foldable_nlambda (t :: * -> *) where
   null_nlambda = noMetaResOp null
   length_nlambda :: WithMeta (t a) -> Int
   length_nlambda = noMetaResOp length
-  elem_nlambda :: Eq_nlambda a => WithMeta a -> WithMeta (t a) -> Bool
+  elem_nlambda :: (Var (t a), Eq_nlambda a) => WithMeta a -> WithMeta (t a) -> Bool
   elem_nlambda = noMetaResUnionOp elem
   maximum_nlambda :: Ord_nlambda a => WithMeta (t a) -> WithMeta a
   maximum_nlambda = idOp maximum
@@ -372,9 +388,9 @@ instance Fractional_nlambda Float -- Defined in ‘GHC.Float’
 instance Fractional_nlambda Double -- Defined in ‘GHC.Float’
 
 class (MetaLevel f, Functor f) => Functor_nlambda (f :: * -> *) where
-  fmap_nlambda :: (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
-  fmap_nlambda = liftMeta .* metaFunOp fmap
-  (<$###) :: WithMeta a -> WithMeta (f b) -> WithMeta (f a)
+  fmap_nlambda :: Var (f b) => (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
+  fmap_nlambda = lift .* metaFunOp fmap
+  (<$###) :: (Var a, Var (f b)) => WithMeta a -> WithMeta (f b) -> WithMeta (f a)
   (<$###) = unionOp (<$)
 
 instance Functor_nlambda (Either a) -- Defined in ‘Data.Either’
@@ -405,9 +421,9 @@ instance Integral_nlambda Integer -- Defined in ‘GHC.Real’
 instance Integral_nlambda Int -- Defined in ‘GHC.Real’
 
 class (Monad m, Applicative_nlambda m) => Monad_nlambda (m :: * -> *) where
-  (>>=###) :: WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
-  (>>=###) (WithMeta x m) f = liftMeta $ x >>= (dropMeta . metaFun m f)
-  (>>###) :: WithMeta (m a) -> WithMeta (m b) -> WithMeta (m b)
+  (>>=###) :: Var (m b) => WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
+  (>>=###) (WithMeta x m) f = lift $ x >>= (dropMeta . metaFun m f)
+  (>>###) :: (Var (m a), Var (m b)) => WithMeta (m a) -> WithMeta (m b) -> WithMeta (m b)
   (>>###) = unionOp (>>)
   return_nlambda :: WithMeta a -> WithMeta (m a)
   return_nlambda = idOp return
@@ -420,7 +436,7 @@ instance Monad_nlambda Maybe -- Defined in ‘GHC.Base’
 instance Monad_nlambda IO -- Defined in ‘GHC.Base’
 instance Monad_nlambda ((->) r) -- Defined in ‘GHC.Base’
 
-class Monoid a => Monoid_nlambda a where
+class (Var a, Monoid a) => Monoid_nlambda a where
   mempty_nlambda :: WithMeta a
   mempty_nlambda = noMeta mempty
   mappend_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
@@ -428,7 +444,7 @@ class Monoid a => Monoid_nlambda a where
   mconcat_nlambda :: WithMeta [a] -> WithMeta a
   mconcat_nlambda = idOp mconcat
 
-instance Monoid_nlambda [a] -- Defined in ‘GHC.Base’
+instance Var a => Monoid_nlambda [a] -- Defined in ‘GHC.Base’
 instance Monoid_nlambda Ordering -- Defined in ‘GHC.Base’
 instance Monoid_nlambda a => Monoid_nlambda (Maybe a) -- Defined in ‘GHC.Base’
 instance Monoid_nlambda b => Monoid_nlambda (a -> b) -- Defined in ‘GHC.Base’
@@ -436,7 +452,7 @@ instance Monoid_nlambda () -- Defined in ‘GHC.Base’
 instance (Monoid_nlambda a, Monoid_nlambda b) => Monoid_nlambda (a, b)  -- Defined in ‘GHC.Base’
 instance (Monoid_nlambda a, Monoid_nlambda b, Monoid_nlambda c) => Monoid_nlambda (a, b, c)  -- Defined in ‘GHC.Base’
 
-class Num a => Num_nlambda a where
+class (Var a, Num a) => Num_nlambda a where
   (+###) :: WithMeta a -> WithMeta a -> WithMeta a
   (+###) = unionOp (+)
   (-###) :: WithMeta a -> WithMeta a -> WithMeta a
@@ -489,6 +505,7 @@ instance (Ord_nlambda a, Ord_nlambda b) => Ord_nlambda (a, b) -- Defined in ‘G
 instance (Ord_nlambda a, Ord_nlambda b, Ord_nlambda c) => Ord_nlambda (a, b, c)  -- Defined in ‘GHC.Classes’
 instance (Ord_nlambda a, Ord_nlambda b) => Ord_nlambda (Either a b)  -- Defined in ‘Data.Either’
 instance Ord_nlambda a => Ord_nlambda (Maybe a) -- Defined in ‘GHC.Base’
+instance Ord_nlambda Variable
 
 class Read a => Read_nlambda a where
   readsPrec_nlambda :: Int -> String -> WithMeta [(a, String)]
@@ -597,12 +614,12 @@ instance Show_nlambda Float -- Defined in ‘GHC.Float’
 instance Show_nlambda Double -- Defined in ‘GHC.Float’
 
 class (Traversable t, Functor_nlambda t, Foldable_nlambda t) => Traversable_nlambda (t :: * -> *) where
-  traverse_nlambda :: Applicative_nlambda f => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
-  traverse_nlambda f (WithMeta x m) = liftMeta $ fmap liftMeta $ traverse (dropMeta . metaFun m f) x
+  traverse_nlambda :: (Var (t b), Var (f (t b)), Applicative_nlambda f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
+  traverse_nlambda f (WithMeta x m) = lift $ fmap lift $ traverse (dropMeta . metaFun m f) x
   sequenceA_nlambda :: Applicative_nlambda f => WithMeta (t (f a)) -> WithMeta (f (t a))
   sequenceA_nlambda = idOp sequenceA
-  mapM_nlambda :: Monad_nlambda m => (WithMeta a -> WithMeta (m b)) -> WithMeta (t a) -> WithMeta (m (t b))
-  mapM_nlambda f (WithMeta x m) = liftMeta $ fmap liftMeta $ mapM (dropMeta . metaFun m f) x
+  mapM_nlambda :: (Var (t b), Var (m (t b)), Monad_nlambda m) => (WithMeta a -> WithMeta (m b)) -> WithMeta (t a) -> WithMeta (m (t b))
+  mapM_nlambda f (WithMeta x m) = lift $ fmap lift $ mapM (dropMeta . metaFun m f) x
   sequence_nlambda :: Monad_nlambda m => WithMeta (t (m a)) -> WithMeta (m (t a))
   sequence_nlambda = idOp sequence
 
@@ -626,7 +643,7 @@ op_suffix = "###"
 
 -- TODO ConvertFun could be selected automatically by type
 data ConvertFun = NoMeta | IdOp | NoMetaArgOp | NoMetaResOp | LeftIdOp | RightIdOp | UnionOp | Union3Op
-    | NoMetaResUnionOp | MetaFunOp | NoMetaResFunOp | LiftMeta | DropMeta deriving (Show, Eq, Ord)
+    | NoMetaResUnionOp | MetaFunOp | NoMetaResFunOp deriving (Show, Eq, Ord)
 
 convertFunName :: ConvertFun -> String
 convertFunName fun = (toLower $ head $ show fun) : (tail $ show fun)
@@ -669,7 +686,7 @@ ghcBase = createEquivalentsMap "GHC.Base"
      (ConvertFun IdOp, ["Just"]),
      (ConvertFun UnionOp, ["++", "$dm<$", "$dm<*", "$dm*>", "$dm>>"])]
 
-map_nlambda :: (WithMeta a -> WithMeta b) -> WithMeta [a] -> WithMeta [b]
+map_nlambda :: Var b => (WithMeta a -> WithMeta b) -> WithMeta [a] -> WithMeta [b]
 map_nlambda = fmap_nlambda
 
 ghcClasses :: MetaEquivalentMap
@@ -695,17 +712,17 @@ ghcList = createEquivalentsMap "GHC.List"
      (ConvertFun Union3Op, ["zip3"]),
      (ConvertFun NoMetaResFunOp, ["dropWhile", "filter", "span", "takeWhile"])]
 
-scanl_nlambda :: (WithMeta b -> WithMeta a -> WithMeta b) -> WithMeta b -> WithMeta [a] -> WithMeta [b]
-scanl_nlambda f x = liftMeta . scanl f x . dropMeta
+scanl_nlambda :: Var b => (WithMeta b -> WithMeta a -> WithMeta b) -> WithMeta b -> WithMeta [a] -> WithMeta [b]
+scanl_nlambda f x = lift . scanl f x . dropMeta
 
-scanl1_nlambda :: (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta [a] -> WithMeta [a]
-scanl1_nlambda f = liftMeta . scanl1 f . dropMeta
+scanl1_nlambda :: Var a => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta [a] -> WithMeta [a]
+scanl1_nlambda f = lift . scanl1 f . dropMeta
 
-scanr_nlambda :: (WithMeta a -> WithMeta b -> WithMeta b) -> WithMeta b -> WithMeta [a] -> WithMeta [b]
-scanr_nlambda f x = liftMeta . scanr f x . dropMeta
+scanr_nlambda :: Var b => (WithMeta a -> WithMeta b -> WithMeta b) -> WithMeta b -> WithMeta [a] -> WithMeta [b]
+scanr_nlambda f x = lift . scanr f x . dropMeta
 
-scanr1_nlambda :: (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta [a] -> WithMeta [a]
-scanr1_nlambda f = liftMeta . scanr1 f . dropMeta
+scanr1_nlambda :: Var a => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta [a] -> WithMeta [a]
+scanr1_nlambda f = lift . scanr1 f . dropMeta
 
 ghcNum :: MetaEquivalentMap
 ghcNum = createEquivalentsMap "GHC.Num"
@@ -746,8 +763,8 @@ dataFoldable = createEquivalentsMap "Data.Foldable"
     [(ConvertFun NoMetaResFunOp, ["all", "any"]),
      (ConvertFun IdOp, ["concat", "notElem"])]
 
-concatMap_nlambda :: Foldable_nlambda t => (WithMeta a -> WithMeta [b]) -> WithMeta (t a) -> WithMeta [b]
-concatMap_nlambda f = liftMeta . concatMap (dropMeta . f) . dropMeta
+concatMap_nlambda :: (Var b, Foldable_nlambda t) => (WithMeta a -> WithMeta [b]) -> WithMeta (t a) -> WithMeta [b]
+concatMap_nlambda f = lift . concatMap (dropMeta . f) . dropMeta
 
 dataMaybe :: MetaEquivalentMap
 dataMaybe = createEquivalentsMap "Data.Maybe"
@@ -768,7 +785,7 @@ dataSetBase = createEquivalentsMap "Data.Set.Base"
      (CustomFun "set_foldr_nlambda", ["foldr"]),
      (CustomFun "set_foldl_nlambda", ["foldl"])]
 
-set_map_nlambda :: Ord b => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
+set_map_nlambda :: (Var b, Ord b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 set_map_nlambda f (WithMeta s m) = create (Set.fromAscList list) m'
     where (WithMeta list m') = map_nlambda f $ create (Set.toAscList s) m
 
@@ -782,7 +799,7 @@ dataTuple :: MetaEquivalentMap
 dataTuple = createEquivalentsMap "Data.Tuple"
     [(ConvertFun IdOp, ["fst", "snd"])]
 
-curry_nlambda :: (WithMeta (a, b) -> WithMeta c) -> WithMeta a -> WithMeta b -> WithMeta c
+curry_nlambda :: (Var a, Var b) => (WithMeta (a, b) -> WithMeta c) -> WithMeta a -> WithMeta b -> WithMeta c
 curry_nlambda f x y = f $ unionOp (,) x y
 
 uncurry_nlambda :: (WithMeta a -> WithMeta b -> WithMeta c) -> WithMeta (a, b) -> WithMeta c
