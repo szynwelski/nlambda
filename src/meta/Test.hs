@@ -4,4 +4,4 @@ module Test where
 
 import Var
 
-test = Variable 1
+test x y = x == y

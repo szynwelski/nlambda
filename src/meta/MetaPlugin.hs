@@ -82,7 +82,7 @@ pass env onlyShow guts =
             let (impNameMap, impVarMap, impTcMap) = getImportedMaps mod
 
             -- names
-            let metaNameMap = getMetaPreludeNameMaps mod
+            let metaNameMap = getMetaPreludeNameMap mod
             nameMap <- mkNamesMap guts $ Map.union impNameMap metaNameMap
             let mod' = mod {nameMap = nameMap}
 
@@ -184,7 +184,7 @@ get_defn :: Id -> CoreBind
 get_defn id = NonRec id (unfoldingTemplate (realIdUnfolding id))
 
 ----------------------------------------------------------------------------------------
--- All names map
+-- Names
 ----------------------------------------------------------------------------------------
 
 type NameMap = Map Name Name
@@ -223,8 +223,8 @@ newUniqueName :: Name -> CoreM Name
 newUniqueName name = do uniq <- getUniqueM
                         return $ setNameLoc (setNameUnique name uniq) noSrcSpan
 
-getNamePair :: NamedThing a => (a, a) -> (Name, Name)
-getNamePair (x, y) = (getName x, getName y)
+getModuleNameStr :: Module -> String
+getModuleNameStr = moduleNameString . moduleName
 
 ----------------------------------------------------------------------------------------
 -- Data constructors
@@ -281,8 +281,8 @@ primVarName v = do name <- createNewName (const "'") (varName v)
 getVarNameStr :: Var -> String
 getVarNameStr = getNameStr . varName
 
-getModuleNameStr :: Var -> String
-getModuleNameStr = maybe "" (moduleNameString . moduleName) . nameModule_maybe . varName
+getVarModuleNameStr :: Var -> String
+getVarModuleNameStr = maybe "" getModuleNameStr . nameModule_maybe . varName
 
 mkVarUnique :: Var -> CoreM Var
 mkVarUnique v = do uniq <- getUniqueM
@@ -298,7 +298,7 @@ mkLocalVar varName ty = do uniq <- getUniqueM
 ----------------------------------------------------------------------------------------
 
 importsToIgnore :: [String]
-importsToIgnore = ["Meta", "GHC.Generics"]
+importsToIgnore = [metaModuleName, "GHC.Generics"]
 
 isIgnoreImport :: Module -> Bool
 isIgnoreImport = (`elem` importsToIgnore) . moduleNameString . moduleName
@@ -313,6 +313,7 @@ getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, []), Map.
           (tcThings, varThings) = partition isTyThingTyCon things
           tcPairs = fmap (\(tt1, tt2) -> (tyThingTyCon tt1, tyThingTyCon tt2)) $ catMaybes $ findPair things TyThingTyCon <$> getName <$> tcThings
           varPairs = fmap (\(tt1, tt2) -> (tyThingId tt1, tyThingId tt2)) $ catMaybes $ findPair things TyThingId <$> getName <$> varThings
+          getNamePair (x, y) = (getName x, getName y)
           namePairs = (getNamePair <$> tcPairs) ++ (getNamePair <$> varPairs)
 
 -- FIXME check if isAbstractTyCon should be used here
@@ -634,7 +635,7 @@ hasNestedFunType (LitTy _ ) = False
 -- Type thing
 ----------------------------------------------------------------------------------------
 
-data TyThingType = TyThingId | TyThingTyCon | TyThingConLike | TyThingCoAxiom deriving Eq
+data TyThingType = TyThingId | TyThingTyCon | TyThingConLike | TyThingCoAxiom deriving (Show, Eq)
 
 tyThingType :: TyThing -> TyThingType
 tyThingType (AnId _) = TyThingId
@@ -664,14 +665,22 @@ getTyThing :: HomeModInfo -> String -> (TyThing -> Bool) -> (TyThing -> a) -> (a
 getTyThing mod nm cond fromThing getName = fromMaybe (pprPanic "getTyThing - name not found in module Meta:" $ text nm)
                                                      (getTyThingMaybe mod nm cond fromThing getName)
 
-findPair :: [TyThing] -> TyThingType -> Name -> Maybe (TyThing, TyThing)
-findPair things ty name = (,) <$> find thing things <*> find pair things
-    where thing t = sameType t && samePackage t && pairName (getName t)
-          pair t = sameType t && samePackage t && getName t == name
-          pairName nameWithSuffix = getNameStr nameWithSuffix == nlambdaName (getNameStr name)
+findThingByConds :: (Name -> Name -> Bool) -> (Module -> Module -> Bool) -> [TyThing] -> TyThingType -> Name -> Maybe TyThing
+findThingByConds nameCond moduleCond things ty name = find cond things
+    where sameType = (== ty) . tyThingType
+          cond t = sameType t && nameCond name (getName t) && moduleCond (nameModule name) (nameModule $ getName t)
+
+findThing :: [TyThing] -> TyThingType -> Name -> Maybe TyThing
+findThing = findThingByConds (==) (==)
+
+findPairThing :: [TyThing] -> TyThingType -> Name -> Maybe TyThing
+findPairThing things ty name = findThingByConds pairName equivalentModule things ty name
+    where pairName name nameWithSuffix = getNameStr nameWithSuffix == nlambdaName (getNameStr name)
                                          || replace name_suffix "" (getNameStr nameWithSuffix) == getNameStr name
-          samePackage = (== nameModule_maybe name) . nameModule_maybe . getName
-          sameType = (== ty) . tyThingType
+          equivalentModule m1 m2 = m1 == m2 || (elem (getModuleNameStr m1) preludeModules && getModuleNameStr m2 == metaModuleName)
+
+findPair :: [TyThing] -> TyThingType -> Name -> Maybe (TyThing, TyThing)
+findPair things ty name = (,) <$> findThing things ty name <*>  findPairThing things ty name
 
 ----------------------------------------------------------------------------------------
 -- Expressions map
@@ -699,7 +708,7 @@ changeExpr mod b e = newExpr (mkExprMap mod) e
           newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod eMap b v Nothing
           newExpr eMap (Var v) = pprPanic "Unknown variable:"
-            (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleNameStr v ++ " is not compiled with NLambda Plugin."))
+            (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getVarModuleNameStr v ++ " is not compiled with NLambda Plugin."))
           newExpr eMap (Lit l) = noMetaExpr mod (Lit l)
           newExpr eMap (App (Var v) (Type t)) | isMetaEquivalent mod v, isDataConWorkId v
                                               = getMetaEquivalent mod eMap b v $ Just t
@@ -985,10 +994,12 @@ applyExprs = foldlM applyExpr
 -- Meta
 ----------------------------------------------------------------------------------------
 
+metaModuleName = "Meta"
+
 type MetaModule = HomeModInfo
 
 getMetaModule :: HscEnv -> MetaModule
-getMetaModule = fromJust . find ((== "Meta") . moduleNameString . moduleName . mi_module . hm_iface) . eltsUFM . hsc_HPT
+getMetaModule = fromJust . find ((== metaModuleName) . moduleNameString . moduleName . mi_module . hm_iface) . eltsUFM . hsc_HPT
 
 getVar :: ModInfo -> String -> Var
 getVar mod nm = getTyThing (metaModule mod) nm isTyThingId tyThingId varName
@@ -1107,13 +1118,13 @@ convertMetaType mod e t
 -- Meta Equivalents
 ----------------------------------------------------------------------------------------
 
-getMetaPreludeNameMaps :: ModInfo -> NameMap
-getMetaPreludeNameMaps mod = Map.fromList $ fmap getNamePair metaPairs
+getMetaPreludeNameMap :: ModInfo -> NameMap
+getMetaPreludeNameMap mod = Map.fromList $ catMaybes metaPairs
     where fromPrelude e | Imported ss <- gre_prov e = elem "Prelude" $ moduleNameString <$> is_mod <$> is_decl <$> ss
           fromPrelude e = False
           preludeNames = fmap gre_name $ filter fromPrelude $ concat $ occEnvElts $ mg_rdr_env $ guts mod
           preludeNamesWithTypes = fmap (\n -> if isLower $ head $ getNameStr $ getName n then (TyThingId, n) else (TyThingTyCon, n)) preludeNames
-          metaPairs = catMaybes $ fmap (uncurry $ findPair $ metaTyThings mod) preludeNamesWithTypes
+          metaPairs = fmap (\(ty, n) -> (\t -> (n, getName t)) <$> findPairThing (metaTyThings mod) ty n) preludeNamesWithTypes
 
 isMetaPreludeTyCon :: ModInfo -> TyCon -> Bool
 isMetaPreludeTyCon mod tc = any (\t -> getName t == getName tc && isTyThingTyCon t) $ metaTyThings mod
@@ -1123,30 +1134,30 @@ isMetaPreludeDict mod t | Just (cl, _) <- getClassPredTys_maybe t = isMetaPrelud
 isMetaPreludeDict mod t = False
 
 getMetaPreludeTyCon :: ModInfo -> TyCon -> Maybe TyCon
-getMetaPreludeTyCon mod tc = (getTyCon mod . getNameStr . getName . snd) <$> findPair (metaTyThings mod) TyThingTyCon (getName tc)
+getMetaPreludeTyCon mod tc = (getTyCon mod . getNameStr . getName) <$> findPairThing (metaTyThings mod) TyThingTyCon (getName tc)
 
 getDefinedMetaEquivalentVar :: ModInfo -> Var -> Maybe Var
 getDefinedMetaEquivalentVar mod v
-    | notElem (getModuleNameStr v) preludeModules = Nothing
+    | notElem (getVarModuleNameStr v) preludeModules = Nothing
     -- super class selectors should be shift by one because of additional dependency for meta classes
     | isPrefixOf "$p" $ getVarNameStr v, isJust metaVar = Just $ getVar mod $ nlambdaName ("$p" ++ (show $ succ superClassNr) ++ drop 3 (getVarNameStr v))
     | otherwise = metaVar
-    where metaVar = getVar mod . getNameStr . getName . snd <$> findPair (metaTyThings mod) TyThingId (getName v)
+    where metaVar = getVar mod . getNameStr . getName <$> findPairThing (metaTyThings mod) TyThingId (getName v)
           superClassNr = read [getVarNameStr v !! 2] :: Int
 
 isMetaEquivalent :: ModInfo -> Var -> Bool
-isMetaEquivalent mod v = case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
+isMetaEquivalent mod v = case metaEquivalent (getVarModuleNameStr v) (getVarNameStr v) of
                            NoEquivalent -> isJust $ getDefinedMetaEquivalentVar mod v
                            _            -> True
 
 getMetaEquivalent :: ModInfo -> ExprMap -> CoreBndr -> Var -> Maybe Type -> CoreM CoreExpr
 getMetaEquivalent mod eMap b v mt =
-    case metaEquivalent (getModuleNameStr v) (getVarNameStr v) of
+    case metaEquivalent (getVarModuleNameStr v) (getVarNameStr v) of
       OrigFun -> return $ changeTypeAndApply mod mt $ Var v
       MetaFun name -> return $ changeTypeAndApply mod mt $ getMetaVar mod name
       MetaConvertFun name -> liftM (changeTypeAndApply mod mt) $ applyExpr (getMetaVar mod name) (Var v)
       NoEquivalent -> addDependencies mod eMap b v mt $ fromMaybe
-        (pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleNameStr v)))
+        (pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> text (getVarModuleNameStr v)))
         (getDefinedMetaEquivalentVar mod v)
 
 addDependencies :: ModInfo -> ExprMap -> CoreBndr -> CoreBndr -> Maybe Type -> CoreBndr -> CoreM CoreExpr
