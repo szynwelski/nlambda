@@ -1,4 +1,4 @@
-import Sample
+import Test
 import Meta
 import Prelude (print)
 import System.Environment (getArgs)
