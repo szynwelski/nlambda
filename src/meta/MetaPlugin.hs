@@ -12,7 +12,7 @@ import Control.Exception (assert)
 import Control.Monad (liftM, unless)
 import Data.Char (isLetter, isLower)
 import Data.Data (Data)
-import Data.List (find, findIndex, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub, partition)
+import Data.List (elemIndex, find, findIndex, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub, partition, sortBy)
 import Data.Maybe (fromJust)
 import Data.String.Utils (replace)
 import TypeRep
@@ -923,20 +923,30 @@ checkCoreProgram = all checkBinds
 
 data ExprVar = TV TyVar | DI DictId
 
+instance Outputable ExprVar where
+    ppr (TV v) = ppr v
+    ppr (DI i) = ppr i
+
 isTV :: ExprVar -> Bool
 isTV (TV _) = True
 isTV (DI _) = False
+
+substDictId :: TvSubst -> DictId -> DictId
+substDictId subst id = setVarType id ty
+    where (cl, ts) = getClassPredTys $ varType id
+          ts' = substTys subst ts
+          ty = mkClassPred cl ts'
 
 exprVarsToVars :: TvSubst -> [ExprVar] -> [CoreBndr]
 exprVarsToVars subst = catMaybes . fmap toCoreBndr
     where toCoreBndr (TV v) | isNothing (lookupTyVar subst v) = Just v
           toCoreBndr (TV v) = Nothing
-          toCoreBndr (DI i) = Just i
+          toCoreBndr (DI i) = Just $ substDictId subst i
 
 exprVarsToExprs :: TvSubst -> [ExprVar] -> [CoreExpr]
 exprVarsToExprs subst = fmap toExpr
     where toExpr (TV v) = Type $ substTyVar subst v
-          toExpr (DI i) = Var i
+          toExpr (DI i) = Var $ substDictId subst i
 
 splitTypeToExprVars :: Type -> CoreM ([ExprVar], Type)
 splitTypeToExprVars ty =
@@ -970,22 +980,27 @@ sameTypes t1 t2
     | Just s <- unifyTypes t1 t2 = all isTyVarTy $ eltsUFM $ getTvSubstEnv s
     | otherwise = False
 
--- TODO handle predicates for function expression
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
-    do (eVars, ty) <- splitTypeToExprVars $ exprType e
-       let (funTyVars, funTy) = splitForAllTys $ exprType fun
+    do (eVars, eTy) <- splitTypeToExprVars $ exprType e
+       (fVars, fTy) <- splitTypeToExprVars $ exprType fun
        let subst = fromMaybe
-                     (pprPanic "applyExpr - can't unify:" (ppr (funArgTy funTy) <+> text "and" <+> ppr ty <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
-                     (unifyTypes (funArgTy funTy) ty)
-       let funTyVars' = filter (isNothing . lookupTyVar subst) funTyVars
-       let funTyVarExprs = fmap (Type . substTyVar subst) funTyVars
+                     (pprPanic "applyExpr - can't unify:" (ppr (funArgTy fTy) <+> text "and" <+> ppr eTy <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
+                     (unifyTypes (funArgTy fTy) eTy)
+       let fVars' = exprVarsToVars subst fVars
+       let fVarExprs = exprVarsToExprs subst fVars
        let eVars' = exprVarsToVars subst eVars
        let eVarExprs = exprVarsToExprs subst eVars
-       return $ mkCoreLams (funTyVars' ++ eVars')
+       return $ mkCoreLams (sortVars $ nub $ fVars' ++ eVars')
                   (mkCoreApp
-                    (mkCoreApps fun funTyVarExprs)
+                    (mkCoreApps fun fVarExprs)
                     (mkCoreApps e eVarExprs))
+    where sortVars vs = sortBy (compareVars vs) vs
+          compareVars vs v1 v2
+              | v1 `dependsOn` v2 = GT
+              | v2 `dependsOn` v1 = LT
+              | otherwise = compare (elemIndex v1 vs) (elemIndex v2 vs)
+          dependsOn v1 v2 = not (isTyVar v1) && isTyVar v2 && elemVarSet v2 (tyVarsOfType $ varType v1)
 
 applyExprs :: CoreExpr -> [CoreExpr] -> CoreM CoreExpr
 applyExprs = foldlM applyExpr
