@@ -983,7 +983,9 @@ sameTypes t1 t2
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
     do (eVars, eTy) <- splitTypeToExprVars $ exprType e
-       (fVars, fTy) <- splitTypeToExprVars $ exprType fun
+       (fVars, fTy) <- if isPredTy eTy
+                       then return $ (\(tvs, t) -> (TV <$> tvs, t)) (splitForAllTys $ exprType fun)
+                       else splitTypeToExprVars $ exprType fun
        let subst = fromMaybe
                      (pprPanic "applyExpr - can't unify:" (ppr (funArgTy fTy) <+> text "and" <+> ppr eTy <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
                      (unifyTypes (funArgTy fTy) eTy)
@@ -997,10 +999,9 @@ applyExpr fun e =
                     (mkCoreApps e eVarExprs))
     where sortVars vs = sortBy (compareVars vs) vs
           compareVars vs v1 v2
-              | v1 `dependsOn` v2 = GT
-              | v2 `dependsOn` v1 = LT
+              | isTyVar v1, not (isTyVar v2) = LT
+              | isTyVar v2, not (isTyVar v1) = GT
               | otherwise = compare (elemIndex v1 vs) (elemIndex v2 vs)
-          dependsOn v1 v2 = not (isTyVar v1) && isTyVar v2 && elemVarSet v2 (tyVarsOfType $ varType v1)
 
 applyExprs :: CoreExpr -> [CoreExpr] -> CoreM CoreExpr
 applyExprs = foldlM applyExpr

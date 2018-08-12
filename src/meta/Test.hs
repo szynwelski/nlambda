@@ -4,4 +4,4 @@ module Test where
 
 import Var
 
-test x y = [x] == [y]
+test x y = (x,y)
