@@ -181,8 +181,8 @@ get_defn id = NonRec id (unfoldingTemplate (realIdUnfolding id))
 
 type NameMap = Map Name Name
 
-getNameStr :: Name -> String
-getNameStr = occNameString . nameOccName
+getNameStr :: NamedThing a => a -> String
+getNameStr = occNameString . nameOccName . getName
 
 nameMember :: ModInfo -> Name -> Bool
 nameMember mod name = Map.member name $ nameMap mod
@@ -269,9 +269,6 @@ mkMapWithVars mod vars = (Map.fromList $ zip vars' $ fmap newVar vars', vars'')
 primVarName :: Var -> CoreM Var
 primVarName v = do name <- createNewName (const "'") (varName v)
                    return $ setVarName v name
-
-getVarNameStr :: Var -> String
-getVarNameStr = getNameStr . varName
 
 getVarModuleNameStr :: Var -> String
 getVarModuleNameStr = maybe "" getModuleNameStr . nameModule_maybe . varName
@@ -425,6 +422,16 @@ createClass mod tc cls =
           updateMinDef (BF.And fs) = BF.And $ updateMinDef <$> fs
           updateMinDef (BF.Or fs) = BF.Or $ updateMinDef <$> fs
 
+getClassInstance :: ModInfo -> TyCon -> Type -> CoreExpr
+getClassInstance mod classTc t
+    | Just v <- getMetaVarMaybe mod name = v -- for instances in Meta module
+    | Just v <- listToMaybe $ filter ((== name) . getNameStr) (varsWithoutPairs mod) = Var v -- for instances in user modules
+    | otherwise = error ("NLambda plungin requires " ++ className ++ " instance for type: " ++ tcName)
+    where Just tc = tyConAppTyCon_maybe t
+          tcName = getNameStr tc
+          className = getNameStr classTc
+          name = "$f" ++ className ++ tcName
+
 ----------------------------------------------------------------------------------------
 -- Binds
 ----------------------------------------------------------------------------------------
@@ -435,7 +442,7 @@ bindsToList bs = sortWith getNonRecName (concatMap toList bs)
           toList b = [b]
 
 getNonRecName :: CoreBind -> String
-getNonRecName (NonRec b _) = getVarNameStr b
+getNonRecName (NonRec b _) = getNameStr b
 
 getBindVars :: CoreBind -> [Var]
 getBindVars (NonRec v _) = [v]
@@ -586,7 +593,7 @@ getAllPreds t
     | otherwise = preds ++ getAllPreds t'
     where (preds, t') = tcSplitPhiTy $ dropForAlls t
 
-getOnlyArgTypeFromDict :: Type -> Type
+getOnlyArgTypeFromDict :: PredType -> Type
 getOnlyArgTypeFromDict t
     | isDictTy t, Just ts <- tyConAppArgs_maybe t, length ts == 1 = headPanic "getOnlyArgTypeFromDict" (ppr t) ts
     | otherwise = pprPanic "getOnlyArgTypeFromDict" (text "given type" <+> ppr t <+> text " is not dict or has more than one arguments")
@@ -825,8 +832,8 @@ dataConExpr mod dc
                      xs <- mkArgs subst arity
                      let (vvs, evs) = (exprVarsToVars vars, exprVarsToExprs vars)
                      let dcv' = mkCoreApps dcv evs
-                     let ra = mkCoreApps (renameAndApplyV mod arity) (evs ++ [Type $ last $ getFunTypeParts ty])
-                     let ra' = addMockedVarInstances mod ra
+                     ra <- renameAndApplyExpr mod arity
+                     let ra' = mkCoreApps ra (evs ++ [Type $ last $ getFunTypeParts ty])
                      return $ mkCoreLams (vvs ++ xs) $ mkCoreApps ra' (dcv' : (Var <$> xs))
     where arity = dataConSourceArity dc
           dcv = Var $ dataConWrapId dc
@@ -1057,13 +1064,6 @@ varC mod = getTyCon mod "Var"
 withMetaType :: ModInfo -> Type -> Type
 withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
 
-getMetaLevelInstance :: ModInfo -> Type -> CoreExpr
-getMetaLevelInstance mod t | Just tc <- tyConAppTyCon_maybe t = getInstance ("$fMetaLevel" ++ (occNameString $ getOccName tc))
-    where getInstance iname
-              | Just v <- getMetaVarMaybe mod iname = v -- for instances in Meta module
-              | Just v <- listToMaybe $ filter ((== iname) . getVarNameStr) (varsWithoutPairs mod) = Var v -- for instances in user modules
-              | otherwise = pprPanic "NLambda plungin requires MetaLevel instance for type:" (ppr t)
-
 noMetaExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 noMetaExpr mod e | isInternalType $ exprType e = return e
 noMetaExpr mod e = applyExpr (noMetaV mod) e
@@ -1081,6 +1081,9 @@ createExpr mod e1 e2 = applyExprs (createV mod) [e1, e2]
 
 idOpExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 idOpExpr mod e = applyExpr (idOpV mod) e
+
+renameAndApplyExpr :: ModInfo -> Int -> CoreM CoreExpr
+renameAndApplyExpr mod n = addMockedVarInstances mod (renameAndApplyV mod n)
 
 ----------------------------------------------------------------------------------------
 -- Convert meta types
@@ -1118,7 +1121,7 @@ getMetaPreludeNameMap mod = Map.fromList $ catMaybes metaPairs
     where fromPrelude e | Imported ss <- gre_prov e = elem "Prelude" $ moduleNameString <$> is_mod <$> is_decl <$> ss
           fromPrelude e = False
           preludeNames = fmap gre_name $ filter fromPrelude $ concat $ occEnvElts $ mg_rdr_env $ guts mod
-          preludeNamesWithTypes = fmap (\n -> if isLower $ head $ getNameStr $ getName n then (TyThingId, n) else (TyThingTyCon, n)) preludeNames
+          preludeNamesWithTypes = fmap (\n -> if isLower $ head $ getNameStr n then (TyThingId, n) else (TyThingTyCon, n)) preludeNames
           metaPairs = fmap (\(ty, n) -> (\t -> (n, getName t)) <$> findPairThing (metaTyThings mod) ty n) preludeNamesWithTypes
 
 isMetaPreludeTyCon :: ModInfo -> TyCon -> Bool
@@ -1129,28 +1132,30 @@ isMetaPreludeDict mod t | Just (cl, _) <- getClassPredTys_maybe t = isMetaPrelud
 isMetaPreludeDict mod t = False
 
 getMetaPreludeTyCon :: ModInfo -> TyCon -> Maybe TyCon
-getMetaPreludeTyCon mod tc = (getTyCon mod . getNameStr . getName) <$> findPairThing (metaTyThings mod) TyThingTyCon (getName tc)
+getMetaPreludeTyCon mod tc = (getTyCon mod . getNameStr) <$> findPairThing (metaTyThings mod) TyThingTyCon (getName tc)
 
 getDefinedMetaEquivalentVar :: ModInfo -> Var -> Maybe Var
 getDefinedMetaEquivalentVar mod v
     | notElem (getVarModuleNameStr v) preludeModules = Nothing
     -- super class selectors should be shift by one because of additional dependency for meta classes
-    | isPrefixOf "$p" $ getVarNameStr v, isJust metaVar = Just $ getVar mod $ nlambdaName ("$p" ++ (show $ succ superClassNr) ++ drop 3 (getVarNameStr v))
+    | isPrefixOf "$p" $ getNameStr v, isJust metaVar = Just $ getVar mod $ nlambdaName ("$p" ++ (show $ succ superClassNr) ++ drop 3 (getNameStr v))
     | otherwise = metaVar
-    where metaVar = getVar mod . getNameStr . getName <$> findPairThing (metaTyThings mod) TyThingId (getName v)
-          superClassNr = read [getVarNameStr v !! 2] :: Int
+    where metaVar = getVar mod . getNameStr <$> findPairThing (metaTyThings mod) TyThingId (getName v)
+          superClassNr = read [getNameStr v !! 2] :: Int
 
 isMetaEquivalent :: ModInfo -> Var -> Bool
-isMetaEquivalent mod v = case metaEquivalent (getVarModuleNameStr v) (getVarNameStr v) of
+isMetaEquivalent mod v = case metaEquivalent (getVarModuleNameStr v) (getNameStr v) of
                            NoEquivalent -> isJust $ getDefinedMetaEquivalentVar mod v
                            _            -> True
 
 getMetaEquivalent :: ModInfo -> ExprMap -> CoreBndr -> Var -> Maybe Type -> CoreM CoreExpr
 getMetaEquivalent mod eMap b v mt =
-    case metaEquivalent (getVarModuleNameStr v) (getVarNameStr v) of
+    case metaEquivalent (getVarModuleNameStr v) (getNameStr v) of
       OrigFun -> return $ changeTypeAndApply mod mt $ Var v
       MetaFun name -> return $ changeTypeAndApply mod mt $ getMetaVar mod name
-      MetaConvertFun name -> liftM (changeTypeAndApply mod mt) $ applyExpr (getMetaVar mod name) (Var v)
+      MetaConvertFun name -> do convertFun <- addMockedVarInstances mod $ getMetaVar mod name
+                                e <- applyExpr convertFun (Var v)
+                                return $ changeTypeAndApply mod mt e
       NoEquivalent -> addDependencies mod eMap b v mt $ fromMaybe
         (pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> text (getVarModuleNameStr v)))
         (getDefinedMetaEquivalentVar mod v)
@@ -1172,7 +1177,7 @@ addDependencies mod eMap b var mt metaVar
           deps ts preds b bts bpreds e | isForAllTy $ exprType e
                                        = deps (tailPanic "deps" (ppr e) ts) preds b bts bpreds $ mkCoreApp e $ headPanic "deps" (ppr e) ts
           deps ts preds b bts bpreds e | Just t <- metaPredFirst (metaLevelC mod) (exprType e)
-                                       = let ml = getMetaLevelInstance mod $ getOnlyArgTypeFromDict t
+                                       = let ml = getClassInstance mod (metaLevelC mod) $ getOnlyArgTypeFromDict t
                                              tvs = fst $ splitForAllTys $ exprType ml
                                              tml = mkCoreApps ml $ take (length tvs) bts
                                          in deps ts preds b bts bpreds $ mkCoreApp e tml
@@ -1200,10 +1205,19 @@ addDependencies mod eMap b var mt metaVar
 -- Var predicate
 ----------------------------------------------------------------------------------------
 
-addMockedVarInstances :: ModInfo -> CoreExpr -> CoreExpr
-addMockedVarInstances mod e = if null preds then e else mkCoreApps e (mockVarInstance <$> preds)
-    where preds = getVarPreds mod $ exprType e
-          mockVarInstance = mkCoreApp (Var uNDEFINED_ID) . Type
+mockVarInstance :: ModInfo -> Type -> CoreM CoreExpr
+mockVarInstance mod t
+    | pprTrace "mockVarInstance" (ppr t') False = undefined
+    | isJust $ tyConAppTyCon_maybe t' = addMockedVarInstances mod $ getClassInstance mod (varC mod) t'
+    | otherwise = return $ mkCoreApp (Var uNDEFINED_ID) $ Type t
+    where t' = getOnlyArgTypeFromDict t
+
+addMockedVarInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
+addMockedVarInstances mod e = if null preds
+                              then return e
+                              else do preds' <- mapM (mockVarInstance mod) preds
+                                      applyExprs e preds'
+    where preds = getVarPreds mod $ dropForAlls $ exprType e
           getVarPreds mod t
               | Just pred <- metaPredFirst (varC mod) t = pred : (getVarPreds mod $ funResultTy t)
               | otherwise = []
