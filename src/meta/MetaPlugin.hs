@@ -718,7 +718,7 @@ changeExpr mod b e = newExpr (mkExprMap mod) e
           newExpr eMap (Lam x e) = do x' <- changeBindTypeAndUniq mod x
                                       e' <- newExpr (insertVarExpr x x' eMap) e
                                       return $ Lam x' e'
-          newExpr eMap (Let b e) = do (b', eMap) <- changeLetBind b eMap
+          newExpr eMap (Let b e) = do (b', eMap) <- newLetBind b eMap
                                       e' <- newExpr eMap e
                                       return $ Let b' e'
           newExpr eMap (Case e b t as) = do e' <- newExpr eMap e
@@ -728,7 +728,7 @@ changeExpr mod b e = newExpr (mkExprMap mod) e
                                             b' <- changeBindTypeUnderWithMetaAndUniq mod b
                                             m <- metaExpr mod e'
                                             let t' = changeType mod t
-                                            as' <- mapM (changeAlternative (insertVarExpr b b' eMap) m t') as
+                                            as' <- mapM (newAlternative (insertVarExpr b b' eMap) m t') as
                                             return $ Case e'' b' t' as'
           newExpr eMap (Cast e c) = do e' <- newExpr eMap e
                                        return $ Cast e' (changeCoercion mod c)
@@ -736,25 +736,25 @@ changeExpr mod b e = newExpr (mkExprMap mod) e
                                        return $ Tick t e'
           newExpr eMap (Type t) = undefined -- type should be served in (App f (Type t)) case
           newExpr eMap (Coercion c) = return $ Coercion $ changeCoercion mod c
-          changeLetBind (NonRec b e) eMap = do b' <- changeBindTypeAndUniq mod b
-                                               let eMap' = insertVarExpr b b' eMap
-                                               e' <- newExpr eMap' e
-                                               return (NonRec b' e', eMap')
-          changeLetBind (Rec bs) eMap = do (bs', eMap') <- changeRecBinds bs eMap
-                                           return (Rec bs', eMap')
-          changeRecBinds ((b, e):bs) eMap = do (bs', eMap') <- changeRecBinds bs eMap
-                                               b' <- changeBindTypeAndUniq mod b
-                                               let eMap'' = insertVarExpr b b' eMap'
-                                               e' <- newExpr eMap'' e
-                                               return ((b',e'):bs', eMap'')
-          changeRecBinds [] eMap = return ([], eMap)
-          changeAlternative eMap m t (DataAlt con, xs, e) = do xs' <- mapM (changeBindTypeUnderWithMetaAndUniq mod) xs
-                                                               es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
-                                                               e' <- newExpr (Map.union (Map.fromList $ zip xs es) eMap) e
-                                                               e'' <- convertMetaType mod e' t
-                                                               return (DataAlt con, xs', e'')
-          changeAlternative eMap m t (alt, [], e) = do e' <- newExpr eMap e
-                                                       return (alt, [], e')
+          newLetBind (NonRec b e) eMap = do b' <- changeBindTypeAndUniq mod b
+                                            let eMap' = insertVarExpr b b' eMap
+                                            e' <- newExpr eMap' e
+                                            return (NonRec b' e', eMap')
+          newLetBind (Rec bs) eMap = do (bs', eMap') <- newRecBinds bs eMap
+                                        return (Rec bs', eMap')
+          newRecBinds ((b, e):bs) eMap = do (bs', eMap') <- newRecBinds bs eMap
+                                            b' <- changeBindTypeAndUniq mod b
+                                            let eMap'' = insertVarExpr b b' eMap'
+                                            e' <- newExpr eMap'' e
+                                            return ((b',e'):bs', eMap'')
+          newRecBinds [] eMap = return ([], eMap)
+          newAlternative eMap m t (DataAlt con, xs, e) = do xs' <- mapM (changeBindTypeUnderWithMetaAndUniq mod) xs
+                                                            es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
+                                                            e' <- newExpr (Map.union (Map.fromList $ zip xs es) eMap) e
+                                                            e'' <- convertMetaType mod e' t
+                                                            return (DataAlt con, xs', e'')
+          newAlternative eMap m t (alt, [], e) = do e' <- newExpr eMap e
+                                                    return (alt, [], e')
 
 -- the type of expression is not open for atoms and there are no free variables open for atoms
 noAtomsSubExpr :: CoreExpr -> Bool
