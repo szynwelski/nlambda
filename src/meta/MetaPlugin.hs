@@ -95,9 +95,10 @@ pass env onlyShow guts =
             guts' <- if onlyShow
                      then return guts
                      else do binds <- newBinds mod'' (getDataCons guts) (mg_binds guts)
+                             binds' <- replaceMocksByInstancesInProgram mod'' $ checkCoreProgram binds
                              let exps = newExports mod'' (mg_exports guts)
                              return $ guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap,
-                                            mg_binds = mg_binds guts ++ binds,
+                                            mg_binds = mg_binds guts ++ checkCoreProgram binds',
                                             mg_exports = mg_exports guts ++ exps}
 
             -- show info
@@ -125,7 +126,7 @@ pass env onlyShow guts =
 --            modInfo "implicit binds" getImplicitBinds guts'
 --            modInfo "annotations" mg_anns guts'
             putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:" <+> (ppr $ mg_module guts')
-            return $ if checkCoreProgram (mg_binds guts') then guts' else pprPanic "checkCoreProgram failed" (ppr $ mg_binds guts')
+            return guts'
 
 ----------------------------------------------------------------------------------------
 -- Mod info
@@ -539,9 +540,6 @@ getMainType :: Type -> Type
 getMainType t = if t == t' then t else getMainType t'
     where (tvs, ps ,t') = tcSplitSigmaTy t
 
-getForAllTyVar :: Type -> TyVar
-getForAllTyVar t = headPanic "getForAllTyVar" (ppr t) $ fst $ splitForAllTys t
-
 getFunTypeParts :: Type -> [Type]
 getFunTypeParts t | t /= getMainType t = getFunTypeParts $ getMainType t
 getFunTypeParts t | not $ isFunTy t = [t]
@@ -578,9 +576,6 @@ getWithoutWithMetaType mod t
     | isWithMetaType mod t, Just ts <- tyConAppArgs_maybe t = Just $ headPanic "getWithoutWithMetaType" (ppr t) ts
     | otherwise = Nothing
 
-addWithMetaType :: ModInfo -> Type -> Type
-addWithMetaType mod t = mkTyConApp (withMetaC mod) [t]
-
 metaPredFirst :: TyCon -> Type -> Maybe PredType
 metaPredFirst tc = maybe Nothing metaLevelPred . listToMaybe . getAllPreds
     where metaLevelPred pred
@@ -592,6 +587,11 @@ getAllPreds t
     | null preds = []
     | otherwise = preds ++ getAllPreds t'
     where (preds, t') = tcSplitPhiTy $ dropForAlls t
+
+isGivenMetaPred :: TyCon -> Type -> Bool
+isGivenMetaPred classTc t
+    | Just tc <- tyConAppTyCon_maybe t, isClassTyCon tc = tc == classTc
+    | otherwise = False
 
 getOnlyArgTypeFromDict :: PredType -> Type
 getOnlyArgTypeFromDict t
@@ -847,8 +847,8 @@ dataConExpr mod dc
 -- Core program validation
 ----------------------------------------------------------------------------------------
 
-checkCoreProgram :: CoreProgram -> Bool
-checkCoreProgram = all checkBinds
+checkCoreProgram :: CoreProgram -> CoreProgram
+checkCoreProgram bs = if all checkBinds bs then bs else pprPanic "checkCoreProgram failed" (ppr bs)
     where checkBinds (NonRec b e) = checkBind (b,e)
           checkBinds (Rec bs) = all checkBind bs
           checkBind (b,e) | not (varType b `eqType` exprType e)
@@ -1138,6 +1138,7 @@ getDefinedMetaEquivalentVar :: ModInfo -> Var -> Maybe Var
 getDefinedMetaEquivalentVar mod v
     | notElem (getVarModuleNameStr v) preludeModules = Nothing
     -- super class selectors should be shift by one because of additional dependency for meta classes
+    --FIXME count no nlambda dependencies and shift by this number
     | isPrefixOf "$p" $ getNameStr v, isJust metaVar = Just $ getVar mod $ nlambdaName ("$p" ++ (show $ succ superClassNr) ++ drop 3 (getNameStr v))
     | otherwise = metaVar
     where metaVar = getVar mod . getNameStr <$> findPairThing (metaTyThings mod) TyThingId (getName v)
@@ -1169,7 +1170,7 @@ addDependencies mod eMap b var mt metaVar
          let (ts, preds) = partition isTypeArg $ exprVarsToExprs vars
          metaE <- deps ts preds var ts preds (changeTypeAndApply mod mt $ Var metaVar)
          return $ mkCoreLams (exprVarsToVars vars) metaE
-    | otherwise = return $ changeTypeAndApply mod mt $ Var metaVar
+    | otherwise = addMockedVarInstances mod $ changeTypeAndApply mod mt $ Var metaVar
     where isFun = isFunTy $ dropForAlls $ varType metaVar
           localDictVar (Var v) | isLocalId v && not (isExportedId v) && isDictId v = Just v
           localDictVar _ = Nothing
@@ -1205,22 +1206,65 @@ addDependencies mod eMap b var mt metaVar
 -- Var predicate
 ----------------------------------------------------------------------------------------
 
-mockVarInstance :: ModInfo -> Type -> CoreM CoreExpr
-mockVarInstance mod t
-    | pprTrace "mockVarInstance" (ppr t') False = undefined
-    | isJust $ tyConAppTyCon_maybe t' = addMockedVarInstances mod $ getClassInstance mod (varC mod) t'
-    | otherwise = return $ mkCoreApp (Var uNDEFINED_ID) $ Type t
-    where t' = getOnlyArgTypeFromDict t
+mockVarInstance :: Type -> CoreExpr
+mockVarInstance = mkCoreApp (Var uNDEFINED_ID) . Type
+
+mockVarInstanceMaybe :: ModInfo -> CoreExpr -> Maybe Type
+mockVarInstanceMaybe mod (App (Var x) (Type t)) | uNDEFINED_ID == x && isGivenMetaPred (varC mod) t = Just $ getOnlyArgTypeFromDict t
+mockVarInstanceMaybe _ _ = Nothing
 
 addMockedVarInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
-addMockedVarInstances mod e = if null preds
-                              then return e
-                              else do preds' <- mapM (mockVarInstance mod) preds
-                                      applyExprs e preds'
-    where preds = getVarPreds mod $ dropForAlls $ exprType e
-          getVarPreds mod t
-              | Just pred <- metaPredFirst (varC mod) t = pred : (getVarPreds mod $ funResultTy t)
-              | otherwise = []
+addMockedVarInstances mod e = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
+                                 let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
+                                 let vvs' = filter (not . isVarPred . varType) vvs
+                                 let evs' = varPredOrDict <$> evs
+                                 return $ mkCoreLams vvs' $ mkCoreApps e evs'
+    where isVarPred = isGivenMetaPred (varC mod)
+          varPredOrDict e = if isVarPred (exprType e) then mockVarInstance (exprType e) else e
+
+varInstance :: ModInfo -> Type -> CoreM (Maybe CoreExpr)
+varInstance mod t
+    | Just ts <- tyConAppArgs_maybe t = do ins <- addMockedVarInstances mod $ mkCoreApps (getVarInst t) (Type <$> ts)
+                                           ins' <- replaceMocksByInstances mod ins
+                                           return $ Just ins'
+    | isJust (isNumLitTy t) || isJust (isStrLitTy t) = return $ Just $ getVarInst t
+    | isFunTy t = return $ Just $ getVarInst t
+    | otherwise = return Nothing
+    where getVarInst t = getClassInstance mod (varC mod) t
+
+replaceMocksByInstancesInProgram :: ModInfo -> CoreProgram -> CoreM CoreProgram
+replaceMocksByInstancesInProgram mod bs = mapM replaceInBinds bs
+    where replaceInBinds (NonRec b e) = do (b', e') <- replaceInBind (b, e)
+                                           return $ NonRec b' e'
+          replaceInBinds (Rec bs) = do bs' <- mapM replaceInBind bs
+                                       return $ Rec bs'
+          replaceInBind (b, e) = do e' <- replaceMocksByInstances mod e
+                                    return (b, e')
+
+replaceMocksByInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
+replaceMocksByInstances mod e = replace e
+    where replace e | Just t <- mockVarInstanceMaybe mod e = do e' <- varInstance mod t
+                                                                return $ fromMaybe e e'
+          replace (Var x) = return $ Var x
+          replace (App f e) = do f' <- replace f
+                                 e' <- replace e
+                                 return $ App f' e'
+          replace (Lam x e) = do e' <- replace e
+                                 return $ Lam x e'
+          replace (Let b e) = do b' <- replaceMocksByInstancesInProgram mod [b]
+                                 e' <- replace e
+                                 return $ Let (head b') e'
+          replace (Case e x t as) = do e' <- replace e
+                                       as' <- mapM replaceInAlt as
+                                       return $ Case e' x t as'
+          replace (Cast e c) = do e' <- replace e
+                                  return $ Cast e' c
+          replace (Tick t e) = do e' <- replace e
+                                  return $ Tick t e'
+          replace e = return e
+          replaceInAlt (con, bs, e) = do e' <- replace e
+                                         return (con, bs, e')
+
 
 ----------------------------------------------------------------------------------------
 -- Show
