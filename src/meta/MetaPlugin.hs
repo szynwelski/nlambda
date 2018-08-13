@@ -465,14 +465,14 @@ changeBindExpr :: ModInfo -> (CoreBndr, CoreExpr) -> CoreM (CoreBndr, CoreExpr)
 changeBindExpr mod (b, e) = do e' <- changeExpr mod b e
                                let b' = newVar mod b
                                e'' <- convertMetaType mod e' $ varType b'
-                               return (b', e'')
+                               return (b', simpleOptExpr e'')
 
 dataBind :: ModInfo -> DataCon -> CoreM CoreBind
 dataBind mod dc
     | noAtomsType $ dataConOrigResTy dc = return $ NonRec b' (Var b)
     | otherwise = do e <- dataConExpr mod dc
                      e' <- convertMetaType mod e $ varType b'
-                     return $ NonRec b' e'
+                     return $ NonRec b' $ simpleOptExpr e'
     where b = dataConWrapId dc
           b' = newVar mod b
 
