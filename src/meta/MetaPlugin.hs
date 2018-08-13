@@ -74,8 +74,8 @@ pass env onlyShow guts =
                      <+> if onlyShow then text "[only show]" else text ""
 
             -- mod info - all info in one place
-            let metaMod = getMetaModule env
-            let mod = modInfoEmptyMaps env guts metaMod
+            let metaMods = getMetaModules env
+            let mod = modInfoEmptyMaps env guts metaMods
 
             -- imported maps
             let (impNameMap, impVarMap, impTcMap) = getImportedMaps mod
@@ -131,14 +131,13 @@ pass env onlyShow guts =
 -- Mod info
 ----------------------------------------------------------------------------------------
 
-data ModInfo = ModInfo {env :: HscEnv, guts :: ModGuts, metaModule :: MetaModule, nameMap :: NameMap, tcMap :: TyConMap, varMap :: VarMap}
+data ModInfo = ModInfo {env :: HscEnv, guts :: ModGuts, metaModules :: [MetaModule], nameMap :: NameMap, tcMap :: TyConMap, varMap :: VarMap}
 
-modInfoEmptyMaps :: HscEnv -> ModGuts -> MetaModule -> ModInfo
-modInfoEmptyMaps env guts metaMod = ModInfo env guts metaMod Map.empty Map.empty emptyVarMap
+modInfoEmptyMaps :: HscEnv -> ModGuts -> [MetaModule] -> ModInfo
+modInfoEmptyMaps env guts metaMods = ModInfo env guts metaMods Map.empty Map.empty emptyVarMap
 
 instance Outputable ModInfo where
     ppr mod = text "\n======== ModInfo =========================================================="
-              <+> text "\n" <+> showMetaIds mod
               <+> showMap "\nNames" (nameMap mod) showName
               <+> showMap "\nTyCons" (tcMap mod) showTyCon
               <+> showMap "\nVars" (varsWithPairs mod) showVar
@@ -147,12 +146,6 @@ instance Outputable ModInfo where
 showMap :: String -> Map a a -> (a -> SDoc) -> SDoc
 showMap header map showElem = text (header ++ ":\n")
                               <+> (vcat (concatMap (\(x,y) -> [showElem x <+> text "->" <+> showElem y]) $ Map.toList map))
-
-showMetaIds :: ModInfo -> SDoc
-showMetaIds mod = vcat $ fmap (\x -> showVar x <+> text "::" <+> showType (varType x))
-                       $ fmap tyThingId $ filter isTyThingId $ eltsUFM $ md_types $ hm_details $ metaModule $ mod
-
-
 
 ----------------------------------------------------------------------------------------
 -- Annotation
@@ -308,7 +301,7 @@ getImportedModules = filter (not . isIgnoreImport) . moduleEnvKeys . mg_dir_imps
 getImportedMaps :: ModInfo -> (NameMap, VarMap, TyConMap)
 getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, []), Map.fromList tcPairs)
     where mods = catMaybes $ fmap (lookupUFM $ hsc_HPT $ env mod) $ fmap moduleName $ getImportedModules (guts mod)
-          things = eltsUFM $ mconcat $ md_types <$> hm_details <$> mods
+          things = eltsUFM $ getModulesTyThings mods
           (tcThings, varThings) = partition isTyThingTyCon things
           tcPairs = fmap (\(tt1, tt2) -> (tyThingTyCon tt1, tyThingTyCon tt2)) $ catMaybes $ findPair things TyThingTyCon <$> getName <$> tcThings
           varPairs = fmap (\(tt1, tt2) -> (tyThingId tt1, tyThingId tt2)) $ catMaybes $ findPair things TyThingId <$> getName <$> varThings
@@ -654,15 +647,17 @@ tyThingFromId = AnId
 tyThingFromTyCon :: TyCon -> TyThing
 tyThingFromTyCon = ATyCon
 
-getTyThingMaybe :: HomeModInfo -> String -> (TyThing -> Bool) -> (TyThing -> a) -> (a -> Name) -> Maybe a
-getTyThingMaybe mod nm cond fromThing getName =
-    fmap fromThing $ listToMaybe $ nameEnvElts $ filterNameEnv (\t -> cond t && hasName nm (getName $ fromThing t))
-                                                                  (md_types $ hm_details $ mod)
+getModulesTyThings :: [HomeModInfo] -> TypeEnv
+getModulesTyThings = mconcat . fmap md_types . fmap hm_details
+
+getTyThingMaybe :: [HomeModInfo] -> String -> (TyThing -> Bool) -> (TyThing -> a) -> (a -> Name) -> Maybe a
+getTyThingMaybe mods nm cond fromThing getName =
+    fmap fromThing $ listToMaybe $ nameEnvElts $ filterNameEnv (\t -> cond t && hasName nm (getName $ fromThing t)) (getModulesTyThings mods)
     where hasName nmStr nm = occNameString (nameOccName nm) == nmStr
 
-getTyThing :: HomeModInfo -> String -> (TyThing -> Bool) -> (TyThing -> a) -> (a -> Name) -> a
-getTyThing mod nm cond fromThing getName = fromMaybe (pprPanic "getTyThing - name not found in module Meta:" $ text nm)
-                                                     (getTyThingMaybe mod nm cond fromThing getName)
+getTyThing :: [HomeModInfo] -> String -> (TyThing -> Bool) -> (TyThing -> a) -> (a -> Name) -> a
+getTyThing mods nm cond fromThing getName = fromMaybe (pprPanic "getTyThing - name not found in module Meta:" $ text nm)
+                                                      (getTyThingMaybe mods nm cond fromThing getName)
 
 findThingByConds :: (Name -> Name -> Bool) -> (Module -> Module -> Bool) -> [TyThing] -> TyThingType -> Name -> Maybe TyThing
 findThingByConds nameCond moduleCond things ty name = find cond things
@@ -1013,24 +1008,28 @@ applyExprs = foldlM applyExpr
 -- Meta
 ----------------------------------------------------------------------------------------
 
+varModuleName :: Meta.ModuleName
+varModuleName = "Var"
+
+metaModuleName :: Meta.ModuleName
 metaModuleName = "Meta"
 
 type MetaModule = HomeModInfo
 
-getMetaModule :: HscEnv -> MetaModule
-getMetaModule = fromJust . find ((== metaModuleName) . moduleNameString . moduleName . mi_module . hm_iface) . eltsUFM . hsc_HPT
+getMetaModules :: HscEnv -> [MetaModule]
+getMetaModules = filter ((`elem` [varModuleName, metaModuleName]) . moduleNameString . moduleName . mi_module . hm_iface) . eltsUFM . hsc_HPT
 
 getVar :: ModInfo -> String -> Var
-getVar mod nm = getTyThing (metaModule mod) nm isTyThingId tyThingId varName
+getVar mod nm = getTyThing (metaModules mod) nm isTyThingId tyThingId varName
 
 getVarMaybe :: ModInfo -> String -> Maybe Var
-getVarMaybe mod nm = getTyThingMaybe (metaModule mod) nm isTyThingId tyThingId varName
+getVarMaybe mod nm = getTyThingMaybe (metaModules mod) nm isTyThingId tyThingId varName
 
 metaTyThings :: ModInfo -> [TyThing]
-metaTyThings = nameEnvElts . md_types . hm_details . metaModule
+metaTyThings = nameEnvElts . getModulesTyThings . metaModules
 
 getTyCon :: ModInfo -> String -> TyCon
-getTyCon mod nm = getTyThing (metaModule mod) nm isTyThingTyCon tyThingTyCon tyConName
+getTyCon mod nm = getTyThing (metaModules mod) nm isTyThingTyCon tyThingTyCon tyConName
 
 getMetaVar :: ModInfo -> String -> CoreExpr
 getMetaVar mod = Var . getVar mod
@@ -1046,6 +1045,7 @@ idOpV mod = getMetaVar mod "idOp"
 renameAndApplyV mod n = getMetaVar mod ("renameAndApply" ++ show n)
 withMetaC mod = getTyCon mod "WithMeta"
 metaLevelC mod = getTyCon mod "MetaLevel"
+varC mod = getTyCon mod "Var"
 
 withMetaType :: ModInfo -> Type -> Type
 withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
