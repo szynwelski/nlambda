@@ -261,7 +261,7 @@ mkVarMap mod = let g = guts mod in mkMapWithVars mod (getBindsVars g ++ getClass
 
 mkMapWithVars :: ModInfo -> [Var] -> VarMap
 mkMapWithVars mod vars = (Map.fromList $ zip vars' $ fmap newVar vars', vars'')
-    where (vars',vars'') = partition (not . isIgnoreImportType . varType) vars
+    where (vars',vars'') = partition (not . isIgnoreImportType mod . varType) vars
           newVar v = let v' = mkLocalIdWithInfo (newName mod $ varName v) (changeType mod $ varType v) (newIdInfo $ idInfo v)
                      in if isExportedId v then setIdExported v' else setIdNotExported v'
           newIdInfo old = vanillaIdInfo `setInlinePragInfo` (inlinePragInfo old) -- TODO maybe rewrite also other info
@@ -315,8 +315,8 @@ getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, []), Map.
           namePairs = (getNamePair <$> tcPairs) ++ (getNamePair <$> varPairs)
 
 -- FIXME check if isAbstractTyCon should be used here
-isIgnoreImportType :: Type -> Bool
-isIgnoreImportType = anyNameEnv (\tc -> (isIgnoreImport $ nameModule $ getName tc) || isAbstractTyCon tc) . tyConsOfType
+isIgnoreImportType :: ModInfo -> Type -> Bool
+isIgnoreImportType mod = anyNameEnv (\tc -> (isIgnoreImport $ nameModule $ getName tc) || isAbstractTyCon tc || varC mod == tc) . tyConsOfType
 
 ----------------------------------------------------------------------------------------
 -- Exports
@@ -821,11 +821,13 @@ dataConExpr :: ModInfo -> DataCon -> CoreM CoreExpr
 dataConExpr mod dc
     | arity == 0 = noMetaExpr mod dcv
     | arity == 1 = idOpExpr mod dcv
-    | otherwise = do e <- renameAndApplyExpr mod arity dcv
-                     (vars, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
-                     xs <- mkArgs subst $ dataConSourceArity dc
-                     let (vs, evs) = (exprVarsToVars vars, exprVarsToExprs vars)
-                     return $ mkCoreLams (vs ++ xs) $ mkCoreApps e (evs ++ (Var <$> xs))
+    | otherwise = do (vars, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType dcv
+                     xs <- mkArgs subst arity
+                     let (vvs, evs) = (exprVarsToVars vars, exprVarsToExprs vars)
+                     let dcv' = mkCoreApps dcv evs
+                     let ra = mkCoreApps (renameAndApplyV mod arity) (evs ++ [Type $ last $ getFunTypeParts ty])
+                     let ra' = addMockedVarInstances mod ra
+                     return $ mkCoreLams (vvs ++ xs) $ mkCoreApps ra' (dcv' : (Var <$> xs))
     where arity = dataConSourceArity dc
           dcv = Var $ dataConWrapId dc
           mkArgs subst 0 = return []
@@ -1080,9 +1082,6 @@ createExpr mod e1 e2 = applyExprs (createV mod) [e1, e2]
 idOpExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 idOpExpr mod e = applyExpr (idOpV mod) e
 
-renameAndApplyExpr :: ModInfo -> Int -> CoreExpr -> CoreM CoreExpr
-renameAndApplyExpr mod n e = applyExpr (renameAndApplyV mod n) e
-
 ----------------------------------------------------------------------------------------
 -- Convert meta types
 ----------------------------------------------------------------------------------------
@@ -1196,6 +1195,18 @@ addDependencies mod eMap b var mt metaVar
                                         = do es <- mapM (\i -> applyExpr (Var i) pred) ids
                                              maybe (findSuperClass t preds) return (find (sameTypes t . exprType) es)
           findSuperClass t [] = pprPanic "findSuperClass - no super class with proper type found:" (ppr t)
+
+----------------------------------------------------------------------------------------
+-- Var predicate
+----------------------------------------------------------------------------------------
+
+addMockedVarInstances :: ModInfo -> CoreExpr -> CoreExpr
+addMockedVarInstances mod e = if null preds then e else mkCoreApps e (mockVarInstance <$> preds)
+    where preds = getVarPreds mod $ exprType e
+          mockVarInstance = mkCoreApp (Var uNDEFINED_ID) . Type
+          getVarPreds mod t
+              | Just pred <- metaPredFirst (varC mod) t = pred : (getVarPreds mod $ funResultTy t)
+              | otherwise = []
 
 ----------------------------------------------------------------------------------------
 -- Show
