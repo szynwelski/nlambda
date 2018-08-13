@@ -125,7 +125,7 @@ pass env onlyShow guts =
 --            modInfo "implicit binds" getImplicitBinds guts'
 --            modInfo "annotations" mg_anns guts'
             putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> end:" <+> (ppr $ mg_module guts')
-            return $ if checkCoreProgram (mg_binds guts') then guts' else guts
+            return $ if checkCoreProgram (mg_binds guts') then guts' else pprPanic "checkCoreProgram failed" (ppr $ mg_binds guts')
 
 ----------------------------------------------------------------------------------------
 -- Mod info
@@ -285,11 +285,17 @@ mkLocalVar varName ty = do uniq <- getUniqueM
                            let nm = mkInternalName uniq (mkVarOcc varName) noSrcSpan
                            return $ mkLocalId nm ty
 
+mkPredVar :: (Class, [Type]) -> CoreM DictId
+mkPredVar (cls, tys) = do uniq <- getUniqueM
+                          let name = mkSystemName uniq (mkDictOcc (getOccName cls))
+                          return $ mkLocalId name $ mkClassPred cls tys
+
+
 ----------------------------------------------------------------------------------------
 -- Imports
 ----------------------------------------------------------------------------------------
 
-importsToIgnore :: [String]
+importsToIgnore :: [Meta.ModuleName]
 importsToIgnore = [metaModuleName, "GHC.Generics"]
 
 isIgnoreImport :: Module -> Bool
@@ -568,10 +574,10 @@ getWithoutWithMetaType mod t
 addWithMetaType :: ModInfo -> Type -> Type
 addWithMetaType mod t = mkTyConApp (withMetaC mod) [t]
 
-metaLevelFirstPred :: ModInfo -> Type -> Maybe Type
-metaLevelFirstPred mod = maybe Nothing metaLevelPred . listToMaybe . getAllPreds
+metaPredFirst :: TyCon -> Type -> Maybe PredType
+metaPredFirst tc = maybe Nothing metaLevelPred . listToMaybe . getAllPreds
     where metaLevelPred pred
-            | Just tc <- tyConAppTyCon_maybe pred, isClassTyCon tc, tc == metaLevelC mod = Just pred
+            | Just tc' <- tyConAppTyCon_maybe pred, isClassTyCon tc', tc == tc' = Just pred
             | otherwise = Nothing
 
 getAllPreds :: Type -> ThetaType
@@ -669,8 +675,10 @@ findThing = findThingByConds (==) (==)
 
 findPairThing :: [TyThing] -> TyThingType -> Name -> Maybe TyThing
 findPairThing things ty name = findThingByConds pairName equivalentModule things ty name
-    where pairName name nameWithSuffix = getNameStr nameWithSuffix == nlambdaName (getNameStr name)
-                                         || replace name_suffix "" (getNameStr nameWithSuffix) == getNameStr name
+    where pairName name nameWithSuffix = let nameStr = getNameStr name
+                                             nameWithSuffixStr = getNameStr nameWithSuffix
+                                         in nameWithSuffixStr == nlambdaName nameStr
+                                            || (isInfixOf name_suffix nameWithSuffixStr && replace name_suffix "" nameWithSuffixStr == nameStr)
           equivalentModule m1 m2 = m1 == m2 || (elem (getModuleNameStr m1) preludeModules && getModuleNameStr m2 == metaModuleName)
 
 findPair :: [TyThing] -> TyThingType -> Name -> Maybe (TyThing, TyThing)
@@ -951,9 +959,6 @@ splitTypeToExprVarsWithSubst ty
     where (tyVars, preds, ty') = tcSplitSigmaTy ty
           mkTyVarUnique v = do uniq <- getUniqueM
                                return $ mkTyVar (setNameUnique (tyVarName v) uniq) (tyVarKind v)
-          mkPredVar (cls, tys) = do uniq <- getUniqueM
-                                    let name = mkSystemName uniq (mkDictOcc (getOccName cls))
-                                    return $ mkLocalId name $ mkClassPred cls tys
 
 splitTypeToExprVars :: Type -> CoreM ([ExprVar], Type)
 splitTypeToExprVars t = liftM (\(vars, ty, _) -> (vars, ty)) (splitTypeToExprVarsWithSubst t)
@@ -1167,7 +1172,7 @@ addDependencies mod eMap b var mt metaVar
           deps :: [CoreExpr] -> [CoreExpr] -> CoreBndr -> [CoreExpr] -> [CoreExpr] -> CoreExpr -> CoreM CoreExpr
           deps ts preds b bts bpreds e | isForAllTy $ exprType e
                                        = deps (tailPanic "deps" (ppr e) ts) preds b bts bpreds $ mkCoreApp e $ headPanic "deps" (ppr e) ts
-          deps ts preds b bts bpreds e | Just t <- metaLevelFirstPred mod $ exprType e
+          deps ts preds b bts bpreds e | Just t <- metaPredFirst (metaLevelC mod) (exprType e)
                                        = let ml = getMetaLevelInstance mod $ getOnlyArgTypeFromDict t
                                              tvs = fst $ splitForAllTys $ exprType ml
                                              tml = mkCoreApps ml $ take (length tvs) bts

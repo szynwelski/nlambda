@@ -651,7 +651,7 @@ createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> Me
 createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
-preludeEquivalents = Map.unions [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcPrim, ghcReal, ghcShow, ghcTuple, ghcTypes,
+preludeEquivalents = Map.unions [nominalVar, ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcPrim, ghcReal, ghcShow, ghcTuple, ghcTypes,
                                  dataEither, dataFoldable, dataMaybe, dataSetBase, dataTuple, controlExceptionBase]
 
 preludeModules :: [ModuleName]
@@ -669,6 +669,9 @@ metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod prelude
 ----------------------------------------------------------------------------------------
 -- Meta equivalents methods
 ----------------------------------------------------------------------------------------
+
+nominalVar :: MetaEquivalentMap
+nominalVar = createEquivalentsMap "Var" []
 
 ghcBase :: MetaEquivalentMap
 ghcBase = createEquivalentsMap "GHC.Base"
