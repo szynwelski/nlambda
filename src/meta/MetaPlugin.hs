@@ -1,5 +1,5 @@
 module MetaPlugin where
-import GhcPlugins hiding (mkLocalVar)
+import GhcPlugins hiding (mkLocalVar, substTy)
 import PprCore
 import Data.IORef
 import System.IO.Unsafe
@@ -20,7 +20,6 @@ import Maybes
 import TcType (tcSplitSigmaTy, tcSplitPhiTy)
 import TyCon
 import Unify
-import CoreSubst
 import Data.Foldable
 import InstEnv
 import Class
@@ -816,34 +815,21 @@ changeCoAxiom :: ModInfo -> CoAxiom a -> CoAxiom a
 changeCoAxiom mod (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon mod tc) bs i
 
 dataConExpr :: ModInfo -> DataCon -> CoreM CoreExpr
-dataConExpr mod dc | dataConSourceArity dc == 0 = noMetaExpr mod (Var $ dataConWrapId dc)
-dataConExpr mod dc | dataConSourceArity dc == 1 = idOpExpr mod (Var $ dataConWrapId dc)
-dataConExpr mod dc = do (tyVars, subst) <- makeTyVarsUnique $ fst $ splitForAllTys $ dataConRepType dc
-                        xs <- mkArgs subst $ dataConSourceArity dc
-                        ms <- mkMetaList xs
-                        ux <- mkLocalVar "u" $ unionType mod
-                        ue <- unionExpr mod ms
-                        rs <- renameValues (Var ux) xs
-                        m <- getMetaExpr mod (Var ux)
-                        e <- applyExprs (Var $ dataConWrapId dc) rs
-                        me <- createExpr mod e m
-                        return $ mkCoreLams tyVars $ mkCoreLams xs $ bindNonRec ux ue me
-    where mkArgs subst 0 = return []
-          mkArgs subst n = do let ty = substTy subst $ withMetaType mod $ dataConOrigArgTys dc !! (dataConSourceArity dc - n)
-                              x <- mkLocalVar ("x" ++ show n) ty
+dataConExpr mod dc
+    | arity == 0 = noMetaExpr mod dcv
+    | arity == 1 = idOpExpr mod dcv
+    | otherwise = do e <- renameAndApplyExpr mod arity dcv
+                     (vars, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
+                     xs <- mkArgs subst $ dataConSourceArity dc
+                     let (vs, evs) = (exprVarsToVars vars, exprVarsToExprs vars)
+                     return $ mkCoreLams (vs ++ xs) $ mkCoreApps e (evs ++ (Var <$> xs))
+    where arity = dataConSourceArity dc
+          dcv = Var $ dataConWrapId dc
+          mkArgs subst 0 = return []
+          mkArgs subst n = do let ty = substTy subst $ withMetaType mod $ dataConOrigArgTys dc !! (arity - n)
+                              x <- mkLocalVar ("x" ++ show (arity - n)) ty
                               args <- mkArgs subst $ pred n
                               return $ x : args
-          mkMetaList [] = return $ emptyListV mod
-          mkMetaList (x:xs) = do meta <- metaExpr mod $ Var x
-                                 list <- mkMetaList xs
-                                 colonExpr mod meta list -- FIXME use mkListExpr
-          renameValues u [] = return []
-          renameValues u (x:xs) = do df <- getDynFlags
-                                     let n = mkConApp intDataCon [Lit $ mkMachInt df $ toInteger (dataConSourceArity dc - length xs - 1)]
-                                     v <- valueExpr mod $ Var x
-                                     r <- renameExpr mod u n v
-                                     rs <- renameValues u xs
-                                     return (r : rs)
 
 ----------------------------------------------------------------------------------------
 -- Core program validation
@@ -931,34 +917,51 @@ isTV :: ExprVar -> Bool
 isTV (TV _) = True
 isTV (DI _) = False
 
+substTy :: TvSubst -> Type -> Type
+substTy subst t = head $ substTys subst [t]
+
 substDictId :: TvSubst -> DictId -> DictId
 substDictId subst id = setVarType id ty
     where (cl, ts) = getClassPredTys $ varType id
           ts' = substTys subst ts
           ty = mkClassPred cl ts'
 
-exprVarsToVars :: TvSubst -> [ExprVar] -> [CoreBndr]
-exprVarsToVars subst = catMaybes . fmap toCoreBndr
+exprVarsToVarsWithSubst :: TvSubst -> [ExprVar] -> [CoreBndr]
+exprVarsToVarsWithSubst subst = catMaybes . fmap toCoreBndr
     where toCoreBndr (TV v) | isNothing (lookupTyVar subst v) = Just v
           toCoreBndr (TV v) = Nothing
           toCoreBndr (DI i) = Just $ substDictId subst i
 
-exprVarsToExprs :: TvSubst -> [ExprVar] -> [CoreExpr]
-exprVarsToExprs subst = fmap toExpr
+exprVarsToVars :: [ExprVar] -> [CoreBndr]
+exprVarsToVars = exprVarsToVarsWithSubst emptyTvSubst
+
+exprVarsToExprsWithSubst :: TvSubst -> [ExprVar] -> [CoreExpr]
+exprVarsToExprsWithSubst subst = fmap toExpr
     where toExpr (TV v) = Type $ substTyVar subst v
           toExpr (DI i) = Var $ substDictId subst i
 
+exprVarsToExprs :: [ExprVar] -> [CoreExpr]
+exprVarsToExprs = exprVarsToExprsWithSubst emptyTvSubst
+
+splitTypeToExprVarsWithSubst :: Type -> CoreM ([ExprVar], Type, TvSubst)
+splitTypeToExprVarsWithSubst ty
+    | ty == ty' = return ([], ty, emptyTvSubst)
+    | otherwise = do tyVars' <- mapM mkTyVarUnique tyVars
+                     let subst = mkTopTvSubst $ zip tyVars $ mkTyVarTys tyVars'
+                     let preds' = filter isClassPred preds
+                     let classTys = fmap getClassPredTys preds'
+                     predVars <- mapM mkPredVar ((\(c,tys) -> (c, substTys subst tys)) <$> classTys)
+                     (resTyVars, resTy, resSubst) <- splitTypeToExprVarsWithSubst $ substTy subst ty'
+                     return ((TV <$> tyVars') ++ (DI <$> predVars) ++ resTyVars, resTy, unionTvSubst subst resSubst)
+    where (tyVars, preds, ty') = tcSplitSigmaTy ty
+          mkTyVarUnique v = do uniq <- getUniqueM
+                               return $ mkTyVar (setNameUnique (tyVarName v) uniq) (tyVarKind v)
+          mkPredVar (cls, tys) = do uniq <- getUniqueM
+                                    let name = mkSystemName uniq (mkDictOcc (getOccName cls))
+                                    return $ mkLocalId name $ mkClassPred cls tys
+
 splitTypeToExprVars :: Type -> CoreM ([ExprVar], Type)
-splitTypeToExprVars ty =
-    let (tyVars, preds, ty') = tcSplitSigmaTy ty
-    in if ty == ty'
-       then return ([], ty)
-       else do (tyVars', subst) <- makeTyVarsUnique tyVars
-               let preds' = filter isClassPred preds -- TODO other preds
-               let classTys = fmap getClassPredTys preds'
-               predVars <- mapM mkPredVar ((\(c,tys) -> (c, substTy subst <$> tys)) <$> classTys)
-               (resTyVars, resTy) <- splitTypeToExprVars $ substTy subst ty'
-               return ((TV <$> tyVars') ++ (DI <$> predVars) ++ resTyVars, resTy)
+splitTypeToExprVars t = liftM (\(vars, ty, _) -> (vars, ty)) (splitTypeToExprVarsWithSubst t)
 
 unifyTypes :: Type -> Type -> Maybe TvSubst
 unifyTypes t1 t2 = maybe unifyWithOpenKinds Just (tcUnifyTy t1 t2)
@@ -989,10 +992,10 @@ applyExpr fun e =
        let subst = fromMaybe
                      (pprPanic "applyExpr - can't unify:" (ppr (funArgTy fTy) <+> text "and" <+> ppr eTy <+> text "for apply:" <+> ppr fun <+> text "with" <+> ppr e))
                      (unifyTypes (funArgTy fTy) eTy)
-       let fVars' = exprVarsToVars subst fVars
-       let fVarExprs = exprVarsToExprs subst fVars
-       let eVars' = exprVarsToVars subst eVars
-       let eVarExprs = exprVarsToExprs subst eVars
+       let fVars' = exprVarsToVarsWithSubst subst fVars
+       let fVarExprs = exprVarsToExprsWithSubst subst fVars
+       let eVars' = exprVarsToVarsWithSubst subst eVars
+       let eVarExprs = exprVarsToExprsWithSubst subst eVars
        return $ mkCoreLams (sortVars $ nub $ fVars' ++ eVars')
                   (mkCoreApp
                     (mkCoreApps fun fVarExprs)
@@ -1036,24 +1039,16 @@ getMetaVarMaybe :: ModInfo -> String -> Maybe CoreExpr
 getMetaVarMaybe mod = fmap Var . getVarMaybe mod
 
 noMetaV mod = getMetaVar mod "noMeta"
-unionV mod = getMetaVar mod "union"
 metaV mod = getMetaVar mod "meta"
 valueV mod = getMetaVar mod "value"
 createV mod = getMetaVar mod "create"
-getMetaV mod = getMetaVar mod "getMeta"
-renameV mod = getMetaVar mod "rename"
-emptyListV mod = getMetaVar mod "emptyList"
-colonV mod = getMetaVar mod "colon"
 idOpV mod = getMetaVar mod "idOp"
+renameAndApplyV mod n = getMetaVar mod ("renameAndApply" ++ show n)
 withMetaC mod = getTyCon mod "WithMeta"
-unionC mod = getTyCon mod "Union"
 metaLevelC mod = getTyCon mod "MetaLevel"
 
 withMetaType :: ModInfo -> Type -> Type
 withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
-
-unionType :: ModInfo -> Type
-unionType = mkTyConTy . unionC
 
 getMetaLevelInstance :: ModInfo -> Type -> CoreExpr
 getMetaLevelInstance mod t | Just tc <- tyConAppTyCon_maybe t = getInstance ("$fMetaLevel" ++ (occNameString $ getOccName tc))
@@ -1061,17 +1056,6 @@ getMetaLevelInstance mod t | Just tc <- tyConAppTyCon_maybe t = getInstance ("$f
               | Just v <- getMetaVarMaybe mod iname = v -- for instances in Meta module
               | Just v <- listToMaybe $ filter ((== iname) . getVarNameStr) (varsWithoutPairs mod) = Var v -- for instances in user modules
               | otherwise = pprPanic "NLambda plungin requires MetaLevel instance for type:" (ppr t)
-
-mkPredVar :: (Class, [Type]) -> CoreM DictId
-mkPredVar (cls, tys) = do uniq <- getUniqueM
-                          let name = mkSystemName uniq (mkDictOcc (getOccName cls))
-                          return (mkLocalId name (mkClassPred cls tys))
-
-makeTyVarsUnique :: [TyVar] -> CoreM ([TyVar], Subst)
-makeTyVarsUnique vs = do vs' <- mapM mkUnique vs
-                         return (vs', extendTvSubstList emptySubst (zip vs $ mkTyVarTys vs'))
-    where mkUnique v = do uniq <- getUniqueM
-                          return $ mkTyVar (setNameUnique (tyVarName v) uniq) (tyVarKind v)
 
 noMetaExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 noMetaExpr mod e | isInternalType $ exprType e = return e
@@ -1084,24 +1068,15 @@ valueExpr mod e = applyExpr (valueV mod) e
 metaExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 metaExpr mod e = applyExpr (metaV mod) e
 
-unionExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
-unionExpr mod e = applyExpr (unionV mod) e
-
 createExpr :: ModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 createExpr mod e  _  | isInternalType $ exprType e = return e
 createExpr mod e1 e2 = applyExprs (createV mod) [e1, e2]
 
-getMetaExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
-getMetaExpr mod e = applyExpr (getMetaV mod) e
-
-renameExpr :: ModInfo -> CoreExpr -> CoreExpr -> CoreExpr -> CoreM CoreExpr
-renameExpr mod e1 e2 e3 = applyExprs (renameV mod) [e1, e2, e3]
-
-colonExpr :: ModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
-colonExpr mod e1 e2 = applyExprs (colonV mod) [e1, e2]
-
 idOpExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 idOpExpr mod e = applyExpr (idOpV mod) e
+
+renameAndApplyExpr :: ModInfo -> Int -> CoreExpr -> CoreM CoreExpr
+renameAndApplyExpr mod n e = applyExpr (renameAndApplyV mod n) e
 
 ----------------------------------------------------------------------------------------
 -- Convert meta types
@@ -1182,9 +1157,9 @@ addDependencies mod eMap b var mt metaVar
     = deps [] [] b [] (fmap Var $ catMaybes $ fmap localDictVar $ Map.elems eMap) (changeTypeAndApply mod mt $ Var metaVar)
     | isDFunId metaVar, isFun -- $f...
     = do vars <- liftM fst $ splitTypeToExprVars $ changeType mod $ varType var
-         let (ts, preds) = partition isTypeArg $ exprVarsToExprs emptyTvSubst vars
+         let (ts, preds) = partition isTypeArg $ exprVarsToExprs vars
          metaE <- deps ts preds var ts preds (changeTypeAndApply mod mt $ Var metaVar)
-         return $ mkCoreLams (exprVarsToVars emptyTvSubst vars) metaE
+         return $ mkCoreLams (exprVarsToVars vars) metaE
     | otherwise = return $ changeTypeAndApply mod mt $ Var metaVar
     where isFun = isFunTy $ dropForAlls $ varType metaVar
           localDictVar (Var v) | isLocalId v && not (isExportedId v) && isDictId v = Just v

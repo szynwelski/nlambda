@@ -51,12 +51,6 @@ noMeta x = WithMeta x emptyMeta
 create :: a -> Meta -> WithMeta a
 create x m = WithMeta x m
 
-emptyList :: [a]
-emptyList = []
-
-colon :: a -> [a] -> [a]
-colon = (:)
-
 ------------------------------------------------------------------------------------------
 -- Rename methods
 ------------------------------------------------------------------------------------------
@@ -97,9 +91,6 @@ rename3 (WithMeta x1 m1, WithMeta x2 m2, WithMeta x3 m3) = rename $ create (x1, 
 
 rename4 :: (Var a, Var b, Var c, Var d) => (WithMeta a, WithMeta b, WithMeta c, WithMeta d) -> WithMeta (a, b, c, d)
 rename4 (WithMeta x1 m1, WithMeta x2 m2, WithMeta x3 m3, WithMeta x4 m4) = rename $ create (x1, x2, x3, x4) (unions [m1, m2, m3, m4])
-
-renameAndApply1 :: Var a => (a -> b) -> WithMeta a -> WithMeta b
-renameAndApply1 f x = let (WithMeta x' m) = rename x in create (f x') m
 
 renameAndApply2 :: (Var a, Var b) => (a -> b -> c) -> WithMeta a -> WithMeta b -> WithMeta c
 renameAndApply2 f x1 x2 = let (WithMeta (x1',x2') m) = rename2 (x1, x2) in create (f x1' x2') m

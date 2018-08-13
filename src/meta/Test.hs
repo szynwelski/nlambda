@@ -4,4 +4,6 @@ module Test where
 
 import Var
 
-test x y = (x,y)
+data Pair a b = Pair a b
+
+test x y = Pair x y
