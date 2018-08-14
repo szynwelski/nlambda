@@ -1220,7 +1220,8 @@ addMockedVarInstances mod e = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst
                                  let evs' = varPredOrDict <$> evs
                                  return $ mkCoreLams vvs' $ mkCoreApps e evs'
     where isVarPred = isGivenMetaPred (varC mod)
-          varPredOrDict e = if isVarPred (exprType e) then mockVarInstance (exprType e) else e
+          -- isTypeArg checked before call exprType on e
+          varPredOrDict e = if not (isTypeArg e) && isVarPred (exprType e) then mockVarInstance (exprType e) else e
 
 varInstance :: ModInfo -> Type -> CoreM (Maybe CoreExpr)
 varInstance mod t
