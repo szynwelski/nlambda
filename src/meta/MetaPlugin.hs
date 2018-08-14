@@ -851,7 +851,7 @@ checkCoreProgram :: CoreProgram -> CoreProgram
 checkCoreProgram bs = if all checkBinds bs then bs else pprPanic "checkCoreProgram failed" (ppr bs)
     where checkBinds (NonRec b e) = checkBind (b,e)
           checkBinds (Rec bs) = all checkBind bs
-          checkBind (b,e) | not (varType b `eqType` exprType e)
+          checkBind (b,e) | varType b /= exprType e
                           = pprPanic "\n================= INCONSISTENT TYPES IN BIND ==========================="
                               (vcat [text "bind: " <+> showVar b,
                                      text "bind type:" <+> ppr (varType b),
@@ -894,7 +894,7 @@ checkCoreProgram bs = if all checkBinds bs then bs else pprPanic "checkCoreProgr
           checkExpr b (Tick t e) = checkExpr b e
           checkExpr b (Type t) = undefined -- type should be handled in (App f (Type t)) case
           checkExpr b (Coercion c) = True
-          checkAlternative b t (ac, xs, e) | not $ eqType t $ exprType e
+          checkAlternative b t (ac, xs, e) | t /= exprType e
                                          = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
                                              (vcat [text "type in case: " <+> ppr t,
                                                     text "case alternative expression: " <+> ppr e,
@@ -988,7 +988,7 @@ canUnifyTypes t1 t2 = isJust $ unifyTypes (snd $ splitForAllTys t1) (snd $ split
 
 sameTypes :: Type -> Type -> Bool
 sameTypes t1 t2
-    | eqType t1 t2 = True
+    | t1 == t2 = True
     | Just s <- unifyTypes t1 t2 = all isTyVarTy $ eltsUFM $ getTvSubstEnv s
     | otherwise = False
 
@@ -1253,7 +1253,7 @@ addBindToReplace :: (CoreBndr, CoreBndr) -> ReplaceInfo -> ReplaceInfo
 addBindToReplace (b, b') ri = ri {nextReplaceBinds = (b, b') : (nextReplaceBinds ri)}
 
 findReplaceBind :: ModInfo -> Var -> ReplaceInfo -> Maybe Var
-findReplaceBind mod x = fmap snd . find (\(x',_) -> x == x' && varType x `eqType` varType x') . replaceBinds
+findReplaceBind mod x = fmap snd . find (\(x',_) -> x == x' && varType x == varType x') . replaceBinds
 
 nextReplaceInfo :: ReplaceInfo -> ReplaceInfo
 nextReplaceInfo ri = ReplaceInfo [] (nextReplaceBinds ri) [] True
@@ -1283,7 +1283,7 @@ replaceMocksByInstancesInBind mod (b, ri) = replace b ri
                                       return (b':bs', ri'')
           replaceBinds [] ri = return ([], ri)
           replaceBind (b, e) ri = do (e', ri') <- replaceMocksByInstancesInExpr mod (e, ri)
-                                     if eqType (varType b) (exprType e')
+                                     if varType b == exprType e'
                                      then return ((b, e'), ri')
                                      else let b' = setVarType b $ exprType e'
                                           in return ((b', e'), addBindToReplace (b, b') ri')
