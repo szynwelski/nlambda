@@ -17,8 +17,8 @@ import GHC.Generics
 
 data Pair a b = Pair a b deriving (Show, Generic, Var)
 
-test :: Variable -> Variable -> Pair Variable Variable
-test = Pair
+--test :: Variable -> Variable -> Pair Variable Variable
+--test = Pair
 
---test :: Variable -> Variable -> Pair Variable [Variable]
---test x y = Pair x [y]
+test :: Variable -> Variable -> Pair Variable [Variable]
+test x y = Pair x [y]

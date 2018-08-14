@@ -427,7 +427,7 @@ getClassInstance :: ModInfo -> TyCon -> Type -> CoreExpr
 getClassInstance mod classTc t
     | Just v <- getMetaVarMaybe mod name = v -- for instances in Meta module
     | Just v <- listToMaybe $ filter ((== name) . getNameStr) (varsWithoutPairs mod) = Var v -- for instances in user modules
-    | otherwise = error ("NLambda plungin requires " ++ className ++ " instance for type: " ++ tcName)
+    | otherwise = pgmError ("NLambda plugin requires " ++ className ++ " instance for type: " ++ tcName)
     where Just tc = tyConAppTyCon_maybe t
           tcName = getNameStr tc
           className = getNameStr classTc
@@ -716,7 +716,7 @@ changeExpr mod b e = newExpr (mkExprMap mod) e
           newExpr eMap e | noAtomsSubExpr e = replaceVars mod eMap e
           newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod eMap b v Nothing
-          newExpr eMap (Var v) = pprPanic "Unknown variable:"
+          newExpr eMap (Var v) = pprPgmError "Unknown variable:"
             (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getVarModuleNameStr v ++ " is not compiled with NLambda Plugin."))
           newExpr eMap (Lit l) = noMetaExpr mod (Lit l)
           newExpr eMap (App (Var v) (Type t)) | isMetaEquivalent mod v, isDataConWorkId v
@@ -1158,7 +1158,7 @@ getMetaEquivalent mod eMap b v mt =
                                 e <- applyExpr convertFun (Var v)
                                 return $ changeTypeAndApply mod mt e
       NoEquivalent -> addDependencies mod eMap b v mt $ fromMaybe
-        (pprPanic "no meta equivalent for:" (showVar v <+> text "from module:" <+> text (getVarModuleNameStr v)))
+        (pprPgmError "No meta equivalent for:" (showVar v <+> text "from module:" <+> text (getVarModuleNameStr v)))
         (getDefinedMetaEquivalentVar mod v)
 
 addDependencies :: ModInfo -> ExprMap -> CoreBndr -> CoreBndr -> Maybe Type -> CoreBndr -> CoreM CoreExpr
@@ -1203,7 +1203,7 @@ addDependencies mod eMap b var mt metaVar
           findSuperClass t [] = pprPanic "findSuperClass - no super class with proper type found:" (ppr t)
 
 ----------------------------------------------------------------------------------------
--- Var predicate
+-- Mock Var instance
 ----------------------------------------------------------------------------------------
 
 mockVarInstance :: Type -> CoreExpr
@@ -1223,6 +1223,108 @@ addMockedVarInstances mod e = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst
           -- isTypeArg checked before call exprType on e
           varPredOrDict e = if not (isTypeArg e) && isVarPred (exprType e) then mockVarInstance (exprType e) else e
 
+----------------------------------------------------------------------------------------
+-- Replace mocked Var instances with real ones
+----------------------------------------------------------------------------------------
+
+data ReplaceInfo = ReplaceInfo {varInstances :: [(Type, DictId)], replaceMap :: Map CoreBndr CoreBndr}
+
+instance Outputable ReplaceInfo where
+    ppr (ReplaceInfo vis rm) = text "ReplaceInfo{" <+> ppr vis <+> text "," <+> ppr (Map.toList rm) <+> text "}"
+
+emptyReplaceInfo :: ReplaceInfo
+emptyReplaceInfo = ReplaceInfo [] Map.empty
+
+noReplaceBinds :: ReplaceInfo -> Bool
+noReplaceBinds = Map.null . replaceMap
+
+noVarInstances :: ReplaceInfo -> Bool
+noVarInstances = null . varInstances
+
+findVarInstance :: Type -> ReplaceInfo -> Maybe DictId
+findVarInstance t = lookup t . varInstances
+
+addVarInstance :: (Type, DictId) -> ReplaceInfo -> ReplaceInfo
+addVarInstance (t, v) ri = ri {varInstances = (t, v) : (varInstances ri)}
+
+addBindToReplace :: (CoreBndr, CoreBndr) -> ReplaceInfo -> ReplaceInfo
+addBindToReplace (b, b') ri = ri {replaceMap = Map.insert b b' (replaceMap ri)}
+
+replaceVar :: Var -> ReplaceInfo -> Var
+replaceVar v = Map.findWithDefault v v . replaceMap
+
+nextReplaceInfo :: ReplaceInfo -> ReplaceInfo -> ReplaceInfo
+nextReplaceInfo old new = ReplaceInfo [] (Map.difference (replaceMap new) (replaceMap old))
+
+replaceMocksByInstancesInProgram :: ModInfo -> CoreProgram -> CoreM CoreProgram
+replaceMocksByInstancesInProgram mod bs = go bs emptyReplaceInfo
+    where go bs ri = do (bs', ri') <- replace ri bs
+                        let ri'' = nextReplaceInfo ri ri'
+                        if noReplaceBinds ri'' then return bs' else go bs' ri''
+          replace ri (b:bs) = do (bs', ri') <- replace ri bs
+                                 (b', ri'') <- replaceMocksByInstancesInBind mod (b, ri')
+                                 if noVarInstances ri''
+                                 then return (b':bs', ri'')
+                                 else pprPanic "replaceMocksByInstancesInProgram - not empty var instances to insert:" (ppr ri'' <+> ppr b')
+          replace ri [] = return ([], ri)
+
+replaceMocksByInstancesInBind :: ModInfo -> (CoreBind, ReplaceInfo) -> CoreM (CoreBind, ReplaceInfo)
+replaceMocksByInstancesInBind mod (b, ri) = replace b ri
+    where replace (NonRec b e) ri = do ((b', e'), ri') <- replaceBind (b, e) ri
+                                       return (NonRec b' e', ri')
+          replace (Rec bs) ri = do (bs', ri') <- replaceBinds bs ri
+                                   return (Rec bs', ri')
+          replaceBinds (b:bs) ri = do (bs', ri') <- replaceBinds bs ri
+                                      (b', ri'') <- replaceBind b ri'
+                                      return (b':bs', ri'')
+          replaceBinds [] ri = return ([], ri)
+          replaceBind (b, e) ri = do (e', ri') <- replaceMocksByInstancesInExpr mod (e, ri)
+                                     b' <- if eqType (varType b) (exprType e')
+                                           then return b
+                                           else do putMsg $ text "Change type of" <+> ppr b
+                                                            <+> text "\nfrom:" <+> ppr (varType b) <+> text "\nto:" <+> ppr (exprType e')
+                                                            <+> text "\n" <+> pprE "old expr" e <+> text "\n" <+> pprE "new expr" e'
+                                                   return $ setVarType b $ exprType e'
+                                     return ((b', simpleOptExpr e'), addBindToReplace (b,b') ri')
+
+replaceMocksByInstancesInExpr :: ModInfo -> (CoreExpr, ReplaceInfo) -> CoreM (CoreExpr, ReplaceInfo)
+replaceMocksByInstancesInExpr mod (e, ri) = replace e ri
+    where replace e ri | Just t <- mockVarInstanceMaybe mod e = replaceMock t ri
+          replace e ri | (tvs, e') <- collectTyBinders e, not (null tvs)
+                       = do (e'', ri') <- replace e' ri
+                            let (vis1, vis2) = partition (\(t,vi) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (varInstances ri')
+                            return (mkCoreLams (tvs ++ fmap snd vis1) e'', ri' {varInstances = vis2})
+          replace (Var x) ri = return (Var $ replaceVar x ri, ri)
+          replace (App f e) ri = do (f', ri') <- replace f ri
+                                    (e', ri'') <- replace e ri'
+                                    return (App f' e', ri'') -- TODO add mock if f' need Var
+          replace (Lam x e) ri = do (e', ri') <- replace e ri
+                                    return (Lam x e', ri')
+          replace (Let b e) ri = do (b', ri') <- replaceMocksByInstancesInBind mod (b, ri)
+                                    (e', ri'') <- replace e ri'
+                                    return (Let b' e', ri'')
+          replace (Case e x t as) ri = do (e', ri') <- replace e ri
+                                          (as', ri'') <- replaceAlts as ri'
+                                          return (Case e' x t as', ri'')
+          replace (Cast e c) ri = do (e', ri') <- replace e ri
+                                     return (Cast e' c, ri')
+          replace (Tick t e) ri = do (e', ri') <- replace e ri
+                                     return (Tick t e', ri')
+          replace e ri = return (e, ri)
+          replaceAlts (a:as) ri = do (as', ri') <- replaceAlts as ri
+                                     (a', ri'') <- replaceAlt a ri'
+                                     return (a':as', ri'')
+          replaceAlts [] ri = return ([], ri)
+          replaceAlt (con, xs, e) ri = do (e', ri') <- replace e ri
+                                          return ((con, xs, e'), ri')
+          replaceMock t ri
+              | Just v <- findVarInstance t ri = return (Var v, ri)
+              | otherwise = do e <- varInstance mod t
+                               if isJust e
+                               then replace (fromJust e) ri
+                               else do v <- mkPredVar (fromJust $ tyConClass_maybe $ varC mod, [t])
+                                       return (Var v, addVarInstance (t, v) ri)
+
 varInstance :: ModInfo -> Type -> CoreM (Maybe CoreExpr)
 varInstance mod t
     | Just ts <- tyConAppArgs_maybe t = liftM Just $ addMockedVarInstances mod $ mkCoreApps (getVarInst t) (Type <$> ts)
@@ -1230,66 +1332,6 @@ varInstance mod t
     | isFunTy t = return $ Just $ getVarInst t
     | otherwise = return Nothing
     where getVarInst t = getClassInstance mod (varC mod) t
-
-type VarInsts = [(Type, DictId)]
-
- -- TODO replace until no vars to replace
-replaceMocksByInstancesInProgram :: ModInfo -> CoreProgram -> CoreM CoreProgram
-replaceMocksByInstancesInProgram mod bs = do bs' <- mapM (\b -> replaceMocksByInstancesInBind mod (b, [])) bs
-                                             if all null $ fmap snd bs'
-                                             then return $ fmap fst bs'
-                                             else pprPanic "replaceMocksByInstancesInProgram - not empty var instances to insert:" (ppr bs')
-
-replaceMocksByInstancesInBind :: ModInfo -> (CoreBind, VarInsts) -> CoreM (CoreBind, VarInsts)
-replaceMocksByInstancesInBind mod (b, vis) = replace b vis
-    where replace (NonRec b e) vis = do ((b', e'), vis') <- replaceBind (b, e) vis
-                                        return (NonRec b' e', vis')
-          replace (Rec bs) vis = do (bs', vis') <- replaceBinds bs vis
-                                    return (Rec bs', vis')
-          replaceBinds (b:bs) vis = do (bs', vis') <- replaceBinds bs vis
-                                       (b', vis'') <- replaceBind b vis'
-                                       return (b':bs', vis'')
-          replaceBinds [] vis = return ([], vis)
-          replaceBind (b, e) vis = do (e', vis') <- replaceMocksByInstancesInExpr mod (e, vis)
-                                      return ((setVarType b $ exprType e', simpleOptExpr e'), vis') -- TODO return b to be replaced
-
-replaceMocksByInstancesInExpr :: ModInfo -> (CoreExpr, VarInsts) -> CoreM (CoreExpr, VarInsts)
-replaceMocksByInstancesInExpr mod (e, vis) = replace e vis
-    where replace e vis | Just t <- mockVarInstanceMaybe mod e = replaceMock t vis
-          replace e vis | (tvs, e') <- collectTyBinders e, not (null tvs)
-                        = do (e'', vis') <- replace e' vis
-                             let (vis1, vis2) = partition (\(t,vi) -> any (`elemVarSet` (tyVarsOfType t)) tvs) vis'
-                             return (mkCoreLams (tvs ++ fmap snd vis1) e'', vis2)
-          replace (Var x) vis = return (Var x, vis)
-          replace (App f e) vis = do (f', vis') <- replace f vis
-                                     (e', vis'') <- replace e vis'
-                                     return (App f' e', vis'') -- TODO add mock if f' need Var
-          replace (Lam x e) vis = do (e', vis') <- replace e vis
-                                     return (Lam x e', vis')
-          replace (Let b e) vis = do (b', vis') <- replaceMocksByInstancesInBind mod (b, vis)
-                                     (e', vis'') <- replace e vis'
-                                     return (Let b' e', vis'')
-          replace (Case e x t as) vis = do (e', vis') <- replace e vis
-                                           (as', vis'') <- replaceAlts as vis'
-                                           return (Case e' x t as', vis'')
-          replace (Cast e c) vis = do (e', vis') <- replace e vis
-                                      return (Cast e' c, vis')
-          replace (Tick t e) vis = do (e', vis') <- replace e vis
-                                      return (Tick t e', vis')
-          replace e vis = return (e, vis)
-          replaceAlts (a:as) vis = do (as', vis') <- replaceAlts as vis
-                                      (a', vis'') <- replaceAlt a vis'
-                                      return (a':as', vis'')
-          replaceAlts [] vis = return ([], vis)
-          replaceAlt (con, xs, e) vis = do (e', vis') <- replace e vis
-                                           return ((con, xs, e'), vis')
-          replaceMock t vis
-              | Just v <- lookup t vis = return (Var v, vis)
-              | otherwise = do e <- varInstance mod t
-                               if isJust e
-                               then replace (fromJust e) vis
-                               else do v <- mkPredVar (fromJust $ tyConClass_maybe $ varC mod, [t])
-                                       return (Var v, (t, v) : vis)
 
 ----------------------------------------------------------------------------------------
 -- Show
