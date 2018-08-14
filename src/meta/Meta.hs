@@ -21,7 +21,7 @@ import Text.ParserCombinators.ReadPrec (ReadPrec)
 -- Meta information
 ------------------------------------------------------------------------------------------
 
-data Meta = Meta {toRename :: IdMap, renamed :: IdPairSet, renameTree :: RenameTree} deriving Show
+data Meta = Meta {toRename :: IdMap, renamed :: Set (Identifier, Identifier), renameTree :: RenameTree} deriving Show
 
 metaFromMap :: IdMap -> Meta
 metaFromMap map = Meta map Set.empty Empty
@@ -78,10 +78,10 @@ unions ms = foldr1 (union True) ms
 
 rename :: Var a => WithMeta a -> WithMeta a
 rename (WithMeta x m)
-    | isTreeEmpty tree = create x m {renameTree = Empty}
-    | otherwise = create (renameVariables tree x) metaAfterRename
+    | isTreeEmpty tree = create x m'
+    | otherwise = create (renameVariables tree x) m'
     where tree = renameTree m
-          metaAfterRename = Meta (toRename m) (Set.union (renamed m) (pairsFromTree tree)) Empty
+          m' = m {renameTree = Empty}
 
 ------------------------------------------------------------------------------------------
 -- Conversion functions to meta operations

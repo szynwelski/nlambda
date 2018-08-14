@@ -24,7 +24,6 @@ instance Show Variable where
 ----------------------------------------------------------------------------------------------------
 
 type IdMap = Map Identifier Identifier
-type IdPairSet = Set (Identifier, Identifier)
 data RenameTree = Empty | Node IdMap [RenameTree] deriving Show
 
 isTreeEmpty :: RenameTree -> Bool
@@ -35,10 +34,6 @@ createNode :: Bool -> [RenameTree] -> RenameTree
 createNode checkEmpty ts
     | checkEmpty, all isTreeEmpty ts = Empty
     | otherwise = Node Map.empty ts
-
-pairsFromTree :: RenameTree -> IdPairSet
-pairsFromTree Empty = Set.empty
-pairsFromTree (Node map ts) = Set.unions (Set.fromList (Map.assocs map) : fmap pairsFromTree ts)
 
 addMapToTree :: IdMap -> RenameTree -> RenameTree
 addMapToTree map t | Map.null map = t
@@ -186,8 +181,6 @@ instance (GVar a, GVar b) => GVar (a :+: b) where
 instance (GVar a, GVar b) => GVar (a :*: b) where
     gmapVariables f (a :*: b) = gmapVariables f a :*: gmapVariables f b
     gfoldVariables f c (a :*: b) = gfoldVariables f (gfoldVariables f c a) b
-    grenameVariables rts (a :*: b) = let (rts', a') = grenameVariables rts a
-                                         (rts'', b') = grenameVariables rts' b
-                                    in if not $ null rts''
-                                       then error ("too long rts: " ++ show rts)
-                                       else ([], a' :*: b')
+    grenameVariables rts (a :*: b) = (rts'', a' :*: b')
+        where (rts', a') = grenameVariables rts a
+              (rts'', b') = grenameVariables rts' b
