@@ -11,10 +11,10 @@ withMeta :: a -> [(Identifier, Identifier)] -> WithMeta a
 withMeta x = create x . metaFromMap . Map.fromList
 
 x = Variable 1
-z = Variable 4
-mx = withMeta x [(1,2)]
-my = withMeta x [(1,3)]
-mz = withMeta x [(4,5)]
+y = Variable 4
+m1 = withMeta x [(1,2)]
+m2 = withMeta x [(1,3)]
+m3 = withMeta y [(4,5)]
 
-output [] = print $ test x x
-output _ = print $ test_nlambda mx my
+output [] = print $ test x x y
+output _ = print $ test_nlambda m1 m2 m3
