@@ -593,9 +593,12 @@ instance Show_nlambda Bool -- Defined in ‘GHC.Show’
 instance Show_nlambda () -- Defined in ‘GHC.Show’
 instance (Show_nlambda a, Show_nlambda b) => Show_nlambda (a, b) -- Defined in ‘GHC.Show’
 instance (Show_nlambda a, Show_nlambda b, Show_nlambda c) => Show_nlambda (a, b, c)  -- Defined in ‘GHC.Show’
+instance (Show_nlambda a, Show_nlambda b, Show_nlambda c, Show_nlambda d) => Show_nlambda (a, b, c, d)  -- Defined in ‘GHC.Show’
+instance (Show_nlambda a, Show_nlambda b, Show_nlambda c, Show_nlambda d, Show_nlambda e) => Show_nlambda (a, b, c, d, e)  -- Defined in ‘GHC.Show’
 instance (Show_nlambda a, Show_nlambda b) => Show_nlambda (Either a b)  -- Defined in ‘Data.Either’
 instance Show_nlambda Float -- Defined in ‘GHC.Float’
 instance Show_nlambda Double -- Defined in ‘GHC.Float’
+instance Show_nlambda Variable -- Defined in ‘Var’
 
 class (Traversable t, Functor_nlambda t, Foldable_nlambda t) => Traversable_nlambda (t :: * -> *) where
   traverse_nlambda :: (Var (t b), Var (f (t b)), Applicative_nlambda f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))

@@ -831,10 +831,9 @@ dataConExpr mod dc
     | otherwise = do (vars, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType dcv
                      xs <- mkArgs subst arity
                      let (vvs, evs) = (exprVarsToVars vars, exprVarsToExprs vars)
-                     let dcv' = mkCoreApps dcv evs
                      ra <- renameAndApplyExpr mod arity
-                     let ra' = mkCoreApps ra (evs ++ [Type $ last $ getFunTypeParts ty])
-                     return $ mkCoreLams (vvs ++ xs) $ mkCoreApps ra' (dcv' : (Var <$> xs))
+                     ra' <- applyExpr ra (mkCoreApps dcv evs)
+                     return $ mkCoreLams (vvs ++ xs) $ mkCoreApps ra' (Var <$> xs)
     where arity = dataConSourceArity dc
           dcv = Var $ dataConWrapId dc
           mkArgs subst 0 = return []

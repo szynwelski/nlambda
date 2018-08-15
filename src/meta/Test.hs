@@ -3,25 +3,31 @@
 
 module Test where
 
-import Var
+import Var (Var, Variable)
 import GHC.Generics
 
---test :: Variable -> Variable -> Bool
---test x y = x == y
+data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord)
 
---test :: Variable -> Variable -> (Int, Variable, String, Variable)
---test x y = id (1, x, "", y)
+instance Show a => Show (Wrapper a) where
+    show (Wrapper x) = "Wrap " ++ show x
 
---test :: Variable -> Variable -> [Variable]
---test x y = [id] <*> [x]
+data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord)
 
 data Pair a b = Pair a b deriving (Show, Generic, Var, Eq, Ord)
 
---test :: Variable -> Variable -> Pair Variable Variable
---test = Pair
+data List a = Element a (List a) | Empty deriving (Show, Generic, Var, Eq, Ord)
 
---test :: Variable -> Variable -> Pair Variable [Variable]
---test x y = Pair x [y]
+fromList :: [a] -> List a
+fromList [] = Empty
+fromList (x:xs) = Element x $ fromList xs
 
-test :: Variable -> Variable -> Bool
-test x y = Pair x x == Pair y y
+----------------------------------------------------------------------------
+-- Test Show
+----------------------------------------------------------------------------
+
+test :: Variable -> Variable -> Variable -> [String]
+test x y z = [show (), show x, show y, show (x,y), show (x,y,z), show ([]::[Int]), show [x], show [x,y], show [x,y,z],
+              show $ fromList ([]::[Variable]), show $ fromList [x], show $ fromList [x,y], show $ fromList [x,y,z],
+              show (Pair x y), show (Pair x 1), show (Pair x [y]), show (Pair x (Pair y z)), show $ Wrapper y, show $ Wrapper $ Wrapper y,
+              show (Optional x), show (Null::Optional Char), show (Optional x, Null::Optional String),
+              show (Optional x, Optional y, Null::Optional (), Optional z)]
