@@ -1164,7 +1164,8 @@ getMetaEquivalent mod eMap b v mt =
 addDependencies :: ModInfo -> ExprMap -> CoreBndr -> CoreBndr -> Maybe Type -> CoreBndr -> CoreM CoreExpr
 addDependencies mod eMap b var mt metaVar
     | isDataConWorkId metaVar, isFun -- D:...
-    = deps [] [] b [] (fmap Var $ catMaybes $ fmap localDictVar $ Map.elems eMap) (changeTypeAndApply mod mt $ Var metaVar)
+    = do metaE <- addMockedVarInstances mod $ changeTypeAndApply mod mt $ Var metaVar
+         deps [] [] b [] (fmap Var $ catMaybes $ fmap localDictVar $ Map.elems eMap) metaE
     | isDFunId metaVar, isFun -- $f...
     = do vars <- liftM fst $ splitTypeToExprVars $ changeType mod $ varType var
          let (ts, preds) = partition isTypeArg $ exprVarsToExprs vars
@@ -1206,33 +1207,39 @@ addDependencies mod eMap b var mt metaVar
 -- Mock Var instance
 ----------------------------------------------------------------------------------------
 
+isVarPredicate :: ModInfo -> Type -> Bool
+isVarPredicate mod = isGivenMetaPred (varC mod)
+
 mockVarInstance :: Type -> CoreExpr
 mockVarInstance = mkCoreApp (Var uNDEFINED_ID) . Type
 
 mockVarInstanceMaybe :: ModInfo -> CoreExpr -> Maybe Type
-mockVarInstanceMaybe mod (App (Var x) (Type t)) | uNDEFINED_ID == x && isGivenMetaPred (varC mod) t = Just $ getOnlyArgTypeFromDict t
+mockVarInstanceMaybe mod (App (Var x) (Type t)) | uNDEFINED_ID == x && isVarPredicate mod t = Just $ getOnlyArgTypeFromDict t
 mockVarInstanceMaybe _ _ = Nothing
 
 addMockedVarInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
 addMockedVarInstances mod e = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
                                  let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
-                                 let vvs' = filter (not . isVarPred . varType) vvs
+                                 let vvs' = filter (not . isVarPredicate mod . varType) vvs
                                  let evs' = varPredOrDict <$> evs
                                  return $ mkCoreLams vvs' $ mkCoreApps e evs'
-    where isVarPred = isGivenMetaPred (varC mod)
-          -- isTypeArg checked before call exprType on e
-          varPredOrDict e = if not (isTypeArg e) && isVarPred (exprType e) then mockVarInstance (exprType e) else e
+    where -- isTypeArg checked before call exprType on e
+          varPredOrDict e = if not (isTypeArg e) && isVarPredicate mod (exprType e) then mockVarInstance (exprType e) else e
 
 ----------------------------------------------------------------------------------------
 -- Replace mocked Var instances with real ones
 ----------------------------------------------------------------------------------------
 
-data ReplaceInfo = ReplaceInfo {varInstances :: [(Type, DictId)], replaceBinds :: [(CoreBndr, CoreBndr)],
-                                nextReplaceBinds :: [(CoreBndr, CoreBndr)], noMocks :: Bool}
+type VarInstances = [(Type, DictId)]
+type ReplaceVars = [(CoreBndr, CoreBndr)]
+
+data ReplaceInfo = ReplaceInfo {varInstances :: VarInstances, replaceBinds :: ReplaceVars, nextReplaceBinds :: ReplaceVars, noMocks :: Bool}
 
 instance Outputable ReplaceInfo where
-    ppr (ReplaceInfo vis rm nrm nm) = text "ReplaceInfo{" <+> ppr vis <+> text "," <+> ppr rm <+> text ","
-                                                          <+> ppr nrm <+> text "," <+> ppr nm <+> text "}"
+    ppr (ReplaceInfo vis rb nrb nm) = text "ReplaceInfo{" <+> ppr vis <+> text ","
+                                      <+> vcat (fmap (\(x,y) -> ppr x <+> ppr (varType x) <+> text "~>" <+> ppr (varType y)) rb) <+> text ","
+                                      <+> vcat (fmap (\(x,y) -> ppr x <+> ppr (varType x) <+> text "~>" <+> ppr (varType y)) nrb) <+> text ","
+                                      <+> ppr nm <+> text "}"
 
 emptyReplaceInfo :: ReplaceInfo
 emptyReplaceInfo = ReplaceInfo [] [] [] True
@@ -1266,61 +1273,65 @@ replaceMocksByInstancesInProgram mod bs = go bs emptyReplaceInfo
     where go bs ri = do (bs', ri') <- replace ri bs
                         if noMoreReplaceBinds ri' && noMocks ri' then return bs' else go bs' $ nextReplaceInfo ri'
           replace ri (b:bs) = do (bs', ri') <- replace ri bs
-                                 (b', ri'') <- replaceMocksByInstancesInBind mod (b, ri')
+                                 (b', ri'') <- replaceMocksByInstancesInBind mod (b, [], ri')
                                  if noVarInstances ri''
                                  then return (b':bs', ri'')
                                  else pprPanic "replaceMocksByInstancesInProgram - not empty var instances to insert:" (ppr ri'' <+> ppr b')
           replace ri [] = return ([], ri)
 
-replaceMocksByInstancesInBind :: ModInfo -> (CoreBind, ReplaceInfo) -> CoreM (CoreBind, ReplaceInfo)
-replaceMocksByInstancesInBind mod (b, ri) = replace b ri
-    where replace (NonRec b e) ri = do ((b', e'), ri') <- replaceBind (b, e) ri
-                                       return (NonRec b' e', ri')
-          replace (Rec bs) ri = do (bs', ri') <- replaceBinds bs ri
-                                   return (Rec bs', ri')
-          replaceBinds (b:bs) ri = do (bs', ri') <- replaceBinds bs ri
-                                      (b', ri'') <- replaceBind b ri'
-                                      return (b':bs', ri'')
-          replaceBinds [] ri = return ([], ri)
-          replaceBind (b, e) ri = do (e', ri') <- replaceMocksByInstancesInExpr mod (e, ri)
-                                     if varType b == exprType e'
-                                     then return ((b, e'), ri')
-                                     else let b' = setVarType b $ exprType e'
-                                          in return ((b', e'), addBindToReplace (b, b') ri')
+-- args: mod info, (bind, Var instances from surrounding expression, replace info)
+replaceMocksByInstancesInBind :: ModInfo -> (CoreBind, VarInstances, ReplaceInfo) -> CoreM (CoreBind, ReplaceInfo)
+replaceMocksByInstancesInBind mod (b, vis, ri) = replace b vis ri
+    where replace (NonRec b e) vis ri = do ((b', e'), ri') <- replaceBind (b, e) vis ri
+                                           return (NonRec b' e', ri')
+          replace (Rec bs) vis ri = do (bs', ri') <- replaceBinds bs vis ri
+                                       return (Rec bs', ri')
+          replaceBinds (b:bs) vis ri = do (bs', ri') <- replaceBinds bs vis ri
+                                          (b', ri'') <- replaceBind b vis ri'
+                                          return (b':bs', ri'')
+          replaceBinds [] vis ri = return ([], ri)
+          replaceBind (b, e) vis ri = do (e', ri') <- replaceMocksByInstancesInExpr mod (e, vis, ri)
+                                         if varType b == exprType e'
+                                         then return ((b, e'), ri')
+                                         else let b' = setVarType b $ exprType e'
+                                              in return ((b', e'), addBindToReplace (b, b') ri')
 
-replaceMocksByInstancesInExpr :: ModInfo -> (CoreExpr, ReplaceInfo) -> CoreM (CoreExpr, ReplaceInfo)
-replaceMocksByInstancesInExpr mod (e, ri) = do (e', ri') <- replace e ri
-                                               return (simpleOptExpr e', ri')
-    where replace e ri | Just t <- mockVarInstanceMaybe mod e = replaceMock t ri
-          replace e ri | (tvs, e') <- collectTyBinders e, not (null tvs)
-                       = do (e'', ri') <- replace e' ri
-                            let (vis1, vis2) = partition (\(t,vi) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (varInstances ri')
-                            return (mkCoreLams (tvs ++ fmap snd vis1) e'', ri' {varInstances = vis2})
-          replace (Var x) ri | Just x' <- findReplaceBind mod x ri = do x'' <- addMockedVarInstances mod $ Var x'
-                                                                        return (x'', withMocks ri)
-          replace (App f e) ri = do (f', ri') <- replace f ri
-                                    (e', ri'') <- replace e ri'
-                                    return (App f' e', ri'') -- TODO add mock if f' need Var
-          replace (Lam x e) ri = do (e', ri') <- replace e ri
-                                    return (Lam x e', ri')
-          replace (Let b e) ri = do (b', ri') <- replaceMocksByInstancesInBind mod (b, ri)
-                                    (e', ri'') <- replace e ri'
-                                    return (Let b' e', ri'')
-          replace (Case e x t as) ri = do (e', ri') <- replace e ri
-                                          (as', ri'') <- replaceAlts as ri'
-                                          return (Case e' x t as', ri'')
-          replace (Cast e c) ri = do (e', ri') <- replace e ri
-                                     return (Cast e' c, ri')
-          replace (Tick t e) ri = do (e', ri') <- replace e ri
-                                     return (Tick t e', ri')
-          replace e ri = return (e, ri)
-          replaceAlts (a:as) ri = do (as', ri') <- replaceAlts as ri
-                                     (a', ri'') <- replaceAlt a ri'
-                                     return (a':as', ri'')
-          replaceAlts [] ri = return ([], ri)
-          replaceAlt (con, xs, e) ri = do (e', ri') <- replace e ri
-                                          return ((con, xs, e'), ri')
-          replaceMock t ri
+-- args: mod info, (expression, Var instances from surrounding expression, replace info)
+replaceMocksByInstancesInExpr :: ModInfo -> (CoreExpr, VarInstances, ReplaceInfo) -> CoreM (CoreExpr, ReplaceInfo)
+replaceMocksByInstancesInExpr mod (e, vis, ri) = do (e', ri') <- replace e vis ri
+                                                    return (simpleOptExpr e', ri')
+    where replace e vis ri | Just t <- mockVarInstanceMaybe mod e = replaceMock t vis ri
+          replace e vis ri | (tvs, e') <- collectTyBinders e, not (null tvs)
+                           = do (e'', ri') <- replace e' vis ri
+                                let (vis1, vis2) = partition (\(t,vi) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (varInstances ri')
+                                return (mkCoreLams (tvs ++ fmap snd vis1) e'', ri' {varInstances = vis2})
+          replace (Var x) vis ri | Just x' <- findReplaceBind mod x ri = do x'' <- addMockedVarInstances mod $ Var x'
+                                                                            return (x'', withMocks ri)
+          replace (App f e) vis ri = do (f', ri') <- replace f vis ri
+                                        (e', ri'') <- replace e vis ri'
+                                        return (App f' e', ri'') -- TODO add mock if f' need Var
+          replace (Lam x e) vis ri = do let vis' = if isVarPredicate mod $ varType x then (getOnlyArgTypeFromDict $ varType x, x) : vis else vis
+                                        (e', ri') <- replace e vis' ri
+                                        return (Lam x e', ri')
+          replace (Let b e) vis ri = do (b', ri') <- replaceMocksByInstancesInBind mod (b, vis, ri)
+                                        (e', ri'') <- replace e vis ri'
+                                        return (Let b' e', ri'')
+          replace (Case e x t as) vis ri = do (e', ri') <- replace e vis ri
+                                              (as', ri'') <- replaceAlts as vis ri'
+                                              return (Case e' x t as', ri'')
+          replace (Cast e c) vis ri = do (e', ri') <- replace e vis ri
+                                         return (Cast e' c, ri')
+          replace (Tick t e) vis ri = do (e', ri') <- replace e vis ri
+                                         return (Tick t e', ri')
+          replace e vis ri = return (e, ri)
+          replaceAlts (a:as) vis ri = do (as', ri') <- replaceAlts as vis ri
+                                         (a', ri'') <- replaceAlt a vis ri'
+                                         return (a':as', ri'')
+          replaceAlts [] vis ri = return ([], ri)
+          replaceAlt (con, xs, e) vis ri = do (e', ri') <- replace e vis ri
+                                              return ((con, xs, e'), ri')
+          replaceMock t vis ri
+              | Just v <- lookup t vis = return (Var v, ri)
               | Just v <- findVarInstance t ri = return (Var v, ri)
               | otherwise = do e <- varInstance mod t
                                if isJust e

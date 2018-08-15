@@ -15,10 +15,13 @@ import GHC.Generics
 --test :: Variable -> Variable -> [Variable]
 --test x y = [id] <*> [x]
 
-data Pair a b = Pair a b deriving (Show, Generic, Var)
+data Pair a b = Pair a b deriving (Show, Generic, Var, Eq, Ord)
 
 --test :: Variable -> Variable -> Pair Variable Variable
 --test = Pair
 
-test :: Variable -> Variable -> Pair Variable [Variable]
-test x y = Pair x [y]
+--test :: Variable -> Variable -> Pair Variable [Variable]
+--test x y = Pair x [y]
+
+test :: Variable -> Variable -> Bool
+test x y = Pair x x == Pair y y
