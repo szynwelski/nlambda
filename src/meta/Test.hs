@@ -1,13 +1,14 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass, DeriveFunctor #-}
 
 module Test where
 
+import Meta (MetaLevel)
 import Var (Var, Variable)
 import GHC.Generics
 import Data.List (sort)
 
-data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord)
+data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor)
 
 instance Show a => Show (Wrapper a) where
     show (Wrapper x) = "W " ++ show x
@@ -60,3 +61,16 @@ fromList (x:xs) = Element x $ fromList xs
 
 --test :: Variable -> Variable -> Variable -> [List Variable]
 --test x y z = sort [fromList [], fromList [x], fromList [x], fromList [y], fromList [z], fromList [x,x,z], fromList [x,y,z]]
+
+----------------------------------------------------------------------------
+-- Test Functor
+----------------------------------------------------------------------------
+
+--test :: Variable -> Variable -> Variable -> [[Variable]]
+--test x y z = [fmap id [x,y,z], fmap (const z) [x,y], fmap id [], fmap (const y) [1,2,3]]
+
+--test :: Variable -> Variable -> Variable -> [Maybe Variable]
+--test x y z = [fmap id Nothing, fmap id (Just x), fmap (const x) (Just y), fmap (const y) (Just z)]
+
+--test :: Variable -> Variable -> Variable -> [Wrapper Variable]
+--test x y z = [fmap id (Wrapper x), fmap id (Wrapper y), fmap id (Wrapper z), fmap (const z) (Wrapper x), fmap (const y) (Wrapper 1)]

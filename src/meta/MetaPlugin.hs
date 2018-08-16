@@ -13,7 +13,7 @@ import Control.Exception (assert)
 import Control.Monad (liftM, unless)
 import Data.Char (isLetter, isLower)
 import Data.Data (Data)
-import Data.List ((\\), delete, elemIndex, find, findIndex, isInfixOf, isPrefixOf, isSuffixOf, intersperse, nub, partition, sortBy)
+import Data.List ((\\), delete, find, findIndex, isInfixOf, isPrefixOf, nub, partition)
 import Data.Maybe (fromJust)
 import Data.String.Utils (replace)
 import TypeRep
@@ -293,6 +293,9 @@ mkPredVar (cls, tys) = do uniq <- getUniqueM
                           let name = mkSystemName uniq (mkDictOcc (getOccName cls))
                           return $ mkLocalId name $ mkClassPred cls tys
 
+isVar :: CoreExpr -> Bool
+isVar (Var _) = True
+isVar _ = False
 
 ----------------------------------------------------------------------------------------
 -- Imports
@@ -536,8 +539,9 @@ changePredType mod t = t
 changeTypeAndApply :: ModInfo -> CoreExpr -> Type -> CoreExpr
 changeTypeAndApply mod e = mkApp e . Type . change
     where (tyVars, eTy) = splitForAllTys $ exprType e
-          tyVar = headPanic "changeTypeAndApply" (ppr e <+> text "::" <+> ppr (exprType e)) tyVars
+          tyVar = headPanic "changeTypeAndApply" (pprE "e" e) tyVars
           change t
+            | isFunTy $ typeKind t = t
             | (Var v) <- e, isPrimOpId v = t -- e.g. tagToEnum#
             | isFunTy t, isTyVarNested tyVar eTy = changeTypeOrSkip mod False t
             | isFunTy t = changeType mod t
@@ -549,9 +553,10 @@ getMainType t = if t == t' then t else getMainType t'
     where (tvs, ps ,t') = tcSplitSigmaTy t
 
 getFunTypeParts :: Type -> [Type]
-getFunTypeParts t | t /= getMainType t = getFunTypeParts $ getMainType t
-getFunTypeParts t | not $ isFunTy t = [t]
-getFunTypeParts t = argTys ++ [resTy]
+getFunTypeParts t
+    | t /= getMainType t = getFunTypeParts $ getMainType t
+    | not $ isFunTy t = [t]
+    | otherwise = argTys ++ [resTy]
     where (argTys, resTy) = splitFunTys t
 
 isTyVarWrappedByWithMeta :: ModInfo -> TyVar -> Type -> Bool
@@ -785,7 +790,7 @@ replaceVars mod eMap e = replace e
     where replace (Var x) | isLocalId x, Just e <- Map.lookup x eMap = convertMetaType mod e $ varType x
           replace (App f e) = do f' <- replace f
                                  e' <- replace e
-                                 return $ App f' e'
+                                 return $ mkApp f' e'
           replace (Lam x e) = do e' <- replace e
                                  return $ Lam x e'
           replace (Let b e) = do b' <- replaceInBind b
@@ -1021,15 +1026,15 @@ applyExpr fun e =
        let fVarExprs = exprVarsToExprsWithSubst subst fVars
        let eVars' = exprVarsToVarsWithSubst subst eVars
        let eVarExprs = exprVarsToExprsWithSubst subst eVars
-       return $ mkCoreLams (sortVars $ nub $ fVars' ++ eVars')
+       return $ mkCoreLams (sortVars [] $ reverse $ nub $ fVars' ++ eVars')
                   (mkApp
                     (mkApps fun fVarExprs)
                     (mkApps e eVarExprs))
-    where sortVars vs = sortBy (compareVars vs) vs
-          compareVars vs v1 v2
-              | isTyVar v1, not (isTyVar v2) = LT
-              | isTyVar v2, not (isTyVar v1) = GT
-              | otherwise = compare (elemIndex v1 vs) (elemIndex v2 vs)
+    where sortVars res (v:vs)
+            | not $ isTyVar v, Just i <- findIndex (\x -> isTyVar x && elemVarSet x (tyVarsOfType $ varType v)) res
+            = let (vs1, vs2) = splitAt i res in sortVars (vs1 ++ [v] ++ vs2) vs
+            | otherwise = sortVars (v:res) vs
+          sortVars res [] = res
 
 applyExprs :: CoreExpr -> [CoreExpr] -> CoreM CoreExpr
 applyExprs = foldlM applyExpr
@@ -1115,26 +1120,24 @@ renameAndApplyExpr mod n = addMockedInstances mod (renameAndApplyV mod n)
 
 convertMetaType :: ModInfo -> CoreExpr -> Type -> CoreM CoreExpr
 convertMetaType mod e t
-    | canUnifyTypes (getMainType et) (getMainType t) = return e
-    | isClassPred t, Just (cl, _) <- getClassPredTys_maybe et, (_, preds, ids, _) <- classBigSig cl, Just idx <- findIndex (canUnifyTypes t) preds
-    = applyExpr (Var $ ids !! idx) e
-    | not (isWithMetaType mod et), Just t' <- getWithoutWithMetaType mod t = do e' <- convertMetaType mod e t'
-                                                                                noMetaExpr mod e'
-    | isWithMetaType mod et, not (isWithMetaType mod t) = do e' <- valueExpr mod e
-                                                             convertMetaType mod e' t
-    | length etvs == length tvs, isFunTy et && isFunTy t = convertMetaFun (funArgTy et') (splitFunTy t')
+    | et == t = return e
+    | isClassPred t, Just e' <- findSuperClass t [e] = return e'
+    | Just t' <- getWithoutWithMetaType mod t, t' == et = do e' <- convertMetaType mod e t'
+                                                             noMetaExpr mod e'
+    | Just et' <- getWithoutWithMetaType mod et, t == et' = do e' <- valueExpr mod e
+                                                               convertMetaType mod e' t
+    | etvs == tvs, isFunTy et' && isFunTy t' = convertMetaFun (funArgTy et') (splitFunTy t')
     | otherwise = pprPanic "convertMetaType" (text "can't convert (" <+> ppr e <+> text "::" <+> ppr (exprType e) <+> text ") to type:" <+> ppr t)
     where et = exprType e
           (etvs, et') = splitForAllTys et
           (tvs, t') = splitForAllTys t
-          convertMetaFun earg (arg, res) = do x <- mkLocalVar "x" arg
-                                              ex <- convertMetaType mod (Var x) earg
-                                              e' <- applyExpr e ex
-                                              let (tvs', e'') = collectTyBinders e'
-                                              e''' <- if length tvs == length tvs'
-                                                      then convertMetaType mod e'' res
-                                                      else pprPanic "convertMetaFun" (text "different number of type variables for:" <+> ppr e)
-                                              return $ mkCoreLams (tvs' ++ [x]) e'''
+          convertMetaFun earg (arg, res) = do (vs, _, subst) <- splitTypeToExprVarsWithSubst et
+                                              let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
+                                              x <- mkLocalVar "x" (substTy subst arg)
+                                              ex <- convertMetaType mod (Var x) (substTy subst earg)
+                                              let e' = mkApps e (evs ++ [ex])
+                                              e'' <- convertMetaType mod e' (substTy subst res)
+                                              return $ mkCoreLams (vvs ++ [x]) e''
 
 ----------------------------------------------------------------------------------------
 -- Meta Equivalents
@@ -1238,7 +1241,10 @@ isVarPredicate :: ModInfo -> Type -> Bool
 isVarPredicate mod = isPredicateWith mod (== varC mod)
 
 isPredicateForMock :: ModInfo -> Type -> Bool
-isPredicateForMock mod = isPredicateWith mod (\tc -> varC mod == tc || isPreludeThing tc)
+isPredicateForMock mod = isPredicateWith mod (\tc -> varC mod == tc || metaLevelC mod == tc || isPreludeThing tc)
+
+varPredicatesFromType :: ModInfo -> Type -> [PredType]
+varPredicatesFromType mod = filter (isVarPredicate mod) . getAllPreds
 
 mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
@@ -1248,13 +1254,38 @@ isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForM
 isMockInstance _ _ = False
 
 addMockedInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
-addMockedInstances mod e = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
-                              let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
-                              let vvs' = filter (\v -> isTypeVar v || not (isPredicateForMock mod $ varType v)) vvs
-                              let evs' = varPredOrDict <$> evs
-                              return $ if length vvs' ==  length vvs then e else mkCoreLams vvs' $ mkApps e evs'
-    where -- isTypeArg checked before call exprType on e
-          varPredOrDict e = if not (isTypeArg e) && isPredicateForMock mod (exprType e) then mockInstance (exprType e) else e
+addMockedInstances mod = addMockedInstancesExcept mod []
+
+addMockedInstancesExcept :: ModInfo -> [PredType] -> CoreExpr -> CoreM CoreExpr
+addMockedInstancesExcept mod exceptTys e = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
+                                              let exceptTys' = substTy subst <$> exceptTys
+                                              let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
+                                              let vvs' = filter (\v -> isTypeVar v || not (forMock exceptTys' $ varType v)) vvs
+                                              let evs' = mockPredOrDict exceptTys' <$> evs
+                                              let e' = mkApps e evs'
+                                              let argTys = init $ getFunTypeParts $ exprType e'
+                                              args <- mkMockedArgs (length argTys) argTys
+                                              let (xs, es) = unzip args
+                                              return $ if all isVar es
+                                                       then mkCoreLams vvs' e'
+                                                       else simpleOptExpr $ mkCoreLams (vvs' ++ xs) $ mkApps e' es
+          -- isTypeArg checked before call exprType on e
+    where forMock exceptTys t = isPredicateForMock mod t && notElem t exceptTys
+          mockPredOrDict exceptTys e = if not (isTypeArg e) && forMock exceptTys (exprType e) then mockInstance (exprType e) else e
+          mkMockedArgs n (t:ts) = do x <- mkLocalVar ("x" ++ show (n - length ts)) (typeWithoutVarPreds t)
+                                     (vs, t') <- splitTypeToExprVars t
+                                     let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
+                                     let evs' = filter (\ev -> isTypeArg ev || not (isVarPredicate mod $ exprType ev)) evs
+                                     let e = if length evs == length evs' then Var x else mkCoreLams vvs $ mkApps (Var x) evs'
+                                     args <- mkMockedArgs n ts
+                                     return ((x, e) : args)
+          mkMockedArgs _ [] = return []
+          typeWithoutVarPreds t
+              | Just (tv, t') <- splitForAllTy_maybe t = mkForAllTy tv $ typeWithoutVarPreds t'
+              | Just (t1,t2) <- splitFunTy_maybe t = if isVarPredicate mod t1
+                                                     then typeWithoutVarPreds t2
+                                                     else mkFunTy t1 $ typeWithoutVarPreds t2
+              | otherwise = t
 
 ----------------------------------------------------------------------------------------
 -- Replace mocked class instances with real ones
@@ -1335,11 +1366,12 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                            = do (e'', ri') <- replace e' dis ri
                                 let (vis1, vis2) = partition (\(t,vi) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (varInstances ri')
                                 return (mkCoreLams (tvs ++ fmap snd vis1) e'', ri' {varInstances = vis2})
-          replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri = do x'' <- addMockedInstances mod $ Var x'
-                                                                            return (x'', withMocks ri)
+          replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
+                                 = do x'' <- addMockedInstancesExcept mod (varPredicatesFromType mod $ varType x) (Var x')
+                                      return (x'', withMocks ri)
           replace (App f e) dis ri = do (f', ri') <- replace f dis ri
                                         (e', ri'') <- replace e dis ri'
-                                        return (App f' e', ri'') -- TODO add mock if f' needs Var
+                                        return (mkApp f' e', ri'') -- TODO add mock if f' needs Var
           replace (Lam x e) dis ri = do let dis' = if isPredicate mod $ varType x then (varType x, x) : dis else dis
                                         (e', ri') <- replace e dis' ri
                                         return (Lam x e', ri')
@@ -1401,13 +1433,13 @@ showBindExpr (b,e) = text "===> "
                         <> text "\n"
 
 showType :: Type -> SDoc
-showType = ppr
---showType (TyVarTy v) = text "TyVarTy(" <> showVar v <> text ")"
---showType (AppTy t1 t2) = text "AppTy(" <> showType t1 <+> showType t2 <> text ")"
---showType (TyConApp tc ts) = text "TyConApp(" <> showTyCon tc <+> hsep (fmap showType ts) <> text ")"
---showType (FunTy t1 t2) = text "FunTy(" <> showType t1 <+> showType t2 <> text ")"
---showType (ForAllTy v t) = text "ForAllTy(" <> showVar v <+> showType t <> text ")"
---showType (LitTy tl) = text "LitTy(" <> ppr tl <> text ")"
+--showType = ppr
+showType (TyVarTy v) = text "TyVarTy(" <> showVar v <> text ")"
+showType (AppTy t1 t2) = text "AppTy(" <> showType t1 <+> showType t2 <> text ")"
+showType (TyConApp tc ts) = text "TyConApp(" <> showTyCon tc <+> hsep (fmap showType ts) <> text ")"
+showType (FunTy t1 t2) = text "FunTy(" <> showType t1 <+> showType t2 <> text ")"
+showType (ForAllTy v t) = text "ForAllTy(" <> showVar v <+> showType t <> text ")"
+showType (LitTy tl) = text "LitTy(" <> ppr tl <> text ")"
 
 showTyCon :: TyCon -> SDoc
 showTyCon = ppr
