@@ -648,8 +648,8 @@ createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> Me
 createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
-preludeEquivalents = Map.unions [nominalVar, ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcList, ghcNum, ghcPrim, ghcReal, ghcShow, ghcTuple, ghcTypes,
-                                 dataEither, dataFoldable, dataMaybe, dataSetBase, dataTuple, controlExceptionBase]
+preludeEquivalents = Map.unions [nominalVar, ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcReal,
+                                 ghcShow, ghcTuple, ghcTypes, dataEither, dataFoldable, dataMaybe, dataOldList, dataSetBase, dataTuple, controlExceptionBase]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
@@ -693,6 +693,9 @@ ghcErr = createEquivalentsMap "GHC.Err"
 
 ghcFloat :: MetaEquivalentMap
 ghcFloat = createEquivalentsMap "GHC.Float" []
+
+ghcIntegerType :: MetaEquivalentMap
+ghcIntegerType = createEquivalentsMap "GHC.Integer.Type" []
 
 ghcList :: MetaEquivalentMap
 ghcList = createEquivalentsMap "GHC.List"
@@ -764,6 +767,10 @@ dataMaybe = createEquivalentsMap "Data.Maybe"
     [(ConvertFun NoMetaResOp, ["isJust", "isNothing"]),
      (ConvertFun IdOp, ["catMaybes", "fromJust", "listToMaybe", "maybeToList"]),
      (ConvertFun RenameAndApply2, ["fromMaybe"])]
+
+dataOldList :: MetaEquivalentMap
+dataOldList = createEquivalentsMap "Data.OldList"
+    [(ConvertFun IdOp, ["sort"])]
 
 dataSetBase :: MetaEquivalentMap
 dataSetBase = createEquivalentsMap "Data.Set.Base"
