@@ -8,6 +8,7 @@ import Avail
 import Serialized
 import Annotations
 import GHC hiding (exprType, typeKind)
+import Control.Applicative ((<|>))
 import Control.Exception (assert)
 import Control.Monad (liftM, unless)
 import Data.Char (isLetter, isLower)
@@ -436,6 +437,15 @@ getClassInstance mod cl t
           tcName = getNameStr tc
           className = getNameStr cl
           name = "$f" ++ className ++ tcName
+
+findSuperClass :: Type -> [CoreExpr] -> Maybe CoreExpr
+findSuperClass t (e:es)
+    | Just (cl, ts) <- getClassPredTys_maybe (exprType e)
+    = let (_, _, ids, _) = classBigSig cl
+          es' = fmap (\i -> mkApps (Var i) (fmap Type ts ++ [e])) ids
+      in find (eqType t . exprType) es' <|> findSuperClass t (es ++ es')
+    | otherwise = findSuperClass t es
+findSuperClass t [] = Nothing
 
 ----------------------------------------------------------------------------------------
 -- Binds
@@ -1221,6 +1231,9 @@ isPredicateWith mod cond t
     | Just tc <- tyConAppTyCon_maybe t, isClassTyCon tc = cond tc
     | otherwise = False
 
+isPredicate :: ModInfo -> Type -> Bool
+isPredicate mod = isPredicateWith mod $ const True
+
 isVarPredicate :: ModInfo -> Type -> Bool
 isVarPredicate mod = isPredicateWith mod (== varC mod)
 
@@ -1327,7 +1340,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
           replace (App f e) dis ri = do (f', ri') <- replace f dis ri
                                         (e', ri'') <- replace e dis ri'
                                         return (App f' e', ri'') -- TODO add mock if f' needs Var
-          replace (Lam x e) dis ri = do let dis' = if isPredicateForMock mod $ varType x then (varType x, x) : dis else dis
+          replace (Lam x e) dis ri = do let dis' = if isPredicate mod $ varType x then (varType x, x) : dis else dis
                                         (e', ri') <- replace e dis' ri
                                         return (Lam x e', ri')
           replace (Let b e) dis ri = do (b', ri') <- replaceMocksByInstancesInBind mod (b, dis, ri)
@@ -1350,20 +1363,19 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
           replaceMock t dis ri
               | Just v <- lookup t dis = return (Var v, ri)
               | isVarPredicate mod t, Just v <- findVarInstance t ri = return (Var v, ri)
-              | otherwise = do me <- dictInstance mod t
-                               if isJust me
-                               then return (fromJust me, withMocks ri)
-                               else if isVarPredicate mod t
-                                    then do v <- mkPredVar $ getClassPredTys t
-                                            return (Var v, addVarInstance (t, v) ri)
-                                    else pprPanic "replaceMock - can't create class instance for " (ppr t)
+              | Just di <- dictInstance mod t = do di' <- addMockedInstances mod di
+                                                   return (di', withMocks ri)
+              | isVarPredicate mod t = do v <- mkPredVar $ getClassPredTys t
+                                          return (Var v, addVarInstance (t, v) ri)
+              | Just sc <- findSuperClass t (Var <$> snd <$> dis) = return (sc, ri)
+              | otherwise = pprPanic "replaceMock - can't create class instance for " (ppr t)
 
-dictInstance :: ModInfo -> Type -> CoreM (Maybe CoreExpr)
+dictInstance :: ModInfo -> Type -> Maybe CoreExpr
 dictInstance mod t
-    | Just ts <- tyConAppArgs_maybe t' = liftM Just $ addMockedInstances mod $ mkApps inst (Type <$> ts)
-    | isJust (isNumLitTy t') || isJust (isStrLitTy t') = return $ Just inst
-    | isFunTy t' = return $ Just inst
-    | otherwise = return Nothing
+    | Just ts <- tyConAppArgs_maybe t' = Just $ mkApps inst (Type <$> ts)
+    | isJust (isNumLitTy t') || isJust (isStrLitTy t') = Just inst
+    | isFunTy t' = Just inst
+    | otherwise = Nothing
     where Just (cl, [t']) = getClassPredTys_maybe t
           inst = getClassInstance mod cl t'
 
