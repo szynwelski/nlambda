@@ -107,7 +107,7 @@ pass env onlyShow guts =
 --            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --            modInfo "module" mg_module guts'
-            modInfo "binds" (bindsToNonRecList . mg_binds) guts'
+            modInfo "binds" (sortBinds . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
 --            modInfo "imported" getImportedModules guts'
 --            modInfo "exports" mg_exports guts'
@@ -488,11 +488,8 @@ getClassOpImpls mod = concatMap go . flattenBinds
 -- Binds
 ----------------------------------------------------------------------------------------
 
-bindsToNonRecList :: CoreProgram -> CoreProgram
-bindsToNonRecList bs = sortWith getNonRecName (concatMap toList bs)
-    where toList (Rec bs) = uncurry NonRec <$> bs
-          toList b = [b]
-          getNonRecName (NonRec b _) = getNameStr b
+sortBinds :: CoreProgram -> [(CoreBndr, CoreExpr)]
+sortBinds bs = sortWith (getNameStr . fst) (flattenBinds bs)
 
 getBindsVars :: ModGuts -> [Var]
 getBindsVars = bindersOfBinds . mg_binds
