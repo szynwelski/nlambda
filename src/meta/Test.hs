@@ -175,3 +175,38 @@ instance Monoid (List a) where
 
 --test :: Variable -> Variable -> Variable -> [List Variable]
 --test x y z = [mempty, mappend (fromList [x]) (fromList [y,z]), mconcat [fromList [x], fromList [y,z]]]
+
+----------------------------------------------------------------------------
+-- Test Applicative
+----------------------------------------------------------------------------
+
+--test :: Variable -> Variable -> Variable -> [[Variable]]
+--test x y z = [pure x, [] <*> [x], [const x] <*> [y, z], [x, x] *> [y, z], [x] <* [y, z]]
+
+instance Applicative Wrapper where
+    pure = Wrapper
+    Wrapper f <*> Wrapper x = Wrapper (f x)
+
+--test :: Variable -> Variable -> Variable -> [Wrapper Variable]
+--test x y z = [pure x, Wrapper id <*> Wrapper x, Wrapper (const y) <*> Wrapper z, Wrapper x *> Wrapper y, Wrapper x <* Wrapper y]
+
+instance Applicative Optional where
+    pure = Optional
+    Optional f <*> a = fmap f a
+    Null <*> _ = Null
+
+--test :: Variable -> Variable -> Variable -> [Optional Variable]
+--test x y z = [pure x, Optional id <*> Optional x, Null <*> Optional z, Optional id <*> Null, Optional x *> Optional y, Optional x <* (Null::Optional Variable)]
+
+-- FIXME
+--instance (Semigroup a, Monoid a) => Applicative (Pair a) where
+--    pure x = Pair mempty x
+--    Pair u f <*> Pair v x = Pair (u <> v) (f x)
+
+instance Applicative List where
+    pure x = Element x Empty
+    fs <*> xs = fromList (toList fs <*> toList xs)
+
+test :: Variable -> Variable -> Variable -> [List Variable]
+test x y z = [pure x, fromList [] <*> fromList [x], fromList [const x] <*> fromList [y, z],
+              fromList [x, x] *> fromList [y, z], fromList [x] <* fromList [y, z]]

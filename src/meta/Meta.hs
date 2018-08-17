@@ -199,14 +199,15 @@ lift = rename . liftMeta
 -- Meta classes from Prelude
 ------------------------------------------------------------------------------------------
 
+-- intentional excessive Var context for MetaPlugin
 class (Applicative f, Functor_nlambda f) => Applicative_nlambda (f :: * -> *) where
-  pure_nlambda :: WithMeta a -> WithMeta (f a)
+  pure_nlambda :: Var a => WithMeta a -> WithMeta (f a)
   pure_nlambda = idOp pure
-  (<*>###) :: (Var (f (WithMeta a -> WithMeta b)), Var (f a), Var (f b)) => WithMeta (f (WithMeta a -> WithMeta b)) -> WithMeta (f a) -> WithMeta (f b)
+  (<*>###) :: (Var a, Var b, Var (f (WithMeta a -> WithMeta b)), Var (f a), Var (f b)) => WithMeta (f (WithMeta a -> WithMeta b)) -> WithMeta (f a) -> WithMeta (f b)
   (<*>###) f x = let (WithMeta (f', x') m) = renameAndApply2 (,) f x in lift (fmap (metaFun m) f' <*> x')
-  (*>###) :: (Var (f a), Var (f b)) => WithMeta (f a) -> WithMeta (f b) -> WithMeta (f b)
+  (*>###) :: (Var a, Var b, Var (f a), Var (f b)) => WithMeta (f a) -> WithMeta (f b) -> WithMeta (f b)
   (*>###) = renameAndApply2 (*>)
-  (<*###) :: (Var (f a), Var (f b)) => WithMeta (f a) -> WithMeta (f b) -> WithMeta (f a)
+  (<*###) :: (Var a, Var b, Var (f a), Var (f b)) => WithMeta (f a) -> WithMeta (f b) -> WithMeta (f a)
   (<*###) = renameAndApply2 (<*)
 
 instance Applicative_nlambda (Either e) -- Defined in ‘Data.Either’
@@ -322,6 +323,7 @@ class (Floating a, Fractional_nlambda a) => Floating_nlambda a where
 instance Floating_nlambda Float -- Defined in ‘GHC.Float’
 instance Floating_nlambda Double -- Defined in ‘GHC.Float’
 
+-- intentional excessive Var context for MetaPlugin
 class (MetaLevel t, Foldable t) => Foldable_nlambda (t :: * -> *) where
   fold_nlambda :: Monoid_nlambda m => WithMeta (t m) -> WithMeta m
   fold_nlambda = idOp fold
@@ -345,7 +347,7 @@ class (MetaLevel t, Foldable t) => Foldable_nlambda (t :: * -> *) where
   null_nlambda = noMetaResOp null
   length_nlambda :: WithMeta (t a) -> Int
   length_nlambda = noMetaResOp length
-  elem_nlambda :: (Var (t a), Eq_nlambda a) => WithMeta a -> WithMeta (t a) -> Bool
+  elem_nlambda :: (Var a, Var (t a), Eq_nlambda a) => WithMeta a -> WithMeta (t a) -> Bool
   elem_nlambda = noMetaRes2ArgOp elem
   maximum_nlambda :: Ord_nlambda a => WithMeta (t a) -> WithMeta a
   maximum_nlambda = idOp maximum
