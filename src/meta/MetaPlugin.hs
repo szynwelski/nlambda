@@ -1,37 +1,25 @@
 module MetaPlugin where
-import GhcPlugins hiding (mkApps, mkLocalVar, substTy)
-import PprCore
-import Data.IORef
-import System.IO.Unsafe
-import Unique
-import Avail
-import Serialized
-import Annotations
-import GHC hiding (exprType, typeKind)
-import Control.Applicative ((<|>))
-import Control.Exception (assert)
-import Control.Monad (liftM, unless)
-import Data.Char (isLetter, isLower)
-import Data.Data (Data)
-import Data.List ((\\), delete, find, findIndex, intersect, isInfixOf, isPrefixOf, nub, partition)
-import Data.Maybe (fromJust)
-import Data.String.Utils (replace)
-import TypeRep
-import Maybes
-import TcType (tcSplitSigmaTy, tcSplitPhiTy)
-import TyCon
-import Unify
-import Data.Foldable
-import InstEnv
-import Class
-import MkId
-import CoAxiom
-import Kind
-import qualified BooleanFormula as BF
 
+import Avail
+import qualified BooleanFormula as BF
+import Class
+import CoAxiom
+import Control.Applicative ((<|>))
+import Control.Monad (liftM)
+import Data.Char (isLetter, isLower)
+import Data.Foldable (foldlM)
+import Data.List ((\\), delete, find, findIndex, intersect, isInfixOf, isPrefixOf, nub, partition)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.String.Utils (replace)
+import GhcPlugins hiding (mkApps, mkLocalVar, substTy)
+import Kind (defaultKind, isOpenTypeKind)
 import Meta
+import MkId (mkDataConWorkId, mkDictSelRhs)
+import TypeRep
+import TcType (tcSplitSigmaTy, tcSplitPhiTy)
+import Unify (tcUnifyTy)
 
 plugin :: Plugin
 plugin = defaultPlugin {
@@ -1045,12 +1033,6 @@ unifyTypes t1 t2 = maybe unifyWithOpenKinds Just (tcUnifyTy t1 t2)
 canUnifyTypes :: Type -> Type -> Bool
 canUnifyTypes t1 t2 = isJust $ unifyTypes (snd $ splitForAllTys t1) (snd $ splitForAllTys t2)
 
-sameTypes :: Type -> Type -> Bool
-sameTypes t1 t2
-    | t1 == t2 = True
-    | Just s <- unifyTypes t1 t2 = all isTyVarTy $ eltsUFM $ getTvSubstEnv s
-    | otherwise = False
-
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
     do (eVars, eTy) <- splitTypeToExprVars $ exprType e
@@ -1221,48 +1203,6 @@ getMetaEquivalent mod v
         NoEquivalent -> addMockedInstances mod $ Var $ fromMaybe
                           (pprPgmError "No meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleStr v)))
                           (getDefinedMetaEquivalentVar mod v)
-
---addDependencies :: ModInfo -> ExprMap -> CoreBndr -> CoreBndr -> Maybe Type -> CoreBndr -> CoreM CoreExpr
---addDependencies mod eMap b var mt metaVar
---    | isDataConWorkId metaVar, isFun -- D:...
---    = do metaE <- addMockedInstances mod $ changeTypeAndApply mod mt $ Var metaVar
---         deps [] [] b [] (fmap Var $ catMaybes $ fmap localDictVar $ Map.elems eMap) metaE
---    | isDFunId metaVar, isFun -- $f...
---    = do vars <- liftM fst $ splitTypeToExprVars $ changeType mod $ varType var
---         let (ts, preds) = partition isTypeArg $ exprVarsToExprs vars
---         metaE <- deps ts preds var ts preds (changeTypeAndApply mod mt $ Var metaVar)
---         return $ mkCoreLams (exprVarsToVars vars) metaE
---    | otherwise = addMockedInstances mod $ changeTypeAndApply mod mt $ Var metaVar
---    where isFun = isFunTy $ dropForAlls $ varType metaVar
---          localDictVar (Var v) | isLocalId v && not (isExportedId v) && isDictId v = Just v
---          localDictVar _ = Nothing
---          deps :: [CoreExpr] -> [CoreExpr] -> CoreBndr -> [CoreExpr] -> [CoreExpr] -> CoreExpr -> CoreM CoreExpr
---          deps ts preds b bts bpreds e | isForAllTy $ exprType e
---                                       = deps (tailPanic "deps" (ppr e) ts) preds b bts bpreds $ mkApp e $ headPanic "deps" (ppr e) ts
---          deps ts preds b bts bpreds e | Just t <- metaPredFirst (metaLevelC mod) (exprType e)
---                                       = let ml = getClassInstance mod (metaLevelC mod) $ getOnlyArgTypeFromDict t
---                                             tvs = fst $ splitForAllTys $ exprType ml
---                                             tml = mkApps ml $ take (length tvs) bts
---                                         in deps ts preds b bts bpreds $ mkApp e tml
---          deps ts preds b bts bpreds e | Just (t,_) <- splitFunTy_maybe $ exprType e, sameTypes t $ last $ getFunTypeParts $ varType b
---                                       = do b' <- saturate bts bpreds $ Var b
---                                            deps ts preds b bts bpreds $ mkApp e b'
---          deps ts (pred:preds) b bts bpreds e | Just (t',_) <- splitFunTy_maybe $ exprType e, sameTypes t' $ exprType pred
---                                       = deps ts preds b bts bpreds $ mkApp e pred
---          deps ts preds b bts bpreds e = return e
---          saturate :: [CoreExpr] -> [CoreExpr] -> CoreExpr -> CoreM CoreExpr
---          saturate (t:ts) preds e | isForAllTy $ exprType e = saturate ts preds $ mkApp e t
---          saturate ts preds e | Just (t',_) <- splitFunTy_maybe $ dropForAlls $ exprType e
---                              = do sc <- findSuperClass t' preds
---                                   e' <- applyExpr e sc
---                                   saturate ts preds e'
---          saturate ts preds e = return e
---          findSuperClass :: Type -> [CoreExpr] -> CoreM CoreExpr
---          findSuperClass t (pred:preds) | sameTypes t $ exprType pred = return pred
---          findSuperClass t (pred:preds) | Just (cl, _) <- getClassPredTys_maybe $ exprType pred, (_, _, ids, _) <- classBigSig cl
---                                        = do es <- mapM (\i -> applyExpr (Var i) pred) ids
---                                             maybe (findSuperClass t preds) return (find (sameTypes t . exprType) es)
---          findSuperClass t [] = pprPanic "findSuperClass - no super class with proper type found:" (ppr t)
 
 ----------------------------------------------------------------------------------------
 -- Mock class instances

@@ -8,7 +8,6 @@ import Data.List (isSuffixOf)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
 import Data.Semigroup (Semigroup, (<>), sconcat, stimes)
 import qualified Data.Set as Set
 import Data.Set (Set)
