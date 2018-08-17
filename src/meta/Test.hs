@@ -13,11 +13,11 @@ data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel,
 instance Show a => Show (Wrapper a) where
     show (Wrapper x) = "W " ++ show x
 
-data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord)
+data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor)
 
-data Pair a b = Pair a b deriving (Show, Generic, Var, Eq, Ord)
+data Pair a b = Pair a b deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor)
 
-data List a = Element a (List a) | Empty deriving (Show, Generic, Var, Eq, Ord)
+data List a = Element a (List a) | Empty deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor)
 
 fromList :: [a] -> List a
 fromList [] = Empty
@@ -74,3 +74,12 @@ fromList (x:xs) = Element x $ fromList xs
 
 --test :: Variable -> Variable -> Variable -> [Wrapper Variable]
 --test x y z = [fmap id (Wrapper x), fmap id (Wrapper y), fmap id (Wrapper z), fmap (const z) (Wrapper x), fmap (const y) (Wrapper 1)]
+
+--test :: Variable -> Variable -> Variable -> [Optional Variable]
+--test x y z = [fmap id (Optional x), fmap id (Optional y), fmap id (Optional z), fmap (const z) Null, fmap (const y) (Optional 1)]
+
+--test :: Variable -> Variable -> Variable -> [Pair Variable Variable]
+--test x y z = [fmap id (Pair x y), fmap (const z) (Pair x y), fmap (const z) (Pair x 1)]
+
+test :: Variable -> Variable -> Variable -> [List Variable]
+test x y z = [fmap id (fromList [x,y,z]), fmap (const x) (fromList [x,y,z]), y <$ (fromList [x,y,z])]

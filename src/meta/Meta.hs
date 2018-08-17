@@ -371,10 +371,11 @@ class (Fractional a, Num_nlambda a) => Fractional_nlambda a where
 instance Fractional_nlambda Float -- Defined in ‘GHC.Float’
 instance Fractional_nlambda Double -- Defined in ‘GHC.Float’
 
+-- intentional excessive Var context for MetaPlugin
 class (MetaLevel f, Functor f) => Functor_nlambda (f :: * -> *) where
-  fmap_nlambda :: Var (f b) => (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
+  fmap_nlambda :: (Var b, Var (f b)) => (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
   fmap_nlambda = lift .* metaFunOp fmap
-  (<$###) :: (Var a, Var (f b)) => WithMeta a -> WithMeta (f b) -> WithMeta (f a)
+  (<$###) :: (Var a, Var b, Var (f b)) => WithMeta a -> WithMeta (f b) -> WithMeta (f a)
   (<$###) = renameAndApply2 (<$)
 
 instance Functor_nlambda (Either a) -- Defined in ‘Data.Either’

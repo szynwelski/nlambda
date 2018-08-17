@@ -1386,7 +1386,7 @@ replaceMocksByInstancesInProgram mod cos bs = go bs $ newReplaceInfo cos
                                  else pprPanic "replaceMocksByInstancesInProgram - not empty var instances to insert:" (ppr ri'' <+> ppr b')
           replace ri [] = return ([], ri)
 
--- args: mod info, (bind, Var instances from surrounding expression, replace info)
+-- args: mod info, (bind, dict instances from surrounding expression, replace info)
 replaceMocksByInstancesInBind :: ModInfo -> (CoreBind, DictInstances, ReplaceInfo) -> CoreM (CoreBind, ReplaceInfo)
 replaceMocksByInstancesInBind mod (b, dis, ri) = replace b dis ri
     where replace (NonRec b e) dis ri = do ((b', e'), ri') <- replaceBind (b, e) dis ri
@@ -1404,7 +1404,7 @@ replaceMocksByInstancesInBind mod (b, dis, ri) = replace b dis ri
                                          else let b' = setVarType b $ exprType e'
                                               in return ((b', e'), addBindToReplace (b, b') ri'')
 
--- args: mod info, (expression, Var instances from surrounding expression, replace info)
+-- args: mod info, (expression, dict instances from surrounding expression, replace info)
 replaceMocksByInstancesInExpr :: ModInfo -> (CoreExpr, DictInstances, ReplaceInfo) -> CoreM (CoreExpr, ReplaceInfo)
 replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis ri
                                                     return (simpleOptExpr e', ri')
