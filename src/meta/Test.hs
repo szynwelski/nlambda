@@ -140,3 +140,38 @@ instance Semigroup (List a) where
 
 --test :: Variable -> Variable -> Variable -> List Variable
 --test x y z = fromList [x] <> fromList [y,z]
+
+----------------------------------------------------------------------------
+-- Test Monoid
+----------------------------------------------------------------------------
+
+--test :: Variable -> Variable -> Variable -> [[Variable]]
+--test x y z = [mempty, mappend [x] [y,z], mconcat [[x], [y,z]]]
+
+instance (Semigroup a, Monoid a) => Monoid (Wrapper a) where
+    mempty = Wrapper mempty
+    mappend = (<>)
+
+--test :: Variable -> Variable -> Variable -> [Wrapper [Variable]]
+--test x y z = [mempty, mappend (Wrapper [x]) (Wrapper [y,z]), mconcat [Wrapper [x], Wrapper [y,z]]]
+
+instance (Semigroup a) => Monoid (Optional a) where
+    mempty = Null
+    mappend = (<>)
+
+--test :: Variable -> Variable -> Variable -> [Optional [Variable]]
+--test x y z = [mempty, mappend (Optional [x]) (Optional [y,z]), mappend (Optional [x]) Null, mconcat [Optional [x], Optional [y,z]], mconcat [Null]]
+
+instance (Semigroup a, Semigroup b, Monoid a, Monoid b) => Monoid (Pair a b) where
+    mempty = Pair mempty mempty
+    mappend = (<>)
+
+--test :: Variable -> Variable -> Variable -> [Pair (Optional [Variable]) [Variable]]
+--test x y z = [mempty, mappend (Pair Null [x,y]) (Pair Null [z]), mconcat [Pair Null [], Pair (Optional [x]) [y,z]]]
+
+instance Monoid (List a) where
+    mempty = Empty
+    mappend = (<>)
+
+--test :: Variable -> Variable -> Variable -> [List Variable]
+--test x y z = [mempty, mappend (fromList [x]) (fromList [y,z]), mconcat [fromList [x], fromList [y,z]]]
