@@ -89,16 +89,16 @@ pass env onlyShow guts =
             -- classes and vars
             let modTcMap = mkTyConMap mod' {varMap = modVarMap} (mg_tcs guts)
                 modVarMap = mkVarMap mod' {tcMap = modTcMap}
-            let tcMap = Map.union modTcMap impTcMap
+            let tcMap = unionTcMaps modTcMap impTcMap
             let varMap = unionVarMaps modVarMap impVarMap
             let mod'' = mod' {tcMap = tcMap, varMap = varMap}
 
             guts' <- if onlyShow
                      then return guts
                      else do binds <- newBinds mod'' (getDataCons guts) (mg_binds guts)
-                             binds' <- replaceMocksByInstancesInProgram mod'' $ checkCoreProgram binds
+                             binds' <- replaceMocksByInstancesInProgram mod'' (getClassOpImpls mod'' binds) (checkCoreProgram binds)
                              let exps = newExports mod'' (mg_exports guts)
-                             return $ guts {mg_tcs = mg_tcs guts ++ Map.elems modTcMap,
+                             return $ guts {mg_tcs = mg_tcs guts ++ Map.elems (tcsWithPairs mod''),
                                             mg_binds = mg_binds guts ++ checkCoreProgram binds',
                                             mg_exports = mg_exports guts ++ exps}
 
@@ -135,13 +135,15 @@ pass env onlyShow guts =
 data ModInfo = ModInfo {env :: HscEnv, guts :: ModGuts, metaModules :: [MetaModule], nameMap :: NameMap, tcMap :: TyConMap, varMap :: VarMap}
 
 modInfoEmptyMaps :: HscEnv -> ModGuts -> [MetaModule] -> ModInfo
-modInfoEmptyMaps env guts metaMods = ModInfo env guts metaMods Map.empty Map.empty emptyVarMap
+modInfoEmptyMaps env guts metaMods = ModInfo env guts metaMods Map.empty emptyTcMap emptyVarMap
 
 instance Outputable ModInfo where
     ppr mod = text "\n======== ModInfo =========================================================="
               <+> showMap "\nNames" (nameMap mod) showName
-              <+> showMap "\nTyCons" (tcMap mod) showTyCon
+              <+> showMap "\nTyCons" (tcsWithPairs mod) showTyCon
               <+> showMap "\nVars" (varsWithPairs mod) showVar
+              <+> text "\nAll type cons:" <+> vcat (fmap showTyCon $ allTcs mod)
+              <+> text "\nAll vars:" <+> vcat (fmap showVar $ allVars mod)
               <+> text "\n==========================================================================="
 
 showMap :: String -> Map a a -> (a -> SDoc) -> SDoc
@@ -268,7 +270,7 @@ mkMapWithVars :: ModInfo -> [Var] -> VarMap
 mkMapWithVars mod vars = (Map.fromList $ zip varsWithPairs $ fmap newVar varsWithPairs, nub (varsWithoutPairs ++ varsFromExprs))
     where (varsWithPairs, varsWithoutPairs) = partition (not . isIgnoreImportType mod . varType) vars
           varsFromExprs = getAllVarsFromBinds mod \\ varsWithPairs
-          newVar v = let v' = mkLocalIdWithInfo (newName mod $ varName v) (changeType mod $ varType v) (newIdInfo $ idInfo v)
+          newVar v = let v' = mkExportedLocalVar (idDetails v) (newName mod $ varName v) (changeType mod $ varType v) (newIdInfo $ idInfo v)
                      in if isExportedId v then setIdExported v' else setIdNotExported v'
           newIdInfo old = vanillaIdInfo `setInlinePragInfo` (inlinePragInfo old) -- TODO maybe rewrite also other info
 
@@ -311,7 +313,7 @@ getImportedModules :: ModGuts -> [Module]
 getImportedModules = filter (not . isIgnoreImport) . moduleEnvKeys . mg_dir_imps
 
 getImportedMaps :: ModInfo -> (NameMap, VarMap, TyConMap)
-getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, []), Map.fromList tcPairs)
+getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, []), (Map.fromList tcPairs, []))
     where mods = catMaybes $ fmap (lookupUFM $ hsc_HPT $ env mod) $ fmap moduleName $ getImportedModules (guts mod)
           things = eltsUFM $ getModulesTyThings mods
           (tcThings, varThings) = partition isTyThingTyCon things
@@ -352,16 +354,29 @@ getClassesNames = concatMap classNames . getClasses
     where classNames c = className c : (fmap idName $ classAllSelIds c) ++ dataConNames c
           dataConNames c = concatMap (\dc -> dataConName dc : (idName <$> dataConImplicitIds dc)) $ getClassDataCons c
 
-type TyConMap = Map TyCon TyCon
+type TyConMap = (Map TyCon TyCon, [TyCon])
+
+emptyTcMap :: TyConMap
+emptyTcMap = (Map.empty, [])
+
+tcsWithPairs :: ModInfo -> Map TyCon TyCon
+tcsWithPairs = fst . tcMap
+
+allTcs :: ModInfo -> [TyCon]
+allTcs mod = snd tcm ++ Map.keys (fst tcm) ++ Map.elems (fst tcm)
+    where tcm = tcMap mod
+
+unionTcMaps :: TyConMap -> TyConMap -> TyConMap
+unionTcMaps (m1, l1) (m2, l2) = (Map.union m1 m2, l1 ++ l2)
 
 newTyCon :: ModInfo -> TyCon -> TyCon
-newTyCon mod tc = Map.findWithDefault metaPrelude tc $ tcMap mod
+newTyCon mod tc = Map.findWithDefault metaPrelude tc $ fst $ tcMap mod
     where metaPrelude = fromMaybe (pprPanic "unknown type constructor: " $ showTyCon tc) (getMetaPreludeTyCon mod tc)
 
 mkTyConMap :: ModInfo -> [TyCon] -> TyConMap
 mkTyConMap mod tcs = let ctcs = filter isClassTyCon tcs
                          ctcs' = fmap (newTyConClass mod {tcMap = tcMap}) ctcs
-                         tcMap = Map.fromList $ zip ctcs ctcs'
+                         tcMap = (Map.fromList $ zip ctcs ctcs', filter isAlgTyCon tcs)
                      in tcMap
 
 newTyConClass :: ModInfo -> TyCon -> TyCon
@@ -449,6 +464,25 @@ findSuperClass t (e:es)
       in find (eqType t . exprType) es' <|> findSuperClass t (es ++ es')
     | otherwise = findSuperClass t es
 findSuperClass t [] = Nothing
+
+data ClassOpImpl = ClassOpImpl {opMethod :: CoreBndr, opClassTyCon :: Class, opDataTyCon :: TyCon}
+
+instance Outputable ClassOpImpl where
+    ppr (ClassOpImpl m clTc dTc) = text "ClassOpImpl {" <+> ppr m <> text "," <+> ppr clTc <> text "," <+> ppr dTc <> text "}"
+
+getClassOpImpls :: ModInfo -> CoreProgram -> [ClassOpImpl]
+getClassOpImpls mod = concatMap go . flattenBinds
+    where go (b, e) | isDFunId b = findClassOps b e
+          go _ = []
+          findClassOps b e | (bs, e') <- collectBinders e, not (null bs) = findClassOps b e'
+          findClassOps b e | (Var x, args) <- collectArgs e, Just dc <- isDataConWorkId_maybe x
+                           = fmap (createClassOpImpl (dataConTyCon dc) b) $ filter isClasOpImpl $ concatMap getAllNotLocalVarsFromExpr args
+          findClassOps b e = []
+          isClasOpImpl = isPrefixOf "$c" . getNameStr
+          createClassOpImpl classTc b v = ClassOpImpl v (fromJust $ tyConClass_maybe classTc) (tcFromDFunId classTc b)
+          tcFromDFunId classTc = fromSingleton . delete classTc . nameEnvElts . tyConsOfType . last . getFunTypeParts . varType
+          fromSingleton [x] = x
+          fromSingleton xs = pprPanic "fromSingleton - list is not singleton" (ppr xs)
 
 ----------------------------------------------------------------------------------------
 -- Binds
@@ -1294,16 +1328,17 @@ addMockedInstancesExcept mod exceptTys e = do (vs, ty, subst) <- splitTypeToExpr
 type DictInstances = [(Type, DictId)]
 type ReplaceVars = [(CoreBndr, CoreBndr)]
 
-data ReplaceInfo = ReplaceInfo {varInstances :: DictInstances, replaceBinds :: ReplaceVars, nextReplaceBinds :: ReplaceVars, noMocks :: Bool}
+data ReplaceInfo = ReplaceInfo {varInstances :: DictInstances, replaceBinds :: ReplaceVars, nextReplaceBinds :: ReplaceVars,
+                                noMocks :: Bool, classOps :: [ClassOpImpl], binder :: Maybe CoreBndr}
 
 instance Outputable ReplaceInfo where
-    ppr (ReplaceInfo dis rb nrb nm) = text "ReplaceInfo{" <+> ppr dis <+> text ","
-                                      <+> vcat (fmap (\(x,y) -> ppr x <+> ppr (varType x) <+> text "~>" <+> ppr (varType y)) rb) <+> text ","
-                                      <+> vcat (fmap (\(x,y) -> ppr x <+> ppr (varType x) <+> text "~>" <+> ppr (varType y)) nrb) <+> text ","
-                                      <+> ppr nm <+> text "}"
+    ppr (ReplaceInfo dis rb nrb nm cos b) = text "ReplaceInfo{" <+> ppr dis <+> text ","
+                                            <+> vcat (fmap (\(x,y) -> ppr x <+> ppr (varType x) <+> text "~>" <+> ppr (varType y)) rb) <+> text ","
+                                            <+> vcat (fmap (\(x,y) -> ppr x <+> ppr (varType x) <+> text "~>" <+> ppr (varType y)) nrb) <+> text ","
+                                            <+> ppr nm <+> text "," <+> ppr cos <+> text "," <+> ppr b <+> text "}"
 
-emptyReplaceInfo :: ReplaceInfo
-emptyReplaceInfo = ReplaceInfo [] [] [] True
+newReplaceInfo :: [ClassOpImpl] -> ReplaceInfo
+newReplaceInfo cos = ReplaceInfo [] [] [] True cos Nothing
 
 noMoreReplaceBinds :: ReplaceInfo -> Bool
 noMoreReplaceBinds = null . nextReplaceBinds
@@ -1324,13 +1359,22 @@ findReplaceBind :: ModInfo -> Var -> ReplaceInfo -> Maybe Var
 findReplaceBind mod x = fmap snd . find (\(x',_) -> x == x' && varType x == varType x') . replaceBinds
 
 nextReplaceInfo :: ReplaceInfo -> ReplaceInfo
-nextReplaceInfo ri = ReplaceInfo [] (nextReplaceBinds ri) [] True
+nextReplaceInfo ri = ReplaceInfo [] (nextReplaceBinds ri) [] True (classOps ri) Nothing
 
 withMocks :: ReplaceInfo -> ReplaceInfo
 withMocks ri = ri {noMocks = False}
 
-replaceMocksByInstancesInProgram :: ModInfo -> CoreProgram -> CoreM CoreProgram
-replaceMocksByInstancesInProgram mod bs = go bs emptyReplaceInfo
+setBinder :: ReplaceInfo -> CoreBndr -> ReplaceInfo
+setBinder ri b = ri {binder = Just b}
+
+clearBinder :: ReplaceInfo -> ReplaceInfo
+clearBinder ri = ri {binder = Nothing}
+
+isTyConOfBinder :: ReplaceInfo -> TyCon -> Bool
+isTyConOfBinder ri tc = fromMaybe False $ fmap (\b -> any (\op -> b == opMethod op && tc == opDataTyCon op) (classOps ri)) (binder ri)
+
+replaceMocksByInstancesInProgram :: ModInfo -> [ClassOpImpl] -> CoreProgram -> CoreM CoreProgram
+replaceMocksByInstancesInProgram mod cos bs = go bs $ newReplaceInfo cos
     where go bs ri = do (bs', ri') <- replace ri bs
                         if noMoreReplaceBinds ri' && noMocks ri' then return bs' else go bs' $ nextReplaceInfo ri'
           replace ri (b:bs) = do (bs', ri') <- replace ri bs
@@ -1351,11 +1395,12 @@ replaceMocksByInstancesInBind mod (b, dis, ri) = replace b dis ri
                                           (b', ri'') <- replaceBind b dis ri'
                                           return (b':bs', ri'')
           replaceBinds [] dis ri = return ([], ri)
-          replaceBind (b, e) dis ri = do (e', ri') <- replaceMocksByInstancesInExpr mod (e, dis, ri)
+          replaceBind (b, e) dis ri = do (e', ri') <- replaceMocksByInstancesInExpr mod (e, dis, setBinder ri b)
+                                         let ri'' = clearBinder ri'
                                          if varType b == exprType e'
-                                         then return ((b, e'), ri')
+                                         then return ((b, e'), ri'')
                                          else let b' = setVarType b $ exprType e'
-                                              in return ((b', e'), addBindToReplace (b, b') ri')
+                                              in return ((b', e'), addBindToReplace (b, b') ri'')
 
 -- args: mod info, (expression, Var instances from surrounding expression, replace info)
 replaceMocksByInstancesInExpr :: ModInfo -> (CoreExpr, DictInstances, ReplaceInfo) -> CoreM (CoreExpr, ReplaceInfo)
@@ -1371,7 +1416,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                       return (x'', withMocks ri)
           replace (App f e) dis ri = do (f', ri') <- replace f dis ri
                                         (e', ri'') <- replace e dis ri'
-                                        return (mkApp f' e', ri'') -- TODO add mock if f' needs Var
+                                        return (mkApp f' e', ri'') -- TODO add mock if f' needs Var + convert type with right Vars order
           replace (Lam x e) dis ri = do let dis' = if isPredicate mod $ varType x then (varType x, x) : dis else dis
                                         (e', ri') <- replace e dis' ri
                                         return (Lam x e', ri')
@@ -1395,16 +1440,16 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
           replaceMock t dis ri
               | Just v <- lookup t dis = return (Var v, ri)
               | isVarPredicate mod t, Just v <- findVarInstance t ri = return (Var v, ri)
-              | Just di <- dictInstance mod t = do di' <- addMockedInstances mod di
-                                                   return (di', withMocks ri)
+              | Just di <- dictInstance mod ri t = do di' <- addMockedInstances mod di
+                                                      return (di', withMocks ri)
               | isVarPredicate mod t = do v <- mkPredVar $ getClassPredTys t
                                           return (Var v, addVarInstance (t, v) ri)
               | Just sc <- findSuperClass t (Var <$> snd <$> dis) = return (sc, ri)
               | otherwise = pprPanic "replaceMock - can't create class instance for " (ppr t)
 
-dictInstance :: ModInfo -> Type -> Maybe CoreExpr
-dictInstance mod t
-    | Just ts <- tyConAppArgs_maybe t' = Just $ mkApps inst (Type <$> ts)
+dictInstance :: ModInfo -> ReplaceInfo -> Type -> Maybe CoreExpr
+dictInstance mod ri t
+    | Just (tc, ts) <- splitTyConApp_maybe t' = if isTyConOfBinder ri tc then Nothing else Just $ mkApps inst (Type <$> ts)
     | isJust (isNumLitTy t') || isJust (isStrLitTy t') = Just inst
     | isFunTy t' = Just inst
     | otherwise = Nothing
