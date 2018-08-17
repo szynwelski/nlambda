@@ -987,6 +987,9 @@ isTV (DI _) = False
 substTy :: TvSubst -> Type -> Type
 substTy subst t = head $ substTys subst [t]
 
+substFromLists :: [TyVar] -> [TyVar] -> TvSubst
+substFromLists tvs = mkTopTvSubst . zip tvs . mkTyVarTys
+
 substDictId :: TvSubst -> DictId -> DictId
 substDictId subst id = setVarType id ty
     where (cl, ts) = getClassPredTys $ varType id
@@ -1014,7 +1017,7 @@ splitTypeToExprVarsWithSubst :: Type -> CoreM ([ExprVar], Type, TvSubst)
 splitTypeToExprVarsWithSubst ty
     | ty == ty' = return ([], ty, emptyTvSubst)
     | otherwise = do tyVars' <- mapM mkTyVarUnique tyVars
-                     let subst = mkTopTvSubst $ zip tyVars $ mkTyVarTys tyVars'
+                     let subst = substFromLists tyVars tyVars'
                      let preds' = filter isClassPred preds
                      let classTys = fmap getClassPredTys preds'
                      predVars <- mapM mkPredVar ((\(c,tys) -> (c, substTys subst tys)) <$> classTys)
@@ -1160,7 +1163,8 @@ convertMetaType mod e t
                                                              noMetaExpr mod e'
     | Just et' <- getWithoutWithMetaType mod et, t == et' = do e' <- valueExpr mod e
                                                                convertMetaType mod e' t
-    | etvs == tvs, isFunTy et' && isFunTy t' = convertMetaFun (funArgTy et') (splitFunTy t')
+    | length etvs == length tvs, isFunTy et' && isFunTy t', subst <- substFromLists tvs etvs
+    = convertMetaFun (funArgTy $ getMainType et') (splitFunTy $ substTy subst $ getMainType t')
     | otherwise = pprPanic "convertMetaType" (text "can't convert (" <+> ppr e <+> text "::" <+> ppr (exprType e) <+> text ") to type:" <+> ppr t)
     where et = exprType e
           (etvs, et') = splitForAllTys et
@@ -1449,7 +1453,9 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
 
 dictInstance :: ModInfo -> ReplaceInfo -> Type -> Maybe CoreExpr
 dictInstance mod ri t
-    | Just (tc, ts) <- splitTyConApp_maybe t' = if isTyConOfBinder ri tc then Nothing else Just $ mkApps inst (Type <$> ts)
+    | Just (tc, ts) <- splitTyConApp_maybe t' = if isTyConOfBinder ri tc
+                                                then Nothing -- tc is in method signature of class so should not be expanded
+                                                else Just $ mkApps inst (Type <$> ts)
     | isJust (isNumLitTy t') || isJust (isStrLitTy t') = Just inst
     | isFunTy t' = Just inst
     | otherwise = Nothing
