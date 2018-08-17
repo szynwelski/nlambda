@@ -3,20 +3,16 @@
 
 module Test where
 
+import Data.Foldable (toList)
+import Data.List (sort)
+import Data.Semigroup (Semigroup, (<>))
+import GHC.Generics
 import Meta (MetaLevel)
 import Var (Var, Variable)
-import GHC.Generics
-import Data.List (sort)
 
 data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
-
-instance Show a => Show (Wrapper a) where
-    show (Wrapper x) = "W " ++ show x
-
 data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
-
 data Pair a b = Pair a b deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
-
 data List a = Element a (List a) | Empty deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
 
 fromList :: [a] -> List a
@@ -26,6 +22,9 @@ fromList (x:xs) = Element x $ fromList xs
 ----------------------------------------------------------------------------
 -- Test Show
 ----------------------------------------------------------------------------
+
+instance Show a => Show (Wrapper a) where
+    show (Wrapper x) = "W " ++ show x
 
 --test :: Variable -> Variable -> Variable -> [String]
 --test x y z = [show (), show x, show y, show (x,y), show (x,y,z), show ([]::[Int]), show [x], show [x,y], show [x,y,z],
@@ -108,3 +107,36 @@ fromList (x:xs) = Element x $ fromList xs
 --              maximum (Pair x y), maximum (Optional x), maximum $ fromList [x,y,z],
 --              minimum [x,y,z], minimum (Just x), minimum (Right x :: Either Variable Variable),
 --              minimum (Wrapper x), minimum (Pair x y), minimum (Optional x), minimum $ fromList [x,y,z]]
+
+----------------------------------------------------------------------------
+-- Test Semigroup
+----------------------------------------------------------------------------
+
+--test :: Variable -> Variable -> Variable -> [Maybe [Variable]]
+--test x y z = [Nothing <> Nothing, Nothing <> Just [x], Just [x] <> Nothing, Just [x] <> Just [y]]
+
+instance Semigroup a => Semigroup (Wrapper a) where
+    (Wrapper x) <> (Wrapper y) = Wrapper (x <> y)
+
+--test :: Variable -> Variable -> Variable -> Wrapper [Variable]
+--test x y z = Wrapper [x,x] <> Wrapper [y,y]
+
+instance Semigroup a => Semigroup (Optional a) where
+    Null <> b = b
+    a <> Null = a
+    Optional a <> Optional b = Optional (a <> b)
+
+--test :: Variable -> Variable -> Variable -> [Optional [Variable]]
+--test x y z = [Null <> Null, Null <> Optional [x], Optional [x] <> Null, Optional [x] <> Optional [y]]
+
+instance (Semigroup a, Semigroup b) => Semigroup (Pair a b) where
+    (Pair x1 y1) <> (Pair x2 y2) = Pair (x1 <> x2) (y1 <> y2)
+
+--test :: Variable -> Variable -> Variable -> Pair () [Variable]
+--test x y z = Pair () [x] <> Pair () [y,z]
+
+instance Semigroup (List a) where
+    l1 <> l2 = fromList (toList l1 <> toList l2)
+
+--test :: Variable -> Variable -> Variable -> List Variable
+--test x y z = fromList [x] <> fromList [y,z]

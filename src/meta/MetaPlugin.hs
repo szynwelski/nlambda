@@ -13,7 +13,7 @@ import Control.Exception (assert)
 import Control.Monad (liftM, unless)
 import Data.Char (isLetter, isLower)
 import Data.Data (Data)
-import Data.List ((\\), delete, find, findIndex, isInfixOf, isPrefixOf, nub, partition)
+import Data.List ((\\), delete, find, findIndex, intersect, isInfixOf, isPrefixOf, nub, partition)
 import Data.Maybe (fromJust)
 import Data.String.Utils (replace)
 import TypeRep
@@ -107,7 +107,7 @@ pass env onlyShow guts =
 --            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --            modInfo "module" mg_module guts'
-            modInfo "binds" (sortBinds . mg_binds) guts'
+--            modInfo "binds" (sortBinds . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
 --            modInfo "imported" getImportedModules guts'
 --            modInfo "exports" mg_exports guts'
@@ -372,7 +372,10 @@ unionTcMaps (m1, l1) (m2, l2) = (Map.union m1 m2, l1 ++ l2)
 
 newTyCon :: ModInfo -> TyCon -> TyCon
 newTyCon mod tc = Map.findWithDefault metaPrelude tc $ fst $ tcMap mod
-    where metaPrelude = fromMaybe (pprPanic "unknown type constructor: " $ showTyCon tc) (getMetaPreludeTyCon mod tc)
+    where metaPrelude = fromMaybe
+                          (pprPgmError "Unknown type constructor:"
+                            (ppr tc <+> text ("\nProbably module " ++ getModuleStr tc ++ " is not compiled with NLambda Plugin.")))
+                          (getMetaPreludeTyCon mod tc)
 
 mkTyConMap :: ModInfo -> [TyCon] -> TyConMap
 mkTyConMap mod tcs = let ctcs = filter isClassTyCon tcs
@@ -1181,7 +1184,7 @@ convertMetaType mod e t
 
 getMetaPreludeNameMap :: ModInfo -> NameMap
 getMetaPreludeNameMap mod = Map.fromList $ catMaybes metaPairs
-    where fromPrelude e | Imported ss <- gre_prov e = elem "Prelude" $ moduleNameString <$> is_mod <$> is_decl <$> ss
+    where fromPrelude e | Imported ss <- gre_prov e = not $ null $ intersect preludeModules (moduleNameString <$> is_mod <$> is_decl <$> ss)
           fromPrelude e = False
           preludeNames = fmap gre_name $ filter fromPrelude $ concat $ occEnvElts $ mg_rdr_env $ guts mod
           preludeNamesWithTypes = fmap (\n -> if isLower $ head $ getNameStr n then (TyThingId, n) else (TyThingTyCon, n)) preludeNames
@@ -1293,18 +1296,19 @@ addMockedInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
 addMockedInstances mod = addMockedInstancesExcept mod []
 
 addMockedInstancesExcept :: ModInfo -> [PredType] -> CoreExpr -> CoreM CoreExpr
-addMockedInstancesExcept mod exceptTys e = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
-                                              let exceptTys' = substTy subst <$> exceptTys
-                                              let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
-                                              let vvs' = filter (\v -> isTypeVar v || not (forMock exceptTys' $ varType v)) vvs
-                                              let evs' = mockPredOrDict exceptTys' <$> evs
-                                              let e' = mkApps e evs'
-                                              let argTys = init $ getFunTypeParts $ exprType e'
-                                              args <- mkMockedArgs (length argTys) argTys
-                                              let (xs, es) = unzip args
-                                              return $ if all isVar es
-                                                       then mkCoreLams vvs' e'
-                                                       else simpleOptExpr $ mkCoreLams (vvs' ++ xs) $ mkApps e' es
+addMockedInstancesExcept mod exceptTys e
+    = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
+         let exceptTys' = substTy subst <$> exceptTys
+         let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
+         let vvs' = filter (\v -> isTypeVar v || not (forMock exceptTys' $ varType v)) vvs
+         let evs' = mockPredOrDict exceptTys' <$> evs
+         let e' = mkApps e evs'
+         let argTys = init $ getFunTypeParts $ exprType e'
+         args <- mkMockedArgs (length argTys) argTys
+         let (xs, es) = unzip args
+         return $ if all isVar es
+                  then mkCoreLams vvs' e'
+                  else simpleOptExpr $ mkCoreLams (vvs' ++ xs) $ mkApps e' es
           -- isTypeArg checked before call exprType on e
     where forMock exceptTys t = isPredicateForMock mod t && notElem t exceptTys
           mockPredOrDict exceptTys e = if not (isTypeArg e) && forMock exceptTys (exprType e) then mockInstance (exprType e) else e
@@ -1418,7 +1422,11 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                       return (x'', withMocks ri)
           replace (App f e) dis ri = do (f', ri') <- replace f dis ri
                                         (e', ri'') <- replace e dis ri'
-                                        return (mkApp f' e', ri'') -- TODO add mock if f' needs Var + convert type with right Vars order
+                                        let argTy = funArgTy $ exprType f'
+                                        let f'' = if not (isTypeArg e') && isVarPredicate mod argTy && not (isVarPredicate mod $ exprType e')
+                                                  then mkApp f' (mockInstance argTy)
+                                                  else f'
+                                        return (mkApp f'' e', ri'')
           replace (Lam x e) dis ri = do let dis' = if isPredicate mod $ varType x then (varType x, x) : dis else dis
                                         (e', ri') <- replace e dis' ri
                                         return (Lam x e', ri')

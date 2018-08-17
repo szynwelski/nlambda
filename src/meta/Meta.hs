@@ -5,10 +5,12 @@ module Meta where
 import Data.Char (toLower)
 import Data.Foldable (fold, foldl', foldr', toList)
 import Data.List (isSuffixOf)
+import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import Data.Map (Map)
 import Data.Maybe (fromJust, fromMaybe, isJust, isNothing)
+import Data.Semigroup (Semigroup, (<>), sconcat, stimes)
+import qualified Data.Set as Set
 import Data.Set (Set)
 import Data.Ratio (Ratio)
 import GHC.Generics
@@ -575,6 +577,25 @@ class (RealFrac a, Real_nlambda a, Fractional_nlambda a) => RealFrac_nlambda a w
 instance RealFrac_nlambda Float -- Defined in ‘GHC.Float’
 instance RealFrac_nlambda Double -- Defined in ‘GHC.Float’
 
+class Semigroup a => Semigroup_nlambda a where
+  (<>###) :: Var a => WithMeta a -> WithMeta a -> WithMeta a
+  (<>###) = renameAndApply2 (<>)
+  sconcat_nlambda :: WithMeta (NonEmpty a) -> WithMeta a
+  sconcat_nlambda = idOp sconcat
+  stimes_nlambda :: (Var a, Var b, Integral_nlambda b) => WithMeta b -> WithMeta a -> WithMeta a
+  stimes_nlambda = renameAndApply2 stimes
+
+instance Semigroup_nlambda Ordering
+instance Semigroup_nlambda ()
+instance Semigroup_nlambda [a]
+instance Semigroup_nlambda a => Semigroup_nlambda (Maybe a)
+instance Semigroup_nlambda b => Semigroup_nlambda (a -> b)
+instance Semigroup_nlambda (Either a b)
+instance (Semigroup_nlambda a, Semigroup_nlambda b) => Semigroup_nlambda (a, b)
+instance (Semigroup_nlambda a, Semigroup_nlambda b, Semigroup_nlambda c) => Semigroup_nlambda (a, b, c)
+instance (Semigroup_nlambda a, Semigroup_nlambda b, Semigroup_nlambda c, Semigroup_nlambda d) => Semigroup_nlambda (a, b, c, d)
+instance (Semigroup_nlambda a, Semigroup_nlambda b, Semigroup_nlambda c, Semigroup_nlambda d, Semigroup_nlambda e) => Semigroup_nlambda (a, b, c, d, e)
+
 class Show a => Show_nlambda a where
   showsPrec_nlambda :: Int -> WithMeta a -> ShowS
   showsPrec_nlambda n = noMetaResOp (showsPrec n)
@@ -650,7 +671,8 @@ createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions [nominalVar, ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcReal,
-                                 ghcShow, ghcTuple, ghcTypes, dataEither, dataFoldable, dataMaybe, dataOldList, dataSetBase, dataTuple, controlExceptionBase]
+                                 ghcShow, ghcTuple, ghcTypes, dataEither, dataFoldable, dataMaybe, dataOldList, dataSemigroup, dataSetBase,
+                                 dataTuple, controlExceptionBase]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
@@ -772,6 +794,9 @@ dataMaybe = createEquivalentsMap "Data.Maybe"
 dataOldList :: MetaEquivalentMap
 dataOldList = createEquivalentsMap "Data.OldList"
     [(ConvertFun IdOp, ["sort"])]
+
+dataSemigroup :: MetaEquivalentMap
+dataSemigroup = createEquivalentsMap "Data.Semigroup" []
 
 dataSetBase :: MetaEquivalentMap
 dataSetBase = createEquivalentsMap "Data.Set.Base"
