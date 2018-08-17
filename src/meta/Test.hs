@@ -89,7 +89,8 @@ instance Show a => Show (Wrapper a) where
 
 --test :: Variable -> Variable -> Variable -> [[Variable]]
 --test x y z = [f [x,y,z], f (Just x), f (Left x), f (Right x), f (Wrapper x), f (Pair x y), f (Optional x), f Null, f $ fromList [x,y,z]]
---    where f = foldr (:) []
+--    where f :: Foldable t => t a -> [a]
+--          f = foldr (:) []
 
 --test :: Variable -> Variable -> Variable -> [Int]
 --test x y z = [length [x,y,z], length (Just x), length (Left x), length (Right x), length (Wrapper x),
@@ -207,6 +208,6 @@ instance Applicative List where
     pure x = Element x Empty
     fs <*> xs = fromList (toList fs <*> toList xs)
 
-test :: Variable -> Variable -> Variable -> [List Variable]
-test x y z = [pure x, fromList [] <*> fromList [x], fromList [const x] <*> fromList [y, z],
-              fromList [x, x] *> fromList [y, z], fromList [x] <* fromList [y, z]]
+--test :: Variable -> Variable -> Variable -> [List Variable]
+--test x y z = [pure x, fromList [] <*> fromList [x], fromList [const x] <*> fromList [y, z],
+--              fromList [x, x] *> fromList [y, z], fromList [x] <* fromList [y, z]]
