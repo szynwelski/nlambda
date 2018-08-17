@@ -408,10 +408,11 @@ instance Integral_nlambda Word -- Defined in ‘GHC.Real’
 instance Integral_nlambda Integer -- Defined in ‘GHC.Real’
 instance Integral_nlambda Int -- Defined in ‘GHC.Real’
 
+-- intentional excessive Var context for MetaPlugin
 class (Monad m, Applicative_nlambda m) => Monad_nlambda (m :: * -> *) where
-  (>>=###) :: Var (m b) => WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
+  (>>=###) :: (Var b, Var (m b)) => WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
   (>>=###) (WithMeta x m) f = lift $ x >>= (dropMeta . metaFun m f)
-  (>>###) :: (Var (m a), Var (m b)) => WithMeta (m a) -> WithMeta (m b) -> WithMeta (m b)
+  (>>###) :: (Var a, Var b, Var (m a), Var (m b)) => WithMeta (m a) -> WithMeta (m b) -> WithMeta (m b)
   (>>###) = renameAndApply2 (>>)
   return_nlambda :: WithMeta a -> WithMeta (m a)
   return_nlambda = idOp return

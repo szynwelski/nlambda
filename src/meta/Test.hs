@@ -211,3 +211,33 @@ instance Applicative List where
 --test :: Variable -> Variable -> Variable -> [List Variable]
 --test x y z = [pure x, fromList [] <*> fromList [x], fromList [const x] <*> fromList [y, z],
 --              fromList [x, x] *> fromList [y, z], fromList [x] <* fromList [y, z]]
+
+----------------------------------------------------------------------------
+-- Test Monad
+----------------------------------------------------------------------------
+
+instance Monad Wrapper where
+    Wrapper x >>= f = f x
+
+--test :: Variable -> Variable -> Variable -> [Wrapper Variable]
+--test x y z = [Wrapper x >>= Wrapper, Wrapper x >> Wrapper y, return z]
+
+instance Monad Optional where
+    (Optional x) >>= k = k x
+    Null  >>= _ = Null
+    (>>) = (*>)
+    fail _ = Null
+
+--test :: Variable -> Variable -> Variable -> [Optional Variable]
+--test x y z = [Optional x >>= Optional, Null >>= Optional, Optional x >> Optional y, Optional z >> Null,
+--              (Null :: Optional Variable) >> Optional x, (Null :: Optional Variable) >> Null, return x]
+
+-- FIXME
+--instance (Semigroup a, Monoid a) => Monad (Pair a) where
+--    Pair u a >>= k = case k a of Pair v b -> Pair (u <> v) b
+
+instance Monad List where
+    xs >>= f = fromList (toList xs >>= toList . f)
+
+--test :: Variable -> Variable -> Variable -> [List Variable]
+--test x y z = [do {x' <- Empty; return x'}, do {x' <- fromList [x,y,z]; return x'}, do {x' <- fromList [x,y,z]; return z}]

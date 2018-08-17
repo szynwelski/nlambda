@@ -438,7 +438,7 @@ getClassInstance :: ModInfo -> Class -> Type -> CoreExpr
 getClassInstance mod cl t
     | Just v <- getMetaVarMaybe mod name = v -- for instances in Meta module
     | Just v <- listToMaybe $ filter ((== name) . getNameStr) (allVars mod) = Var v -- for instances in user modules
-    | otherwise = pgmError ("NLambda plugin requires " ++ className ++ " instance for type: " ++ tcName)
+    | otherwise = pgmError ("NLambda plugin requires " ++ className ++ " instance for type: " ++ tcName ++ " (from " ++ getModuleStr tc ++ ")")
     where Just tc = tyConAppTyCon_maybe t
           tcName = getNameStr tc
           className = getNameStr cl
