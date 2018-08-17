@@ -488,8 +488,8 @@ getClassOpImpls mod = concatMap go . flattenBinds
 -- Binds
 ----------------------------------------------------------------------------------------
 
-sortBinds :: CoreProgram -> [(CoreBndr, CoreExpr)]
-sortBinds bs = sortWith (getNameStr . fst) (flattenBinds bs)
+sortBinds :: CoreProgram -> CoreProgram
+sortBinds = fmap (uncurry NonRec) . sortWith (getNameStr . fst) . flattenBinds
 
 getBindsVars :: ModGuts -> [Var]
 getBindsVars = bindersOfBinds . mg_binds
