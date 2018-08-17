@@ -270,8 +270,9 @@ mkMapWithVars :: ModInfo -> [Var] -> VarMap
 mkMapWithVars mod vars = (Map.fromList $ zip varsWithPairs $ fmap newVar varsWithPairs, nub (varsWithoutPairs ++ varsFromExprs))
     where (varsWithPairs, varsWithoutPairs) = partition (not . isIgnoreImportType mod . varType) vars
           varsFromExprs = getAllVarsFromBinds mod \\ varsWithPairs
-          newVar v = let v' = mkExportedLocalVar (idDetails v) (newName mod $ varName v) (changeType mod $ varType v) (newIdInfo $ idInfo v)
-                     in if isExportedId v then setIdExported v' else setIdNotExported v'
+          newVar v = let v' = mkExportedLocalVar (newIdDetails v) (newName mod $ varName v) (changeType mod $ varType v) (newIdInfo $ idInfo v)
+                      in if isExportedId v then setIdExported v' else setIdNotExported v'
+          newIdDetails v = if isDataConWorkId v then coVarDetails else idDetails v
           newIdInfo old = vanillaIdInfo `setInlinePragInfo` (inlinePragInfo old) -- TODO maybe rewrite also other info
 
 getAllVarsFromBinds :: ModInfo -> [Var]
