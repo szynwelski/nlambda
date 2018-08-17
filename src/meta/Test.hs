@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass, DeriveFunctor #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass, DeriveFunctor, DeriveFoldable #-}
 
 module Test where
 
@@ -8,16 +8,16 @@ import Var (Var, Variable)
 import GHC.Generics
 import Data.List (sort)
 
-data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor)
+data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
 
 instance Show a => Show (Wrapper a) where
     show (Wrapper x) = "W " ++ show x
 
-data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor)
+data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
 
-data Pair a b = Pair a b deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor)
+data Pair a b = Pair a b deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
 
-data List a = Element a (List a) | Empty deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor)
+data List a = Element a (List a) | Empty deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
 
 fromList :: [a] -> List a
 fromList [] = Empty
@@ -81,5 +81,30 @@ fromList (x:xs) = Element x $ fromList xs
 --test :: Variable -> Variable -> Variable -> [Pair Variable Variable]
 --test x y z = [fmap id (Pair x y), fmap (const z) (Pair x y), fmap (const z) (Pair x 1)]
 
-test :: Variable -> Variable -> Variable -> [List Variable]
-test x y z = [fmap id (fromList [x,y,z]), fmap (const x) (fromList [x,y,z]), y <$ (fromList [x,y,z])]
+--test :: Variable -> Variable -> Variable -> [List Variable]
+--test x y z = [fmap id (fromList [x,y,z]), fmap (const x) (fromList [x,y,z]), y <$ (fromList [x,y,z])]
+
+----------------------------------------------------------------------------
+-- Test Foldable
+----------------------------------------------------------------------------
+
+--test :: Variable -> Variable -> Variable -> [[Variable]]
+--test x y z = [f [x,y,z], f (Just x), f (Left x), f (Right x), f (Wrapper x), f (Pair x y), f (Optional x), f Null, f $ fromList [x,y,z]]
+--    where f = foldr (:) []
+
+--test :: Variable -> Variable -> Variable -> [Int]
+--test x y z = [length [x,y,z], length (Just x), length (Left x), length (Right x), length (Wrapper x),
+--              length (Pair x y), length (Optional x), length Null, length $ fromList [x,y,z]]
+
+
+--test :: Variable -> Variable -> Variable -> [Bool]
+--test x y z = [null [x,y,z], null (Just x), null (Left x), null (Right x), null (Wrapper x),
+--              null (Pair x y), null (Optional x), null Null, null $ fromList [x,y,z],
+--              elem y [x,y,z], elem y (Just x), elem y (Left x), elem y (Right x :: Either Variable Variable),
+--              elem y (Wrapper x), elem y (Pair x y), elem y (Optional x), elem y Null, elem y $ fromList [x,y,z]]
+
+--test :: Variable -> Variable -> Variable -> [Variable]
+--test x y z = [maximum [x,y,z], maximum (Just x), maximum (Right x), maximum (Wrapper x),
+--              maximum (Pair x y), maximum (Optional x), maximum $ fromList [x,y,z],
+--              minimum [x,y,z], minimum (Just x), minimum (Right x :: Either Variable Variable),
+--              minimum (Wrapper x), minimum (Pair x y), minimum (Optional x), minimum $ fromList [x,y,z]]
