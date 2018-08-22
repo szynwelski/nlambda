@@ -700,6 +700,9 @@ getExpr map v = Map.findWithDefault (pprPanic "no expression for variable: " (pp
 insertVarExpr :: Var -> Var -> ExprMap -> ExprMap
 insertVarExpr v v' = Map.insert v (Var v')
 
+insertExpr :: Var -> CoreExpr -> ExprMap -> ExprMap
+insertExpr = Map.insert
+
 ----------------------------------------------------------------------------------------
 -- Expressions
 ----------------------------------------------------------------------------------------
@@ -732,10 +735,13 @@ changeExpr mod e = newExpr (mkExprMap mod) e
                                             e'' <- if isWithMetaType mod $ exprType e'
                                                    then valueExpr mod e'
                                                    else return e'
+                                            m <- if isWithMetaType mod $ exprType e'
+                                                   then metaExpr mod e'
+                                                   else return $ emptyMetaV mod
                                             b' <- changeBindTypeUnderWithMetaAndUniq mod b
-                                            m <- metaExpr mod e'
+                                            be <- createExpr mod (Var b') m
                                             let t' = changeType mod t
-                                            as' <- mapM (newAlternative (insertVarExpr b b' eMap) m t') as
+                                            as' <- mapM (newAlternative (insertExpr b be eMap) m t') as
                                             return $ Case e'' b' t' as'
           newExpr eMap (Cast e c) = do e' <- newExpr eMap e
                                        return $ Cast e' (changeCoercion mod c)
@@ -1064,6 +1070,7 @@ noMetaV mod = getMetaVar mod "noMeta"
 metaV mod = getMetaVar mod "meta"
 valueV mod = getMetaVar mod "value"
 createV mod = getMetaVar mod "create"
+emptyMetaV mod = getMetaVar mod "emptyMeta"
 idOpV mod = getMetaVar mod "idOp"
 renameAndApplyV mod n = getMetaVar mod ("renameAndApply" ++ show n)
 withMetaC mod = getTyCon mod "WithMeta"

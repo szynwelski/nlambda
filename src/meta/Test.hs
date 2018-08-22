@@ -3,8 +3,10 @@
 
 module Test where
 
+import Data.Either (isLeft, isRight)
 import Data.Foldable (toList)
 import Data.List (sort)
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Data.Semigroup (Semigroup, (<>))
 import GHC.Generics
 import Meta (MetaLevel)
@@ -246,5 +248,26 @@ instance Monad List where
 -- Test Traversable
 ----------------------------------------------------------------------------
 
-test :: Variable -> Variable -> Variable -> [Wrapper (Optional Variable)]
-test x y z = [traverse Wrapper (Optional x), mapM Wrapper (Optional x), sequenceA (Optional (Wrapper y)), sequence (Optional (Wrapper y)), sequence Null]
+--test :: Variable -> Variable -> Variable -> [Wrapper (Optional Variable)]
+--test x y z = [traverse Wrapper (Optional x), mapM Wrapper (Optional x), sequenceA (Optional (Wrapper y)), sequence (Optional (Wrapper y)), sequence Null]
+
+----------------------------------------------------------------------------
+-- Test Prelude functions
+----------------------------------------------------------------------------
+
+--test :: Variable -> Variable -> Variable -> [Variable]
+--test x y z = [id $ x, const x $! y, [z]!!0, (id . const x) y, seq x x, head [x,z], last [y], either id id (Left x), fst (flip (,) x y), curry snd x y,
+--              fromMaybe x $ lookup x [(y,z)], fromJust $ lookup x [(x,z)], fromMaybe x Nothing]
+
+--test :: Variable -> Variable -> Variable -> [[Variable]]
+--test x y z = [tail $ concat [[x]], concatMap (:[]) [x], take 4 $ drop 10 $ cycle [y], dropWhile (const True) [z], filter (const True) [x], init [y],
+--              reverse $ replicate 5 z, fst $ splitAt 4 $ repeat x, scanl const x [y], scanl1 const [x], scanr const x [y], scanr1 const [x],
+--              fst $ span (const True) [x,y,z], takeWhile (const False) $ repeat x, map id [x,y], snd $ unzip $ zip [x,y][z],
+--              (\(x,_,_) -> x) $ unzip3 $ zip3 [x][y][z], catMaybes $ filter isJust [Just x, Nothing]]
+
+--test:: Variable -> Variable -> Variable -> [Bool]
+--test x y z = [x == x && x /= x, x == y && x /= y, x == x || x /= x, x == y || x /= y, and [x == x, x /= y], or [x == y, x /= y], all (== x) [y],
+--              any (== x) [], elem x [x], notElem x [x], isLeft (if x == x then Left x else Right y), isRight (if x == y then Left x else Right y)]
+
+--test:: Variable -> Variable -> Variable -> Wrapper Variable
+--test x y z = id id (Wrapper x)
