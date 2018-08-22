@@ -624,12 +624,13 @@ instance Show_nlambda Float -- Defined in ‘GHC.Float’
 instance Show_nlambda Double -- Defined in ‘GHC.Float’
 instance Show_nlambda Variable -- Defined in ‘Var’
 
+-- intentional excessive Var context for MetaPlugin
 class (Traversable t, Functor_nlambda t, Foldable_nlambda t) => Traversable_nlambda (t :: * -> *) where
-  traverse_nlambda :: (Var (t b), Var (f (t b)), Applicative_nlambda f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
+  traverse_nlambda :: (Var b, Var (t b), Var (f (t b)), Applicative_nlambda f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
   traverse_nlambda f (WithMeta x m) = lift $ fmap lift $ traverse (dropMeta . metaFun m f) x
   sequenceA_nlambda :: Applicative_nlambda f => WithMeta (t (f a)) -> WithMeta (f (t a))
   sequenceA_nlambda = idOp sequenceA
-  mapM_nlambda :: (Var (t b), Var (m (t b)), Monad_nlambda m) => (WithMeta a -> WithMeta (m b)) -> WithMeta (t a) -> WithMeta (m (t b))
+  mapM_nlambda :: (Var b, Var (t b), Var (m (t b)), Monad_nlambda m) => (WithMeta a -> WithMeta (m b)) -> WithMeta (t a) -> WithMeta (m (t b))
   mapM_nlambda f (WithMeta x m) = lift $ fmap lift $ mapM (dropMeta . metaFun m f) x
   sequence_nlambda :: Monad_nlambda m => WithMeta (t (m a)) -> WithMeta (m (t a))
   sequence_nlambda = idOp sequence
@@ -674,7 +675,7 @@ createEquivalentsMap mod = Map.singleton mod . Map.fromList
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions [nominalVar, ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcReal,
                                  ghcShow, ghcTuple, ghcTypes, dataEither, dataFoldable, dataMaybe, dataOldList, dataSemigroup, dataSetBase,
-                                 dataTuple, controlExceptionBase]
+                                 dataTraverable, dataTuple, controlExceptionBase]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
@@ -822,6 +823,9 @@ set_foldr_nlambda f x (WithMeta s m) = foldr_nlambda f x $ create (Set.toAscList
 
 set_foldl_nlambda :: (WithMeta a -> WithMeta b -> WithMeta a) -> WithMeta a -> WithMeta (Set b) -> WithMeta a
 set_foldl_nlambda f x (WithMeta s m) = foldl_nlambda f x $ create (Set.toAscList s) m
+
+dataTraverable :: MetaEquivalentMap
+dataTraverable = createEquivalentsMap "Data.Traversable" []
 
 dataTuple :: MetaEquivalentMap
 dataTuple = createEquivalentsMap "Data.Tuple"

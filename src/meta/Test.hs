@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass, DeriveFunctor, DeriveFoldable #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass, DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 
 module Test where
 
@@ -10,8 +10,8 @@ import GHC.Generics
 import Meta (MetaLevel)
 import Var (Var, Variable)
 
-data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
-data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
+data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable, Traversable)
+data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable, Traversable)
 data Pair a b = Pair a b deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
 data List a = Element a (List a) | Empty deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable)
 
@@ -241,3 +241,10 @@ instance Monad List where
 
 --test :: Variable -> Variable -> Variable -> [List Variable]
 --test x y z = [do {x' <- Empty; return x'}, do {x' <- fromList [x,y,z]; return x'}, do {x' <- fromList [x,y,z]; return z}]
+
+----------------------------------------------------------------------------
+-- Test Traversable
+----------------------------------------------------------------------------
+
+test :: Variable -> Variable -> Variable -> [Wrapper (Optional Variable)]
+test x y z = [traverse Wrapper (Optional x), mapM Wrapper (Optional x), sequenceA (Optional (Wrapper y)), sequence (Optional (Wrapper y)), sequence Null]
