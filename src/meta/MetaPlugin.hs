@@ -472,14 +472,17 @@ findSuperClass t (e:es)
 findSuperClass t [] = Nothing
 
 newClassInstances :: ModInfo -> [ClsInst] -> [ClsInst]
-newClassInstances mod is = new <$> is
-    where new i = let (tyVars, cls, tys) = instanceHead i
-                  in mkImportedInstance
-                       (newName mod $ is_cls_nm i)
-                       (instanceRoughTcs i)
-                       (newVar mod $ instanceDFunId i)
-                       (is_flag i)
-                       (is_orphan i)
+newClassInstances mod is = catMaybes $ fmap new is
+    where new i = let dFunId = instanceDFunId i
+                      nm = is_cls_nm i
+                  in if varMapMember mod dFunId && nameMember mod nm
+                     then Just $ mkImportedInstance
+                                   (newName mod nm)
+                                   (instanceRoughTcs i)
+                                   (newVar mod dFunId)
+                                   (is_flag i)
+                                   (is_orphan i)
+                     else Nothing
 
 ----------------------------------------------------------------------------------------
 -- Binds
