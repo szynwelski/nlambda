@@ -573,6 +573,7 @@ changeTypeAndApply mod e = mkApp e . Type . change
             | (Var v) <- e, isPrimOpId v = t -- e.g. tagToEnum#
             | isFunTy t, isTyVarNested tyVar eTy = changeTypeOrSkip mod False t
             | isFunTy t = changeType mod t
+            | isTyVarInPredicate mod tyVar eTy = t
             | not $ isTyVarWrappedByWithMeta mod tyVar eTy = changeType mod t
             | otherwise = t
 
@@ -586,6 +587,12 @@ getFunTypeParts t
     | not $ isFunTy t = [t]
     | otherwise = argTys ++ [resTy]
     where (argTys, resTy) = splitFunTys t
+
+isTyVarInPredicate :: ModInfo -> TyVar -> Type -> Bool
+isTyVarInPredicate mod tv = any isIn . getAllPreds
+    where isIn p
+            | Just args <- tyConAppArgs_maybe p = any (elemVarSet tv . tyVarsOfType) args
+            | otherwise = False
 
 isTyVarWrappedByWithMeta :: ModInfo -> TyVar -> Type -> Bool
 isTyVarWrappedByWithMeta mod tv = all wrappedByWithMeta . getFunTypeParts
