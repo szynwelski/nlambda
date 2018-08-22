@@ -14,6 +14,7 @@ import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.String.Utils (replace)
 import GhcPlugins hiding (mkApps, mkLocalVar, substTy)
+import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, is_cls_nm, is_flag, is_orphan, mkImportedInstance)
 import Kind (defaultKind, isOpenTypeKind)
 import Meta
 import MkId (mkDataConWorkId, mkDictSelRhs)
@@ -81,14 +82,7 @@ pass env onlyShow guts =
             let varMap = unionVarMaps modVarMap impVarMap
             let mod'' = mod' {tcMap = tcMap, varMap = varMap}
 
-            guts' <- if onlyShow
-                     then return guts
-                     else do binds <- newBinds mod'' (getDataCons guts) (mg_binds guts)
-                             binds' <- replaceMocksByInstancesInProgram mod'' (checkCoreProgram binds)
-                             let exps = newExports mod'' (mg_exports guts)
-                             return $ guts {mg_tcs = mg_tcs guts ++ Map.elems (tcsWithPairs mod''),
-                                            mg_binds = mg_binds guts ++ checkCoreProgram binds',
-                                            mg_exports = mg_exports guts ++ exps}
+            guts' <- if onlyShow then return guts else newGuts mod'' guts
 
             -- show info
 --            putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
@@ -137,6 +131,22 @@ instance Outputable ModInfo where
 showMap :: String -> Map a a -> (a -> SDoc) -> SDoc
 showMap header map showElem = text (header ++ ":\n")
                               <+> (vcat (concatMap (\(x,y) -> [showElem x <+> text "->" <+> showElem y]) $ Map.toList map))
+
+----------------------------------------------------------------------------------------
+-- Guts
+----------------------------------------------------------------------------------------
+
+newGuts :: ModInfo -> ModGuts -> CoreM ModGuts
+newGuts mod guts = do binds <- newBinds mod (getDataCons guts) (mg_binds guts)
+                      binds' <- replaceMocksByInstancesInProgram mod (checkCoreProgram binds)
+                      let exps = newExports mod (mg_exports guts)
+                      let usedNames = newUsedNames mod (mg_used_names guts)
+                      let clsInsts = newClassInstances mod (mg_insts guts)
+                      return $ guts {mg_tcs = mg_tcs guts ++ Map.elems (tcsWithPairs mod),
+                                     mg_binds = mg_binds guts ++ checkCoreProgram binds',
+                                     mg_exports = mg_exports guts ++ exps,
+                                     mg_insts = mg_insts guts ++ clsInsts,
+                                     mg_used_names = usedNames}
 
 ----------------------------------------------------------------------------------------
 -- Annotation
@@ -211,6 +221,11 @@ getModuleStr = getModuleNameStr . nameModule . getName
 
 getModuleNameStr :: Module -> String
 getModuleNameStr = moduleNameString . moduleName
+
+newUsedNames :: ModInfo -> NameSet -> NameSet
+newUsedNames mod ns = mkNameSet (nms ++ nms')
+    where nms = nameSetElems ns
+          nms' = fmap (newName mod) $ filter (nameMember mod) nms
 
 ----------------------------------------------------------------------------------------
 -- Data constructors
@@ -361,6 +376,9 @@ newTyCon mod tc = Map.findWithDefault metaPrelude tc $ fst $ tcMap mod
                             (ppr tc <+> text ("\nProbably module " ++ getModuleStr tc ++ " is not compiled with NLambda Plugin.")))
                           (getMetaPreludeTyCon mod tc)
 
+newClass :: ModInfo -> Class -> Class
+newClass mod = fromJust . tyConClass_maybe . newTyCon mod . classTyCon
+
 mkTyConMap :: ModInfo -> [TyCon] -> TyConMap
 mkTyConMap mod tcs = let ctcs = filter isClassTyCon tcs
                          ctcs' = fmap (newTyConClass mod {tcMap = tcMap}) ctcs
@@ -452,6 +470,16 @@ findSuperClass t (e:es)
       in find (eqType t . exprType) es' <|> findSuperClass t (es ++ es')
     | otherwise = findSuperClass t es
 findSuperClass t [] = Nothing
+
+newClassInstances :: ModInfo -> [ClsInst] -> [ClsInst]
+newClassInstances mod is = new <$> is
+    where new i = let (tyVars, cls, tys) = instanceHead i
+                  in mkImportedInstance
+                       (newName mod $ is_cls_nm i)
+                       (instanceRoughTcs i)
+                       (newVar mod $ instanceDFunId i)
+                       (is_flag i)
+                       (is_orphan i)
 
 ----------------------------------------------------------------------------------------
 -- Binds
