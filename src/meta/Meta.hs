@@ -796,7 +796,7 @@ dataMaybe = createEquivalentsMap "Data.Maybe"
 
 dataOldList :: MetaEquivalentMap
 dataOldList = createEquivalentsMap "Data.OldList"
-    [(ConvertFun IdOp, ["sort"])]
+    [(ConvertFun IdOp, ["nub", "sort"])]
 
 dataSemigroup :: MetaEquivalentMap
 dataSemigroup = createEquivalentsMap "Data.Semigroup" []
@@ -838,4 +838,4 @@ uncurry_nlambda :: (WithMeta a -> WithMeta b -> WithMeta c) -> WithMeta (a, b) -
 uncurry_nlambda f p = f (idOp fst p) (idOp snd p)
 
 controlExceptionBase = createEquivalentsMap "Control.Exception.Base"
-    [(SameOp, ["patError", "noMethodBindingError"])]
+    [(SameOp, ["noMethodBindingError", "nonExhaustiveGuardsError", "patError"])]

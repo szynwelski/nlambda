@@ -568,16 +568,13 @@ changePredType mod t | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc
 changePredType mod t = t
 
 changeTypeAndApply :: ModInfo -> CoreExpr -> Type -> CoreExpr
-changeTypeAndApply mod e = mkApp e . Type . change
+changeTypeAndApply mod e t
+    | otherwise = (mkApp e . Type . change) t
     where (tyVars, eTy) = splitForAllTys $ exprType e
           tyVar = headPanic "changeTypeAndApply" (pprE "e" e) tyVars
           change t
             | isFunTy $ typeKind t = t
-            | (Var v) <- e, isPrimOpId v = t -- e.g. tagToEnum#
-            | isFunTy t, isTyVarNested tyVar eTy = changeTypeOrSkip mod False t
-            | isFunTy t = changeType mod t
-            | isTyVarInPredicate mod tyVar eTy = t
-            | not $ isTyVarWrappedByWithMeta mod tyVar eTy = changeType mod t
+            | isFunTy t = changeTypeOrSkip mod (not $ isTyVarNested tyVar eTy) t
             | otherwise = t
 
 getMainType :: Type -> Type
@@ -748,6 +745,7 @@ insertExpr = Map.insert
 changeExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 changeExpr mod e = newExpr (mkExprMap mod) e
     where newExpr :: ExprMap -> CoreExpr -> CoreM CoreExpr
+--          newExpr eMap e | pprTrace "newExpr" (pprE "e" e) False = undefined
           newExpr eMap e | noAtomsSubExpr e = replaceVars mod eMap e
           newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod v
@@ -1201,13 +1199,19 @@ isMetaEquivalent mod v = case metaEquivalent (getModuleStr v) (getNameStr v) of
 getMetaEquivalent :: ModInfo -> Var -> CoreM CoreExpr
 getMetaEquivalent mod v
     = case metaEquivalent (getModuleStr v) (getNameStr v) of
-        OrigFun -> return $ Var v
+        OrigFun -> addWithMetaTypes mod $ Var v
         MetaFun name -> addMockedInstances mod $ getMetaVar mod name
         MetaConvertFun name -> do convertFun <- addMockedInstances mod $ getMetaVar mod name
                                   applyExpr convertFun (Var v)
         NoEquivalent -> addMockedInstances mod $ Var $ fromMaybe
                           (pprPgmError "No meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleStr v)))
                           (getDefinedMetaEquivalentVar mod v)
+      where addWithMetaTypes mod e = do (vars, _) <- splitTypeToExprVars $ exprType e
+                                        let tvs = filter isTV vars
+                                        let args = exprVarsToVars tvs
+                                        let eArgs = fmap (Type . withMetaType mod . mkTyVarTy) args
+                                        return $ mkCoreLams args $ mkApps e eArgs
+
 
 ----------------------------------------------------------------------------------------
 -- Mock class instances
