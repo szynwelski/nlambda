@@ -5,7 +5,7 @@ module Test where
 
 import Data.Either (isLeft, isRight)
 import Data.Foldable (toList)
-import Data.List (sort)
+import Data.List (nub, sort)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Data.Semigroup (Semigroup, (<>))
 import GHC.Generics
@@ -271,3 +271,48 @@ instance Monad List where
 
 --test:: Variable -> Variable -> Variable -> Wrapper Variable
 --test x y z = id id (Wrapper x)
+
+----------------------------------------------------------------------------
+-- Test user classes
+----------------------------------------------------------------------------
+
+class Vars a where
+    vars :: a -> [Variable]
+
+instance Vars Variable where
+    vars v = [v]
+
+instance Vars a => Vars (Wrapper a) where
+    vars (Wrapper x) = vars x
+
+instance Vars a => Vars (Optional a) where
+    vars (Optional x) = vars x
+    vars Null = []
+
+instance (Vars a, Vars b) => Vars (Pair a b) where
+    vars (Pair x y) = nub $ vars x ++ vars y
+
+instance Vars a => Vars (List a) where
+    vars (Element x xs) = nub $ vars x ++ vars xs
+    vars Empty = []
+
+--test :: Variable -> Variable -> Variable -> [[Variable]]
+--test x y z = [vars x, vars y, vars z, vars (Wrapper x), vars (Optional x), vars (Null::Optional Variable), vars (Pair x y), vars $ fromList [x,y,z]]
+
+class Fun f where
+    fun :: (a -> b) -> f a -> f b
+
+instance Fun Wrapper where
+    fun f (Wrapper x) = Wrapper (f x)
+
+instance Fun Optional where
+    fun f (Optional x) = Optional (f x)
+    fun f Null = Null
+
+instance Fun List where
+    fun f (Element x xs) = Element (f x) (fun f xs)
+    fun f Empty = Empty
+
+--test :: Variable -> Variable -> Variable -> [[Variable]]
+--test x y z = [vars $ fun id $ Wrapper x, vars $ fun (const y) $ Optional x, vars $ fun id (Null::Optional Variable),
+--              vars $ fun id $ fromList [x,y,z], vars $ fun (const x) $ fromList [x,y,z]]
