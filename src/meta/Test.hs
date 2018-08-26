@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fplugin MetaPlugin #-}
-{-# LANGUAGE DeriveGeneric, DeriveAnyClass, DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
+{-# LANGUAGE BangPatterns, DeriveAnyClass, DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable #-}
 
 module Test where
 
@@ -316,3 +316,33 @@ instance Fun List where
 test39 :: Variable -> Variable -> Variable -> [[Variable]]
 test39 x y z = [vars $ fun id $ Wrapper x, vars $ fun (const y) $ Optional x, vars $ fun id (Null::Optional Variable),
                 vars $ fun id $ fromList [x,y,z], vars $ fun (const x) $ fromList [x,y,z]]
+
+----------------------------------------------------------------------------
+-- Test recursive functions
+----------------------------------------------------------------------------
+
+fib1 :: (Eq a, Num a) => a -> a
+fib1 0 = 0
+fib1 1 = 1
+fib1 n = fib1 (n - 1) + fib1 (n - 2)
+
+fib2 :: (Eq a, Integral a, Num a) => a -> a
+fib2 0 = 0
+fib2 1 = 1
+fib2 n | even n         = f1 * (f1 + 2 * f2)
+       | n `mod` 4 == 1 = (2 * f1 + f2) * (2 * f1 - f2) + 2
+       | otherwise      = (2 * f1 + f2) * (2 * f1 - f2) - 2
+    where k = n `div` 2
+          f1 = fib2 k
+          f2 = fib2 (k-1)
+
+fib3 :: (Eq a, Num a) => a -> a
+fib3 n = go n (0,1)
+    where go !n (!a, !b) | n == 0 = a
+                         | otherwise = go (n-1) (b, a+b)
+
+test40 :: Variable -> Variable -> Variable -> [Int]
+test40 x y z = [fib1 20, fib2 20, fib3 20]
+
+test41 :: Variable -> Variable -> Variable -> [Variable]
+test41 x y z = let list = x : y : z : list in take 10 list
