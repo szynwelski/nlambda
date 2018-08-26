@@ -18,7 +18,7 @@ import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, is_cls_
 import Kind (defaultKind, isOpenTypeKind)
 import Meta
 import MkId (mkDataConWorkId, mkDictSelRhs)
-import Pair (pFst)
+import Pair (pFst, pSnd)
 import TypeRep
 import TcType (tcSplitSigmaTy, tcSplitPhiTy)
 import Unify (tcUnifyTy)
@@ -281,7 +281,7 @@ mkMapWithVars mod vars = (Map.fromList $ zip varsWithPairs $ fmap newVar varsWit
                          v' = mkExportedLocalVar
                                 (newIdDetails v)
                                 (newName mod $ varName v)
-                                (if isUserClassOpId mod v then addVarContextForHigerOrder mod t else t)
+                                (maybe t (\c -> addVarContextForHigherOrderClass mod c t) (userClassOpId mod v))
                                 (newIdInfo $ idInfo v)
                      in if isExportedId v then setIdExported v' else setIdNotExported v'
           newIdDetails v = if isDataConWorkId v then coVarDetails else idDetails v -- TODO rewrite IdDetails
@@ -307,11 +307,6 @@ mkPredVar (cls, tys) = do uniq <- getUniqueM
 isVar :: CoreExpr -> Bool
 isVar (Var _) = True
 isVar _ = False
-
-isUserClassOpId :: ModInfo -> Id -> Bool
-isUserClassOpId mod v
-    | Just cls <- isClassOpId_maybe v = mg_module (guts mod) == nameModule (getName cls)
-    | otherwise = False
 
 ----------------------------------------------------------------------------------------
 -- Imports
@@ -380,6 +375,9 @@ allTcs :: ModInfo -> [TyCon]
 allTcs mod = snd tcm ++ Map.keys (fst tcm) ++ Map.elems (fst tcm)
     where tcm = tcMap mod
 
+allClasses :: ModInfo -> [Class]
+allClasses mod = [c | Just c <- tyConClass_maybe <$> allTcs mod]
+
 unionTcMaps :: TyConMap -> TyConMap -> TyConMap
 unionTcMaps (m1, l1) (m2, l2) = (Map.union m1 m2, l1 ++ l2)
 
@@ -401,7 +399,7 @@ mkTyConMap mod tcs = let ctcs = filter isClassTyCon tcs
 
 newTyConClass :: ModInfo -> TyCon -> TyCon
 newTyConClass mod tc = let tc' = createTyConClass mod cls rhs tc
-                           rhs = createAlgTyConRhs mod $ algTyConRhs tc
+                           rhs = createAlgTyConRhs mod cls $ algTyConRhs tc
                            cls = createClass mod tc' $ fromJust $ tyConClass_maybe tc
                        in tc'
 
@@ -415,15 +413,15 @@ createTyConClass mod cls rhs tc = mkClassTyCon
                                     cls
                                     (if isRecursiveTyCon tc then Recursive else NonRecursive)
 
-createAlgTyConRhs :: ModInfo -> AlgTyConRhs -> AlgTyConRhs
-createAlgTyConRhs mod rhs = create rhs
+createAlgTyConRhs :: ModInfo -> Class -> AlgTyConRhs -> AlgTyConRhs
+createAlgTyConRhs mod cls rhs = create rhs
     where create (AbstractTyCon b) = AbstractTyCon b
           create DataFamilyTyCon = DataFamilyTyCon
           create (DataTyCon dcs isEnum) = DataTyCon (createDataCon mod <$> dcs) isEnum
           create (NewTyCon dc ntRhs ntEtadRhs ntCo) = NewTyCon (createDataCon mod dc)
                                                                (changeType mod ntRhs)
                                                                (changeType mod <$> ntEtadRhs)
-                                                               (changeUnbranchedCoAxiom mod ntCo)
+                                                               (changeUnbranchedCoAxiom mod cls ntCo)
 
 createDataCon :: ModInfo -> DataCon -> DataCon
 createDataCon mod dc =
@@ -500,6 +498,15 @@ newClassInstances mod is = catMaybes $ fmap new is
                                    (is_flag i)
                                    (is_orphan i)
                      else Nothing
+
+userClassOpId :: ModInfo -> Id -> Maybe Class
+userClassOpId mod v
+    | Just cls <- isClassOpId_maybe v, inCurrentModule cls = Just cls
+    | isPrefixOf classOpPrefix (getNameStr v) = lookup (getNameStr v) userClassMethods
+    | otherwise = Nothing
+    where classOpPrefix = "$c"
+          userClassMethods = concatMap (\c -> fmap (\m -> (classOpPrefix ++ getNameStr m, c)) (classMethods c)) $ filter inCurrentModule $ allClasses mod
+          inCurrentModule cls = mg_module (guts mod) == nameModule (getName cls)
 
 ----------------------------------------------------------------------------------------
 -- Binds
@@ -590,13 +597,12 @@ changeTypeAndApply mod e t
           tyVar = headPanic "changeTypeAndApply" (pprE "e" e) tyVars
           change t = if isFunTy t && isMonoType t then changeTypeOrSkip mod (not $ isTyVarNested tyVar eTy) t else t
 
-addVarContextForHigerOrder :: ModInfo -> Type -> Type
-addVarContextForHigerOrder mod t
+addVarContextForHigherOrderClass :: ModInfo -> Class -> Type -> Type
+addVarContextForHigherOrderClass mod cls t
+    | all isMonoType $ mkTyVarTys $ classTyVars cls = t
     | null tvs = t
-    | allTvsMono = t
-    | otherwise = mkForAllTys tvs $ mkFunTys (nub $ preds ++ preds') (addVarContextForHigerOrder mod t')
+    | otherwise = mkForAllTys tvs $ mkFunTys (nub $ preds ++ preds') (addVarContextForHigherOrderClass mod cls t')
     where (tvs, preds, t') = tcSplitSigmaTy t
-          allTvsMono = all (isMonoType . varType) $ varSetElems $ tyVarsOfType t'
           preds' = fmap (varPredType mod) $ filter isMonoType $ mkTyVarTys $ filter (isTyVarWrappedByWithMeta mod t) tvs
 
 getMainType :: Type -> Type
@@ -896,7 +902,7 @@ changeCoercion mod c = change True c
           change topLevel (TyConAppCo r tc cs) = TyConAppCo r (newTyCon mod tc) (change False <$> cs)
           change topLevel (AppCo c1 c2) = AppCo (change False c1) (change False c2)
           change topLevel (ForAllCo tv c) = ForAllCo tv (change topLevel c)
-          change topLevel (CoVarCo cv) = CoVarCo cv -- TODO change covar types
+          change topLevel (CoVarCo cv) = let (t1,t2) = coVarKind cv in CoVarCo $ mkCoVar (coVarName cv) (mkCoercionType (coVarRole cv) t1 t2)
           change topLevel (AxiomInstCo a i cs) = AxiomInstCo (changeBranchedCoAxiom mod a) i (change False <$> cs)
           change topLevel (UnivCo n r t1 t2) = UnivCo n r (changeTy topLevel t1) (changeTy topLevel t2)
           change topLevel (SymCo c) = SymCo $ change topLevel c
@@ -909,24 +915,59 @@ changeCoercion mod c = change True c
           changeTy topLevel = if topLevel then changeType mod else changeTypeUnderWithMeta mod False
 
 changeBranchedCoAxiom :: ModInfo -> CoAxiom Branched -> CoAxiom Branched
-changeBranchedCoAxiom mod = changeCoAxiom mod toBranchList
+changeBranchedCoAxiom mod = changeCoAxiom mod toBranchList Nothing
 
-changeUnbranchedCoAxiom :: ModInfo -> CoAxiom Unbranched -> CoAxiom Unbranched
-changeUnbranchedCoAxiom mod = changeCoAxiom mod toUnbranchedList
+changeUnbranchedCoAxiom :: ModInfo -> Class -> CoAxiom Unbranched -> CoAxiom Unbranched
+changeUnbranchedCoAxiom mod cls = changeCoAxiom mod toUnbranchedList $ Just cls
 
-changeCoAxiom :: ModInfo -> ([CoAxBranch] -> BranchList CoAxBranch a) -> CoAxiom a -> CoAxiom a
-changeCoAxiom mod toList (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon mod tc) (changeBranchList mod toList bs) i
+changeCoAxiom :: ModInfo -> ([CoAxBranch] -> BranchList CoAxBranch a) -> Maybe Class -> CoAxiom a -> CoAxiom a
+changeCoAxiom mod toList cls (CoAxiom u n r tc bs imp)
+    = CoAxiom u n r (newTyCon mod tc) (changeBranchList mod toList cls bs) imp
 
-changeBranchList :: ModInfo -> ([CoAxBranch] -> BranchList CoAxBranch a) -> BranchList CoAxBranch a -> BranchList CoAxBranch a
-changeBranchList mod toList = toList . fmap (changeCoAxBranch mod) . fromBranchList
+changeBranchList :: ModInfo -> ([CoAxBranch] -> BranchList CoAxBranch a) -> Maybe Class -> BranchList CoAxBranch a -> BranchList CoAxBranch a
+changeBranchList mod toList cls = toList . fmap (changeCoAxBranch mod cls) . fromBranchList
 
-changeCoAxBranch :: ModInfo -> CoAxBranch -> CoAxBranch
-changeCoAxBranch mod (CoAxBranch loc tvs roles lhs rhs incpoms)
-    = CoAxBranch loc tvs roles (changeTypeUnderWithMeta mod False <$> lhs) (changeTypeUnderWithMeta mod False rhs) (changeCoAxBranch mod <$> incpoms)
+changeCoAxBranch :: ModInfo -> Maybe Class -> CoAxBranch -> CoAxBranch
+changeCoAxBranch mod cls (CoAxBranch loc tvs roles lhs rhs incpoms)
+    = CoAxBranch
+        loc
+        tvs
+        roles
+        (changeTypeUnderWithMeta mod False <$> lhs)
+        (newRhs cls)
+        (changeCoAxBranch mod cls <$> incpoms)
+    where rhs' = changeTypeUnderWithMeta mod False rhs
+          newRhs (Just c) = addVarContextForHigherOrderClass mod c rhs'
+          newRhs _ = rhs'
 
 toUnbranchedList :: [CoAxBranch] -> BranchList CoAxBranch Unbranched
 toUnbranchedList [b] = FirstBranch b
 toUnbranchedList _ = pprPanic "toUnbranchedList" empty
+
+updateCoercionType :: Type -> Coercion -> Coercion
+updateCoercionType = update True
+    where update left t c | t == (if left then pFst else pSnd) (coercionKind c) = c
+          update left t (Refl r t') = Refl r t
+          update left t (SymCo c) = SymCo $ update (not left) t c
+           -- TODO update cs after try unify
+          update left t (AxiomInstCo a i cs) = AxiomInstCo (updateCoAxiomType left t i a) i cs
+          -- TODO other cases
+          update left t c = c
+
+updateCoAxiomType :: Bool -> Type -> BranchIndex -> CoAxiom Branched -> CoAxiom Branched
+updateCoAxiomType left t i a@(CoAxiom u n r tc bs imp)
+    | left, Just (tc', ts) <- splitTyConApp_maybe t, tc == tc' = axiom $ updateCoAxBranchesType left ts i bs
+    | left = pprPanic "updateCoAxiomType" (text "inconsistent type:" <+> ppr t <+> text "with co axiom:" <+> ppr a)
+    | otherwise = axiom $ updateCoAxBranchesType left [t] i bs
+    where axiom bs = CoAxiom u n r tc bs imp
+
+updateCoAxBranchesType :: Bool -> [Type] -> BranchIndex -> BranchList CoAxBranch Branched -> BranchList CoAxBranch Branched
+updateCoAxBranchesType left ts i bs = toBranchList $ fmap update $ zip (fromBranchList bs) [0..]
+    where update (b, bi) = if bi == i then updateCoAxBranchType left ts b else b
+
+updateCoAxBranchType :: Bool -> [Type] -> CoAxBranch -> CoAxBranch
+updateCoAxBranchType True ts (CoAxBranch loc tvs roles lhs rhs incpoms) = CoAxBranch loc tvs roles ts rhs incpoms
+updateCoAxBranchType False [t] (CoAxBranch loc tvs roles lhs rhs incpoms) = CoAxBranch loc tvs roles lhs t incpoms
 
 ----------------------------------------------------------------------------------------
 -- Core program validation
@@ -1209,8 +1250,8 @@ convertMetaType mod e t
                                                              noMetaExpr mod e'
     | Just et' <- getWithoutWithMetaType mod et, t == et' = do e' <- valueExpr mod e
                                                                convertMetaType mod e' t
-    | length etvs == length tvs, isFunTy et' && isFunTy t', subst <- substFromLists tvs etvs
-    = convertMetaFun (funArgTy $ getMainType et') (splitFunTy $ substTy subst $ getMainType t')
+    | length etvs == length tvs, isFunTy et' && isFunTy t', subst <- substFromLists etvs tvs
+    = convertMetaFun (funArgTy $ substTy subst $ getMainType et') (splitFunTy $ getMainType t')
     | otherwise = pprPanic "convertMetaType" (text "can't convert (" <+> ppr e <+> text "::" <+> ppr (exprType e) <+> text ") to type:" <+> ppr t)
     where et = exprType e
           (etvs, et') = splitForAllTys et
@@ -1435,7 +1476,8 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                               (as', ri'') <- replaceAlts as dis ri'
                                               return (Case e' x t as', ri'')
           replace (Cast e c) dis ri = do (e', ri') <- replace e dis ri
-                                         return (Cast e' c, ri')
+                                         let c' = updateCoercionType (exprType e') c
+                                         return (Cast e' c', ri')
           replace (Tick t e) dis ri = do (e', ri') <- replace e dis ri
                                          return (Tick t e', ri')
           replace e dis ri = return (e, ri)

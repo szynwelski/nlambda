@@ -309,11 +309,10 @@ instance Fun Optional where
     fun f (Optional x) = Optional (f x)
     fun f Null = Null
 
--- FIXME
---instance Fun List where
---    fun f (Element x xs) = Element (f x) (fun f xs)
---    fun f Empty = Empty
+instance Fun List where
+    fun f (Element x xs) = Element (f x) (fun f xs)
+    fun f Empty = Empty
 
---test :: Variable -> Variable -> Variable -> [[Variable]]
---test x y z = [vars $ fun id $ Wrapper x, vars $ fun (const y) $ Optional x, vars $ fun id (Null::Optional Variable),
---              vars $ fun id $ fromList [x,y,z], vars $ fun (const x) $ fromList [x,y,z]]
+test39 :: Variable -> Variable -> Variable -> [[Variable]]
+test39 x y z = [vars $ fun id $ Wrapper x, vars $ fun (const y) $ Optional x, vars $ fun id (Null::Optional Variable),
+                vars $ fun id $ fromList [x,y,z], vars $ fun (const x) $ fromList [x,y,z]]
