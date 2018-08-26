@@ -279,13 +279,16 @@ mkMapWithVars mod vars = (Map.fromList $ zip varsWithPairs $ fmap newVar varsWit
           varsFromExprs = getAllVarsFromBinds mod \\ varsWithPairs
           newVar v = let t = changeType mod $ varType v
                          v' = mkExportedLocalVar
-                                (newIdDetails v)
+                                (newIdDetails $ idDetails v)
                                 (newName mod $ varName v)
                                 (maybe t (\c -> addVarContextForHigherOrderClass mod c t) (userClassOpId mod v))
-                                (newIdInfo $ idInfo v)
+                                vanillaIdInfo
                      in if isExportedId v then setIdExported v' else setIdNotExported v'
-          newIdDetails v = if isDataConWorkId v then coVarDetails else idDetails v -- TODO rewrite IdDetails
-          newIdInfo old = vanillaIdInfo `setInlinePragInfo` (inlinePragInfo old) -- TODO rewrite IdInfo
+          newIdDetails (RecSelId tc naughty) = RecSelId (newTyCon mod tc) naughty
+          newIdDetails (ClassOpId cls) = ClassOpId $ newClass mod cls
+          newIdDetails (PrimOpId op) = PrimOpId op
+          newIdDetails (FCallId call) = FCallId call
+          newIdDetails _ = VanillaId
 
 getAllVarsFromBinds :: ModInfo -> [Var]
 getAllVarsFromBinds = nub . concatMap getAllNotLocalVarsFromExpr . concatMap rhssOfBind . mg_binds . guts
