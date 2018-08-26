@@ -53,9 +53,9 @@ instance Show a => Show (Wrapper a) where
 
 --test :: Variable -> Variable -> Variable -> [Ordering]
 --test x y z = fmap (uncurry compare) [(x,x), (x,y), (x,z)]
---test x y z = fmap (uncurry compare) [([x],[y]), ([x,y],[x,x]), ([x,y,z],[x,y,z])]
---test x y z = fmap (uncurry compare) [(Wrapper x,Wrapper x), (Wrapper x,Wrapper y), (Wrapper x,Wrapper z)]
---test x y z = fmap (uncurry compare) [(Optional x,Null), (Optional x,Optional x), (Optional x,Optional y), (Optional z,Optional x)]
+--             ++ fmap (uncurry compare) [([x],[y]), ([x,y],[x,x]), ([x,y,z],[x,y,z])]
+--             ++ fmap (uncurry compare) [(Wrapper x,Wrapper x), (Wrapper x,Wrapper y), (Wrapper x,Wrapper z)]
+--             ++ fmap (uncurry compare) [(Optional x,Null), (Optional x,Optional x), (Optional x,Optional y), (Optional z,Optional x)]
 
 --test :: Variable -> Variable -> Variable -> [Bool]
 --test x y z = [Pair x y < Pair y x, Pair x 1 > Pair x 1, Pair x (y,z,1) <= Pair x (x,z,1)]
@@ -309,9 +309,10 @@ instance Fun Optional where
     fun f (Optional x) = Optional (f x)
     fun f Null = Null
 
-instance Fun List where
-    fun f (Element x xs) = Element (f x) (fun f xs)
-    fun f Empty = Empty
+-- FIXME
+--instance Fun List where
+--    fun f (Element x xs) = Element (f x) (fun f xs)
+--    fun f Empty = Empty
 
 --test :: Variable -> Variable -> Variable -> [[Variable]]
 --test x y z = [vars $ fun id $ Wrapper x, vars $ fun (const y) $ Optional x, vars $ fun id (Null::Optional Variable),

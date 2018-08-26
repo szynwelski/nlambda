@@ -3,7 +3,7 @@ module MetaPlugin where
 import Avail
 import qualified BooleanFormula as BF
 import Class
-import CoAxiom
+import CoAxiom hiding (toUnbranchedList)
 import Control.Applicative ((<|>))
 import Control.Monad (liftM)
 import Data.Char (isLetter, isLower)
@@ -18,6 +18,7 @@ import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, is_cls_
 import Kind (defaultKind, isOpenTypeKind)
 import Meta
 import MkId (mkDataConWorkId, mkDictSelRhs)
+import Pair (pFst)
 import TypeRep
 import TcType (tcSplitSigmaTy, tcSplitPhiTy)
 import Unify (tcUnifyTy)
@@ -217,7 +218,7 @@ getNameStr :: NamedThing a => a -> String
 getNameStr = occNameString . nameOccName . getName
 
 getModuleStr :: NamedThing a => a -> String
-getModuleStr = getModuleNameStr . nameModule . getName
+getModuleStr = maybe "" getModuleNameStr . nameModule_maybe . getName
 
 getModuleNameStr :: Module -> String
 getModuleNameStr = moduleNameString . moduleName
@@ -226,6 +227,9 @@ newUsedNames :: ModInfo -> NameSet -> NameSet
 newUsedNames mod ns = mkNameSet (nms ++ nms')
     where nms = nameSetElems ns
           nms' = fmap (newName mod) $ filter (nameMember mod) nms
+
+isPreludeThing :: NamedThing a => a -> Bool
+isPreludeThing = (`elem` preludeModules) . getModuleStr
 
 ----------------------------------------------------------------------------------------
 -- Data constructors
@@ -273,10 +277,15 @@ mkMapWithVars :: ModInfo -> [Var] -> VarMap
 mkMapWithVars mod vars = (Map.fromList $ zip varsWithPairs $ fmap newVar varsWithPairs, nub (varsWithoutPairs ++ varsFromExprs))
     where (varsWithPairs, varsWithoutPairs) = partition (not . isIgnoreImportType mod . varType) vars
           varsFromExprs = getAllVarsFromBinds mod \\ varsWithPairs
-          newVar v = let v' = mkExportedLocalVar (newIdDetails v) (newName mod $ varName v) (changeType mod $ varType v) (newIdInfo $ idInfo v)
-                      in if isExportedId v then setIdExported v' else setIdNotExported v'
-          newIdDetails v = if isDataConWorkId v then coVarDetails else idDetails v
-          newIdInfo old = vanillaIdInfo `setInlinePragInfo` (inlinePragInfo old) -- TODO maybe rewrite also other info
+          newVar v = let t = changeType mod $ varType v
+                         v' = mkExportedLocalVar
+                                (newIdDetails v)
+                                (newName mod $ varName v)
+                                (if isUserClassOpId mod v then addVarContextForHigerOrder mod t else t)
+                                (newIdInfo $ idInfo v)
+                     in if isExportedId v then setIdExported v' else setIdNotExported v'
+          newIdDetails v = if isDataConWorkId v then coVarDetails else idDetails v -- TODO rewrite IdDetails
+          newIdInfo old = vanillaIdInfo `setInlinePragInfo` (inlinePragInfo old) -- TODO rewrite IdInfo
 
 getAllVarsFromBinds :: ModInfo -> [Var]
 getAllVarsFromBinds = nub . concatMap getAllNotLocalVarsFromExpr . concatMap rhssOfBind . mg_binds . guts
@@ -298,6 +307,11 @@ mkPredVar (cls, tys) = do uniq <- getUniqueM
 isVar :: CoreExpr -> Bool
 isVar (Var _) = True
 isVar _ = False
+
+isUserClassOpId :: ModInfo -> Id -> Bool
+isUserClassOpId mod v
+    | Just cls <- isClassOpId_maybe v = mg_module (guts mod) == nameModule (getName cls)
+    | otherwise = False
 
 ----------------------------------------------------------------------------------------
 -- Imports
@@ -406,7 +420,10 @@ createAlgTyConRhs mod rhs = create rhs
     where create (AbstractTyCon b) = AbstractTyCon b
           create DataFamilyTyCon = DataFamilyTyCon
           create (DataTyCon dcs isEnum) = DataTyCon (createDataCon mod <$> dcs) isEnum
-          create (NewTyCon dcs ntRhs ntEtadRhs ntCo) = NewTyCon dcs ntRhs ntEtadRhs ntCo -- TODO
+          create (NewTyCon dc ntRhs ntEtadRhs ntCo) = NewTyCon (createDataCon mod dc)
+                                                               (changeType mod ntRhs)
+                                                               (changeType mod <$> ntEtadRhs)
+                                                               (changeUnbranchedCoAxiom mod ntCo)
 
 createDataCon :: ModInfo -> DataCon -> DataCon
 createDataCon mod dc =
@@ -419,8 +436,8 @@ createDataCon mod dc =
                 (dataConIsInfix dc)
                 []
                 []
-                univ_tvs -- FIXME new unique ty vars?
-                ex_tvs -- FIXME new unique ty vars?
+                univ_tvs
+                ex_tvs
                 ((\(tv, t) -> (tv, changeType mod t)) <$> eq_spec)
                 (changePredType mod <$> theta)
                 (changeType mod <$> arg_tys)
@@ -437,8 +454,8 @@ createClass mod tc cls =
         scSels' = fmap (newVar mod) scSels
         opStuff' = fmap (\(v, dm) -> (newVar mod v, updateDefMeth dm)) opStuff
     in mkClass
-         tyVars -- FIXME new unique ty vars?
-         funDeps -- FIXME new unique ty vars?
+         tyVars
+         funDeps
          scTheta -- FIXME new predType?
          scSels'
          ats -- FIXME new associated types?
@@ -535,7 +552,6 @@ changeBindTypeAndUniq mod x = mkVarUnique $ setVarType x $ changeType mod $ varT
 changeBindTypeUnderWithMetaAndUniq :: ModInfo -> CoreBndr -> CoreM CoreBndr
 changeBindTypeUnderWithMetaAndUniq mod x = mkVarUnique $ setVarType x $ changeTypeUnderWithMeta mod False $ varType x
 
--- TODO maybe use makeTyVarUnique?
 changeType :: ModInfo -> Type -> Type
 changeType mod t = (changeTypeOrSkip mod True) t
 
@@ -572,14 +588,20 @@ changeTypeAndApply mod e t
     | otherwise = (mkApp e . Type . change) t
     where (tyVars, eTy) = splitForAllTys $ exprType e
           tyVar = headPanic "changeTypeAndApply" (pprE "e" e) tyVars
-          change t
-            | isFunTy $ typeKind t = t
-            | isFunTy t = changeTypeOrSkip mod (not $ isTyVarNested tyVar eTy) t
-            | otherwise = t
+          change t = if isFunTy t && isMonoType t then changeTypeOrSkip mod (not $ isTyVarNested tyVar eTy) t else t
+
+addVarContextForHigerOrder :: ModInfo -> Type -> Type
+addVarContextForHigerOrder mod t
+    | null tvs = t
+    | allTvsMono = t
+    | otherwise = mkForAllTys tvs $ mkFunTys (nub $ preds ++ preds') (addVarContextForHigerOrder mod t')
+    where (tvs, preds, t') = tcSplitSigmaTy t
+          allTvsMono = all (isMonoType . varType) $ varSetElems $ tyVarsOfType t'
+          preds' = fmap (varPredType mod) $ filter isMonoType $ mkTyVarTys $ filter (isTyVarWrappedByWithMeta mod t) tvs
 
 getMainType :: Type -> Type
 getMainType t = if t == t' then t else getMainType t'
-    where (tvs, ps ,t') = tcSplitSigmaTy t
+    where (tvs, ps, t') = tcSplitSigmaTy t
 
 getFunTypeParts :: Type -> [Type]
 getFunTypeParts t
@@ -588,14 +610,8 @@ getFunTypeParts t
     | otherwise = argTys ++ [resTy]
     where (argTys, resTy) = splitFunTys t
 
-isTyVarInPredicate :: ModInfo -> TyVar -> Type -> Bool
-isTyVarInPredicate mod tv = any isIn . getAllPreds
-    where isIn p
-            | Just args <- tyConAppArgs_maybe p = any (elemVarSet tv . tyVarsOfType) args
-            | otherwise = False
-
-isTyVarWrappedByWithMeta :: ModInfo -> TyVar -> Type -> Bool
-isTyVarWrappedByWithMeta mod tv = all wrappedByWithMeta . getFunTypeParts
+isTyVarWrappedByWithMeta :: ModInfo -> Type -> TyVar -> Bool
+isTyVarWrappedByWithMeta mod t tv = all wrappedByWithMeta $ getFunTypeParts t
     where wrappedByWithMeta t | isWithMetaType mod t = True
           wrappedByWithMeta (TyVarTy tv') = tv /= tv'
           wrappedByWithMeta (AppTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
@@ -633,8 +649,8 @@ getAllPreds t
 isInternalType :: Type -> Bool
 isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPrimitiveType t' || isUnLiftedType t'
 
-isPreludeThing :: NamedThing a => a -> Bool
-isPreludeThing = (`elem` preludeModules) . getModuleStr
+isMonoType :: Type -> Bool
+isMonoType = not . isFunTy . typeKind
 
 ----------------------------------------------------------------------------------------
 -- Checking type contains atoms
@@ -745,9 +761,8 @@ insertExpr = Map.insert
 changeExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 changeExpr mod e = newExpr (mkExprMap mod) e
     where newExpr :: ExprMap -> CoreExpr -> CoreM CoreExpr
---          newExpr eMap e | pprTrace "newExpr" (pprE "e" e) False = undefined
           newExpr eMap e | noAtomsSubExpr e = replaceVars mod eMap e
-          newExpr eMap (Var v) | Map.member v eMap = return $ getExpr eMap v
+          newExpr eMap (Var v) | Map.member v eMap = addMockedInstances mod False $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod v
           newExpr eMap (Var v) = pprPgmError "Unknown variable:"
             (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleStr v ++ " is not compiled with NLambda Plugin."))
@@ -780,11 +795,13 @@ changeExpr mod e = newExpr (mkExprMap mod) e
                                             as' <- mapM (newAlternative (insertExpr b be eMap) m t') as
                                             return $ Case e'' b' t' as'
           newExpr eMap (Cast e c) = do e' <- newExpr eMap e
-                                       return $ Cast e' (changeCoercion mod c)
+                                       let c' = changeCoercion mod c
+                                       e'' <- convertMetaType mod e' $ pFst $ coercionKind c'
+                                       return $ Cast e'' c'
           newExpr eMap (Tick t e) = do e' <- newExpr eMap e
                                        return $ Tick t e'
           newExpr eMap (Type t) = undefined -- type should be served in (App f (Type t)) case
-          newExpr eMap (Coercion c) = return $ Coercion $ changeCoercion mod c
+          newExpr eMap (Coercion c) = undefined
           newLetBind (NonRec b e) eMap = do b' <- changeBindTypeAndUniq mod b
                                             let eMap' = insertVarExpr b b' eMap
                                             e' <- newExpr eMap' e
@@ -851,26 +868,6 @@ getAllNotLocalVarsFromExpr = nub . get
           get (Type t) = []
           getFromAlt (con, bs, e) = filter (`notElem` bs) (get e)
 
-changeCoercion :: ModInfo -> Coercion -> Coercion
-changeCoercion mod c = change c
-    where change (Refl r t) = Refl r t -- FIXME not changeType ?
-          change (TyConAppCo r tc cs) = TyConAppCo r (newTyCon mod tc) (change <$> cs)
-          change (AppCo c1 c2) = AppCo (change c1) (change c2)
-          change (ForAllCo tv c) = ForAllCo tv (change c)
-          change (CoVarCo cv) = CoVarCo cv
-          change (AxiomInstCo a i cs) = AxiomInstCo (changeCoAxiom mod a) i (change <$> cs)
-          change (UnivCo n r t1 t2) = UnivCo n r (changeType mod t1) (changeType mod t2)
-          change (SymCo c) = SymCo $ change c
-          change (TransCo c1 c2) = TransCo (change c1) (change c2)
-          change (AxiomRuleCo a ts cs) = AxiomRuleCo a (changeType mod <$> ts) (change <$> cs)
-          change (NthCo i c) = NthCo i $ change c
-          change (LRCo lr c) = LRCo lr $ change c
-          change (InstCo c t) = InstCo (change c) (changeType mod t)
-          change (SubCo c) = SubCo $ change c
-
-changeCoAxiom :: ModInfo -> CoAxiom a -> CoAxiom a
-changeCoAxiom mod (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon mod tc) bs i
-
 dataConExpr :: ModInfo -> DataCon -> CoreM CoreExpr
 dataConExpr mod dc
     | arity == 0 = noMetaExpr mod dcv
@@ -888,6 +885,48 @@ dataConExpr mod dc
                               x <- mkLocalVar ("x" ++ show (arity - n)) ty
                               args <- mkArgs subst $ pred n
                               return $ x : args
+
+----------------------------------------------------------------------------------------
+-- Coercion
+----------------------------------------------------------------------------------------
+
+changeCoercion :: ModInfo -> Coercion -> Coercion
+changeCoercion mod c = change True c
+    where change topLevel (Refl r t) = Refl r $ changeTy topLevel t
+          change topLevel (TyConAppCo r tc cs) = TyConAppCo r (newTyCon mod tc) (change False <$> cs)
+          change topLevel (AppCo c1 c2) = AppCo (change False c1) (change False c2)
+          change topLevel (ForAllCo tv c) = ForAllCo tv (change topLevel c)
+          change topLevel (CoVarCo cv) = CoVarCo cv -- TODO change covar types
+          change topLevel (AxiomInstCo a i cs) = AxiomInstCo (changeBranchedCoAxiom mod a) i (change False <$> cs)
+          change topLevel (UnivCo n r t1 t2) = UnivCo n r (changeTy topLevel t1) (changeTy topLevel t2)
+          change topLevel (SymCo c) = SymCo $ change topLevel c
+          change topLevel (TransCo c1 c2) = TransCo (change topLevel c1) (change topLevel c2)
+          change topLevel (AxiomRuleCo a ts cs) = AxiomRuleCo a (changeTy topLevel <$> ts) (change topLevel <$> cs)
+          change topLevel (NthCo i c) = NthCo i $ change topLevel c
+          change topLevel (LRCo lr c) = LRCo lr $ change topLevel c
+          change topLevel (InstCo c t) = InstCo (change topLevel c) (changeTy topLevel t)
+          change topLevel (SubCo c) = SubCo $ change topLevel c
+          changeTy topLevel = if topLevel then changeType mod else changeTypeUnderWithMeta mod False
+
+changeBranchedCoAxiom :: ModInfo -> CoAxiom Branched -> CoAxiom Branched
+changeBranchedCoAxiom mod = changeCoAxiom mod toBranchList
+
+changeUnbranchedCoAxiom :: ModInfo -> CoAxiom Unbranched -> CoAxiom Unbranched
+changeUnbranchedCoAxiom mod = changeCoAxiom mod toUnbranchedList
+
+changeCoAxiom :: ModInfo -> ([CoAxBranch] -> BranchList CoAxBranch a) -> CoAxiom a -> CoAxiom a
+changeCoAxiom mod toList (CoAxiom u n r tc bs i) = CoAxiom u n r (newTyCon mod tc) (changeBranchList mod toList bs) i
+
+changeBranchList :: ModInfo -> ([CoAxBranch] -> BranchList CoAxBranch a) -> BranchList CoAxBranch a -> BranchList CoAxBranch a
+changeBranchList mod toList = toList . fmap (changeCoAxBranch mod) . fromBranchList
+
+changeCoAxBranch :: ModInfo -> CoAxBranch -> CoAxBranch
+changeCoAxBranch mod (CoAxBranch loc tvs roles lhs rhs incpoms)
+    = CoAxBranch loc tvs roles (changeTypeUnderWithMeta mod False <$> lhs) (changeTypeUnderWithMeta mod False rhs) (changeCoAxBranch mod <$> incpoms)
+
+toUnbranchedList :: [CoAxBranch] -> BranchList CoAxBranch Unbranched
+toUnbranchedList [b] = FirstBranch b
+toUnbranchedList _ = pprPanic "toUnbranchedList" empty
 
 ----------------------------------------------------------------------------------------
 -- Core program validation
@@ -908,45 +947,54 @@ checkCoreProgram bs = if all checkBinds bs then bs else pprPanic "checkCoreProgr
           checkExpr b (Var v) = True
           checkExpr b (Lit l) = True
           checkExpr b (App f (Type t)) | not $ isForAllTy $ exprType f
-                              = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
-                                  (vcat [text "fun expr: " <+> ppr f,
-                                         text "fun type: " <+> ppr (exprType f),
-                                         text "arg: " <+> ppr t,
-                                         text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
-                                         text "\n=======================================================================|"])
+                                       = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
+                                           (vcat [text "fun expr: " <+> ppr f,
+                                                  text "fun type: " <+> ppr (exprType f),
+                                                  text "arg: " <+> ppr t,
+                                                  text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
+                                                  text "\n=======================================================================|"])
           checkExpr b (App f (Type t)) = checkExpr b f
           checkExpr b (App f x) | not $ isFunTy $ exprType f
-                              = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
-                                  (vcat [text "fun expr: " <+> ppr f,
-                                         text "fun type: " <+> ppr (exprType f),
-                                         text "arg: " <+> ppr x,
-                                         text "arg type: " <+> ppr (exprType x),
-                                         text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
-                                         text "\n=======================================================================|"])
+                                = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
+                                    (vcat [text "fun expr: " <+> ppr f,
+                                           text "fun type: " <+> ppr (exprType f),
+                                           text "arg: " <+> ppr x,
+                                           text "arg type: " <+> ppr (exprType x),
+                                           text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
+                                           text "\n=======================================================================|"])
           checkExpr b (App f x) | funArgTy (exprType f) /= exprType x
-                              = pprPanic "\n================= INCONSISTENT TYPES IN APPLICATION ===================="
-                                  (vcat [text "fun: " <+> ppr f,
-                                         text "fun type: " <+> ppr (exprType f),
-                                         text "fun arg type: " <+> ppr (funArgTy $ exprType f),
-                                         text "arg: " <+> ppr x,
-                                         text "arg type: " <+> ppr (exprType x),
-                                         text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
-                                         text "\n=======================================================================|"])
+                                = pprPanic "\n================= INCONSISTENT TYPES IN APPLICATION ===================="
+                                    (vcat [text "fun: " <+> ppr f,
+                                           text "fun type: " <+> ppr (exprType f),
+                                           text "fun arg type: " <+> ppr (funArgTy $ exprType f),
+                                           text "arg: " <+> ppr x,
+                                           text "arg type: " <+> ppr (exprType x),
+                                           text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
+                                           text "\n=======================================================================|"])
           checkExpr b (App f x) = checkExpr b f && checkExpr b x
           checkExpr b (Lam x e) = checkExpr b e
           checkExpr b (Let x e) = checkBinds x && checkExpr b e
           checkExpr b (Case e x t as) = checkBind (x,e) && all (checkAlternative b t) as && all (checkAltConType b $ exprType e) as
+          checkExpr b (Cast e c) | exprType e /= pFst (coercionKind c)
+                                 = pprPanic "\n================= INCONSISTENT TYPES IN CAST ==========================="
+                                    (vcat [text "expr: " <+> ppr e,
+                                           text "expr type: " <+> ppr (exprType e),
+                                           text "coercion: " <+> ppr c,
+                                           text "coercion: " <+> showCoercion c,
+                                           text "coercion type: " <+> ppr (coercionType c),
+                                           text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
+                                           text "\n=======================================================================|"])
           checkExpr b (Cast e c) = checkExpr b e
           checkExpr b (Tick t e) = checkExpr b e
           checkExpr b (Type t) = undefined -- type should be handled in (App f (Type t)) case
           checkExpr b (Coercion c) = True
           checkAlternative b t (ac, xs, e) | t /= exprType e
-                                         = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
-                                             (vcat [text "type in case: " <+> ppr t,
-                                                    text "case alternative expression: " <+> ppr e,
-                                                    text "case alternative expression type: " <+> ppr (exprType e),
-                                                    text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
-                                                    text "\n=======================================================================|"])
+                                           = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
+                                               (vcat [text "type in case: " <+> ppr t,
+                                                      text "case alternative expression: " <+> ppr e,
+                                                      text "case alternative expression type: " <+> ppr (exprType e),
+                                                      text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
+                                                      text "\n=======================================================================|"])
           checkAlternative b t (ac, xs, e) = checkExpr b e
           checkAltConType b t (DataAlt dc, xs, e) = checkAltConTypes b (ppr dc) (dataConOrigResTy dc) t xs -- FIXME better evaluation of pattern type
           checkAltConType b t (LitAlt l, xs, e) = checkAltConTypes b (ppr l) (literalType l) t xs
@@ -1033,7 +1081,7 @@ unifyTypes t1 t2 = maybe unifyWithOpenKinds Just (tcUnifyTy t1 t2)
           replaceOpenKinds (LitTy tl) = LitTy tl
 
 canUnifyTypes :: Type -> Type -> Bool
-canUnifyTypes t1 t2 = isJust $ unifyTypes (snd $ splitForAllTys t1) (snd $ splitForAllTys t2)
+canUnifyTypes t1 t2 = isJust $ unifyTypes (dropForAlls t1) (dropForAlls t2)
 
 applyExpr :: CoreExpr -> CoreExpr -> CoreM CoreExpr
 applyExpr fun e =
@@ -1061,13 +1109,22 @@ applyExpr fun e =
 applyExprs :: CoreExpr -> [CoreExpr] -> CoreM CoreExpr
 applyExprs = foldlM applyExpr
 
-mkApp :: CoreExpr -> CoreExpr -> CoreExpr
-mkApp f x
-    | not (isTypeArg x), funArgTy (exprType f) /= exprType x = pprPanic "mkApp - inconsistent types:" (pprE "f" f <+> text "," <+> pprE "x" x)
+mkAppOr :: CoreExpr -> CoreExpr -> CoreExpr -> CoreExpr
+mkAppOr f x ifNotMatch
+    | not (isTypeArg x), funArgTy (exprType f) /= exprType x = ifNotMatch
     | otherwise = mkCoreApp f x
+
+mkApp :: CoreExpr -> CoreExpr -> CoreExpr
+mkApp f x = mkAppOr f x $ pprPanic "mkApp - inconsistent types:" (pprE "f" f <+> text "," <+> pprE "x" x)
+
+mkAppIfMatch :: CoreExpr -> CoreExpr -> CoreExpr
+mkAppIfMatch f x = mkAppOr f x f
 
 mkApps :: CoreExpr -> [CoreExpr] -> CoreExpr
 mkApps = foldl mkApp
+
+mkAppsIfMatch :: CoreExpr -> [CoreExpr] -> CoreExpr
+mkAppsIfMatch = foldl mkAppIfMatch
 
 ----------------------------------------------------------------------------------------
 -- Meta
@@ -1114,7 +1171,10 @@ metaLevelC mod = getTyCon mod "MetaLevel"
 varC mod = getTyCon mod "Var"
 
 withMetaType :: ModInfo -> Type -> Type
-withMetaType mod ty = mkTyConApp (withMetaC mod) [ty]
+withMetaType mod t = mkTyConApp (withMetaC mod) [t]
+
+varPredType :: ModInfo -> Type -> Type
+varPredType mod t = mkTyConApp (varC mod) [t]
 
 noMetaExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 noMetaExpr mod e | isInternalType $ exprType e = return e
@@ -1135,7 +1195,7 @@ idOpExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 idOpExpr mod e = applyExpr (idOpV mod) e
 
 renameAndApplyExpr :: ModInfo -> Int -> CoreM CoreExpr
-renameAndApplyExpr mod n = addMockedInstances mod (renameAndApplyV mod n)
+renameAndApplyExpr mod n = addMockedInstances mod False (renameAndApplyV mod n)
 
 ----------------------------------------------------------------------------------------
 -- Convert meta types
@@ -1155,11 +1215,11 @@ convertMetaType mod e t
     where et = exprType e
           (etvs, et') = splitForAllTys et
           (tvs, t') = splitForAllTys t
-          convertMetaFun earg (arg, res) = do (vs, _, subst) <- splitTypeToExprVarsWithSubst et
+          convertMetaFun earg (arg, res) = do (vs, _, subst) <- splitTypeToExprVarsWithSubst t
                                               let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
                                               x <- mkLocalVar "x" (substTy subst arg)
                                               ex <- convertMetaType mod (Var x) (substTy subst earg)
-                                              let e' = mkApps e (evs ++ [ex])
+                                              let e' = mkApp (mkAppsIfMatch e evs) ex
                                               e'' <- convertMetaType mod e' (substTy subst res)
                                               return $ mkCoreLams (vvs ++ [x]) e''
 
@@ -1200,10 +1260,10 @@ getMetaEquivalent :: ModInfo -> Var -> CoreM CoreExpr
 getMetaEquivalent mod v
     = case metaEquivalent (getModuleStr v) (getNameStr v) of
         OrigFun -> addWithMetaTypes mod $ Var v
-        MetaFun name -> addMockedInstances mod $ getMetaVar mod name
-        MetaConvertFun name -> do convertFun <- addMockedInstances mod $ getMetaVar mod name
+        MetaFun name -> addMockedInstances mod False $ getMetaVar mod name
+        MetaConvertFun name -> do convertFun <- addMockedInstances mod False $ getMetaVar mod name
                                   applyExpr convertFun (Var v)
-        NoEquivalent -> addMockedInstances mod $ Var $ fromMaybe
+        NoEquivalent -> addMockedInstances mod True $ Var $ fromMaybe
                           (pprPgmError "No meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleStr v)))
                           (getDefinedMetaEquivalentVar mod v)
       where addWithMetaTypes mod e = do (vars, _) <- splitTypeToExprVars $ exprType e
@@ -1228,8 +1288,8 @@ isPredicate mod = isPredicateWith mod $ const True
 isVarPredicate :: ModInfo -> Type -> Bool
 isVarPredicate mod = isPredicateWith mod (== varC mod)
 
-isPredicateForMock :: ModInfo -> Type -> Bool
-isPredicateForMock mod = isPredicateWith mod (\tc -> varC mod == tc || metaLevelC mod == tc || isPreludeThing tc)
+isPredicateForMock :: ModInfo -> Bool -> Type -> Bool
+isPredicateForMock mod mockPrelude = isPredicateWith mod (\tc -> varC mod == tc || metaLevelC mod == tc || (mockPrelude && isPreludeThing tc))
 
 varPredicatesFromType :: ModInfo -> Type -> [PredType]
 varPredicatesFromType mod = filter (isVarPredicate mod) . getAllPreds
@@ -1238,14 +1298,14 @@ mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
 
 isMockInstance :: ModInfo -> CoreExpr -> Bool
-isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod t
+isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod True t
 isMockInstance _ _ = False
 
-addMockedInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
-addMockedInstances mod = addMockedInstancesExcept mod []
+addMockedInstances :: ModInfo -> Bool -> CoreExpr -> CoreM CoreExpr
+addMockedInstances mod mockPrelude = addMockedInstancesExcept mod mockPrelude []
 
-addMockedInstancesExcept :: ModInfo -> [PredType] -> CoreExpr -> CoreM CoreExpr
-addMockedInstancesExcept mod exceptTys e
+addMockedInstancesExcept :: ModInfo -> Bool -> [PredType] -> CoreExpr -> CoreM CoreExpr
+addMockedInstancesExcept mod mockPrelude exceptTys e
     = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
          let exceptTys' = substTy subst <$> exceptTys
          let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
@@ -1255,11 +1315,11 @@ addMockedInstancesExcept mod exceptTys e
          let argTys = init $ getFunTypeParts $ exprType e'
          args <- mkMockedArgs (length argTys) argTys
          let (xs, es) = unzip args
-         return $ if all isVar es
-                  then mkCoreLams vvs' e'
-                  else simpleOptExpr $ mkCoreLams (vvs' ++ xs) $ mkApps e' es
-          -- isTypeArg checked before call exprType on e
-    where forMock exceptTys t = isPredicateForMock mod t && notElem t exceptTys
+         return $ simpleOptExpr $ if all isVar es
+                                  then mkCoreLams vvs' e'
+                                  else mkCoreLams (vvs' ++ xs) $ mkApps e' es
+    where -- isTypeArg checked before call exprType on e
+          forMock exceptTys t = isPredicateForMock mod mockPrelude t && notElem t exceptTys
           mockPredOrDict exceptTys e = if not (isTypeArg e) && forMock exceptTys (exprType e) then mockInstance (exprType e) else e
           mkMockedArgs n (t:ts) = do x <- mkLocalVar ("x" ++ show (n - length ts)) (typeWithoutVarPreds t)
                                      (vs, t') <- splitTypeToExprVars t
@@ -1356,7 +1416,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                 let (vis1, vis2) = partition (\(t,vi) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (varInstances ri')
                                 return (mkCoreLams (tvs ++ fmap snd vis1) e'', ri' {varInstances = vis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
-                                 = do x'' <- addMockedInstancesExcept mod (varPredicatesFromType mod $ varType x) (Var x')
+                                 = do x'' <- addMockedInstancesExcept mod False (varPredicatesFromType mod $ varType x) (Var x')
                                       return (x'', withMocks ri)
           replace (App f e) dis ri = do (f', ri') <- replace f dis ri
                                         (e', ri'') <- replace e dis ri'
@@ -1388,7 +1448,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
           replaceMock t dis ri
               | Just v <- lookup t dis = return (Var v, ri)
               | isVarPredicate mod t, Just v <- findVarInstance t ri = return (Var v, ri)
-              | Just di <- dictInstance mod t = do di' <- addMockedInstances mod di
+              | Just di <- dictInstance mod t = do di' <- addMockedInstances mod True di
                                                    return (di', withMocks ri)
               | isVarPredicate mod t = do v <- mkPredVar $ getClassPredTys t
                                           return (Var v, addVarInstance (t, v) ri)
