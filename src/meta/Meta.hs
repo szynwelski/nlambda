@@ -675,7 +675,7 @@ createEquivalentsMap mod = Map.singleton mod . Map.fromList
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions [nominalVar, ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcReal,
                                  ghcShow, ghcTuple, ghcTypes, dataEither, dataFoldable, dataMaybe, dataOldList, dataSemigroup, dataSetBase,
-                                 dataTraverable, dataTuple, controlExceptionBase]
+                                 dataTraverable, dataTuple, controlExceptionBase, systemIO]
 
 preludeModules :: [ModuleName]
 preludeModules = Map.keys preludeEquivalents
@@ -837,5 +837,10 @@ curry_nlambda f x y = f $ renameAndApply2 (,) x y
 uncurry_nlambda :: (WithMeta a -> WithMeta b -> WithMeta c) -> WithMeta (a, b) -> WithMeta c
 uncurry_nlambda f p = f (idOp fst p) (idOp snd p)
 
+controlExceptionBase :: MetaEquivalentMap
 controlExceptionBase = createEquivalentsMap "Control.Exception.Base"
     [(SameOp, ["noMethodBindingError", "nonExhaustiveGuardsError", "patError"])]
+
+systemIO :: MetaEquivalentMap
+systemIO = createEquivalentsMap "System.IO"
+    [(ConvertFun NoMetaResOp, ["print"])]

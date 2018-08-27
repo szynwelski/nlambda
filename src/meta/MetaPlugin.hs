@@ -325,12 +325,14 @@ getImportedModules :: ModGuts -> [Module]
 getImportedModules = filter (not . isIgnoreImport) . moduleEnvKeys . mg_dir_imps
 
 getImportedMaps :: ModInfo -> (NameMap, VarMap, TyConMap)
-getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, []), (Map.fromList tcPairs, []))
+getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, varWithoutPair), (Map.fromList tcPairs, tcWithoutPair))
     where mods = catMaybes $ fmap (lookupUFM $ hsc_HPT $ env mod) $ fmap moduleName $ getImportedModules (guts mod)
           things = eltsUFM $ getModulesTyThings mods
-          (tcThings, varThings) = partition isTyThingTyCon things
+          (tcThings, varThings) = fmap (filter isTyThingId) $ partition isTyThingTyCon things
           tcPairs = fmap (\(tt1, tt2) -> (tyThingTyCon tt1, tyThingTyCon tt2)) $ catMaybes $ findPair things TyThingTyCon <$> getName <$> tcThings
           varPairs = fmap (\(tt1, tt2) -> (tyThingId tt1, tyThingId tt2)) $ catMaybes $ findPair things TyThingId <$> getName <$> varThings
+          tcWithoutPair = (tyThingTyCon <$> tcThings) \\ (uncurry (++) $ unzip $ tcPairs)
+          varWithoutPair = (tyThingId <$> varThings) \\ (uncurry (++) $ unzip $ varPairs)
           getNamePair (x, y) = (getName x, getName y)
           namePairs = (getNamePair <$> tcPairs) ++ (getNamePair <$> varPairs)
 
