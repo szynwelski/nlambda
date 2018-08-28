@@ -10,7 +10,9 @@ import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Data.Semigroup (Semigroup, (<>))
 import GHC.Generics
 import Meta (MetaLevel)
+import TestImportClass
 import TestImportData
+import TestImportInstance
 import Var (Var, Variable)
 
 data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable, Traversable)
@@ -353,4 +355,4 @@ test41 x y z = let list = x : y : z : list in take 10 list
 ----------------------------------------------------------------------------
 
 test42 :: Variable -> Variable -> Variable -> [UpOrDown Variable Variable]
-test42 x y z = [Up x, Down y]
+test42 x y z = [Up x, Down y, fromJust $ select [Down x, Down y, Up z]]

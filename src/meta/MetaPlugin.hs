@@ -77,11 +77,9 @@ pass env onlyShow guts =
             let mod' = mod {nameMap = nameMap}
 
             -- classes and vars
-            let modTcMap = mkTyConMap mod' {varMap = modVarMap} (mg_tcs guts)
-                modVarMap = mkVarMap mod' {tcMap = modTcMap}
-            let tcMap = unionTcMaps modTcMap impTcMap
-            let varMap = unionVarMaps modVarMap impVarMap
-            let mod'' = mod' {tcMap = tcMap, varMap = varMap}
+            let tcMap = mkTyConMap mod' {varMap = unionVarMaps varMap impVarMap} (mg_tcs guts)
+                varMap = mkVarMap mod' {tcMap = unionTcMaps tcMap impTcMap}
+            let mod'' = mod' {tcMap = unionTcMaps tcMap impTcMap, varMap = unionVarMaps varMap impVarMap}
 
             guts' <- if onlyShow then return guts else newGuts mod'' guts
 
@@ -143,7 +141,8 @@ newGuts mod guts = do binds <- newBinds mod (getDataCons guts) (mg_binds guts)
                       let exps = newExports mod (mg_exports guts)
                       let usedNames = newUsedNames mod (mg_used_names guts)
                       let clsInsts = newClassInstances mod (mg_insts guts)
-                      return $ guts {mg_tcs = mg_tcs guts ++ Map.elems (tcsWithPairs mod),
+                      let tcs = filter (inCurrentModule mod) $ Map.elems (tcsWithPairs mod)
+                      return $ guts {mg_tcs = mg_tcs guts ++ tcs,
                                      mg_binds = mg_binds guts ++ checkCoreProgram binds',
                                      mg_exports = mg_exports guts ++ exps,
                                      mg_insts = mg_insts guts ++ clsInsts,
@@ -231,6 +230,9 @@ newUsedNames mod ns = mkNameSet (nms ++ nms')
 isPreludeThing :: NamedThing a => a -> Bool
 isPreludeThing = (`elem` preludeModules) . getModuleStr
 
+inCurrentModule :: NamedThing a => ModInfo -> a -> Bool
+inCurrentModule mod x = mg_module (guts mod) == nameModule (getName x)
+
 ----------------------------------------------------------------------------------------
 -- Data constructors
 ----------------------------------------------------------------------------------------
@@ -261,7 +263,7 @@ allVars mod = snd vm ++ Map.keys (fst vm) ++ Map.elems (fst vm)
     where vm = varMap mod
 
 unionVarMaps :: VarMap -> VarMap -> VarMap
-unionVarMaps (m1,l1) (m2,l2) = (Map.union m1 m2, l1 ++ l2)
+unionVarMaps (m1,l1) (m2,l2) = (Map.union m1 m2, nub $ l1 ++ l2)
 
 newVar :: ModInfo -> Var -> Var
 newVar mod v = Map.findWithDefault (pprPanic "unknown variable: " (ppr v <+> ppr (Map.assocs map))) v map
@@ -288,6 +290,7 @@ mkMapWithVars mod vars = (Map.fromList $ zip varsWithPairs $ fmap newVar varsWit
           newIdDetails (ClassOpId cls) = ClassOpId $ newClass mod cls
           newIdDetails (PrimOpId op) = PrimOpId op
           newIdDetails (FCallId call) = FCallId call
+          newIdDetails (DFunId n b) = DFunId n b
           newIdDetails _ = VanillaId
 
 getAllVarsFromBinds :: ModInfo -> [Var]
@@ -384,7 +387,7 @@ allClasses :: ModInfo -> [Class]
 allClasses mod = [c | Just c <- tyConClass_maybe <$> allTcs mod]
 
 unionTcMaps :: TyConMap -> TyConMap -> TyConMap
-unionTcMaps (m1, l1) (m2, l2) = (Map.union m1 m2, l1 ++ l2)
+unionTcMaps (m1, l1) (m2, l2) = (Map.union m1 m2, nub $ l1 ++ l2)
 
 newTyCon :: ModInfo -> TyCon -> TyCon
 newTyCon mod tc = Map.findWithDefault metaPrelude tc $ fst $ tcMap mod
@@ -506,12 +509,12 @@ newClassInstances mod is = catMaybes $ fmap new is
 
 userClassOpId :: ModInfo -> Id -> Maybe Class
 userClassOpId mod v
-    | Just cls <- isClassOpId_maybe v, inCurrentModule cls = Just cls
+    | Just cls <- isClassOpId_maybe v, inCurrentModule mod cls = Just cls
     | isPrefixOf classOpPrefix (getNameStr v) = lookup (getNameStr v) userClassMethods
     | otherwise = Nothing
     where classOpPrefix = "$c"
-          userClassMethods = concatMap (\c -> fmap (\m -> (classOpPrefix ++ getNameStr m, c)) (classMethods c)) $ filter inCurrentModule $ allClasses mod
-          inCurrentModule cls = mg_module (guts mod) == nameModule (getName cls)
+          modClasses = filter (inCurrentModule mod) $ allClasses mod
+          userClassMethods = concatMap (\c -> fmap (\m -> (classOpPrefix ++ getNameStr m, c)) (classMethods c)) modClasses
 
 ----------------------------------------------------------------------------------------
 -- Binds

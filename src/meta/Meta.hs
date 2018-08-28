@@ -782,7 +782,7 @@ either_nlambda f1 f2 (WithMeta e m) = either (metaFun m f1) (metaFun m f2) e
 
 dataFoldable :: MetaEquivalentMap
 dataFoldable = createEquivalentsMap "Data.Foldable"
-    [(ConvertFun NoMetaResFunOp, ["all", "any"]),
+    [(ConvertFun NoMetaResFunOp, ["all", "any", "find"]),
      (ConvertFun IdOp, ["concat", "notElem"])]
 
 concatMap_nlambda :: (Var b, Foldable_nlambda t) => (WithMeta a -> WithMeta [b]) -> WithMeta (t a) -> WithMeta [b]
