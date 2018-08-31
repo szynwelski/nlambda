@@ -188,9 +188,14 @@ instance MetaLevel ((->) a) where
     dropMeta f = noMeta . (value f)
 
 instance MetaLevel IO where
-    liftMeta x = noMeta $ fmap value x -- noMeta ???
-    dropMeta (WithMeta x m) = fmap (`WithMeta` m) x
+    liftMeta x = noMeta $ fmap value x
+    dropMeta (WithMeta x m) = fmap (`create` m) x
 
+instance Eq k => MetaLevel (Map k) where
+    liftMeta s = create (Map.fromAscList $ zip ks vs') m
+        where (ks, vs) = unzip $ Map.toAscList s
+              (WithMeta vs' m) = liftMeta vs
+    dropMeta (WithMeta s m) = Map.map (`create` m) s
 
 lift :: (MetaLevel f, Var (f a)) => f (WithMeta a) -> WithMeta (f a)
 lift = rename . liftMeta
