@@ -113,12 +113,13 @@ import Nominal.Formula.Constructors (constraint)
 import Nominal.Formula.Operators (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
 import qualified Nominal.Text.Symbols as Symbols
-import Nominal.Type (FoldVarFun, MapVarFun, NominalType(..), Scope(..), collectWith, freeVariables, getAllVariables, mapVariablesIf, neq, replaceVariables)
+import Nominal.Type (NominalType(..), neq)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
 import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
-import Nominal.Variable (Identifier, Variable, changeIterationLevel, clearIdentifier, constantVar, getIterationLevel, hasIdentifierEquals,
-                         hasIdentifierNotEquals, isConstant, iterationVariablesList, iterationVariable, setIdentifier)
+import Nominal.Variable (FoldVarFun, Identifier, MapVarFun, Scope(..), Var(..), Variable, changeIterationLevel, clearIdentifier, collectWith, constantVar, freeVariables,
+                         getAllVariables, getIterationLevel, hasIdentifierEquals, hasIdentifierNotEquals, isConstant,
+                         iterationVariablesList, iterationVariable, mapVariablesIf, replaceVariables, renameWithFlatTree, setIdentifier)
 import Nominal.Variants (Variants, fromVariant, readVariant, variant)
 import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
@@ -174,7 +175,6 @@ checkEquality (v, (vs, c)) =
               | Set.member x1 vs = (Set.delete x1 vs, Map.insert x1 x2 m)
               | Set.member x2 vs = (Set.delete x2 vs, Map.insert x2 x1 m)
               | otherwise        = (vs, m)
-
 
 ----------------------------------------------------------------------------------------------------
 -- Identifiers
@@ -267,22 +267,25 @@ instance (Contextual a, Ord a) => Contextual (Set a) where
 mapWithout :: Set.Set Variable -> (Variable -> Variable) -> Variable -> Variable
 mapWithout vs f x = if Set.member x vs then x else f x
 
-mapSetVariables :: NominalType a => MapVarFun -> (a, SetElementCondition) -> (a, SetElementCondition)
+mapSetVariables :: Var a => MapVarFun -> (a, SetElementCondition) -> (a, SetElementCondition)
 mapSetVariables (All, f) se = mapVariables (All, f) se
 mapSetVariables (Free, f) (v, (vs, c)) = mapVariables (Free, mapWithout vs f) (v, (vs, c))
 
 foldWithout :: Set.Set Variable -> (Variable -> b -> b) -> Variable -> b -> b
 foldWithout vs f x = if Set.member x vs then id else f x
 
-foldSetVariables :: NominalType a => FoldVarFun b -> b -> (a, SetElementCondition) -> b
+foldSetVariables :: Var a => FoldVarFun b -> b -> (a, SetElementCondition) -> b
 foldSetVariables (All, f) acc se = foldVariables (All, f) acc se
 foldSetVariables (Free, f) acc (v, (vs, c)) = foldVariables (Free, foldWithout vs f) acc (v, (vs, c))
+
+instance (Ord a, Var a) => Var (Set a) where
+    mapVariables f (Set es) = Set $ Map.fromListWith sumCondition $ fmap (mapSetVariables f) (Map.assocs es)
+    foldVariables f acc (Set es) = foldl (foldSetVariables f) acc (Map.assocs es)
+    renameVariables = renameWithFlatTree
 
 instance NominalType a => NominalType (Set a) where
     eq s1 s2 = isSubsetOf s1 s2 /\ isSubsetOf s2 s1
     variants = variant
-    mapVariables f (Set es) = Set $ Map.fromListWith sumCondition $ fmap (mapSetVariables f) (Map.assocs es)
-    foldVariables f acc (Set es) = foldl (foldSetVariables f) acc (Map.assocs es)
 
 ----------------------------------------------------------------------------------------------------
 -- Similar instances
@@ -291,14 +294,10 @@ instance NominalType a => NominalType (Set a) where
 instance NominalType a => NominalType (Set.Set a) where
     eq s1 s2 = eq (fromList $ Set.elems s1) (fromList $ Set.elems s2)
     variants = variant
-    mapVariables f = Set.map (mapVariables f)
-    foldVariables f acc = foldVariables f acc . Set.elems
 
 instance (NominalType k, NominalType a) => NominalType (Map k a) where
     eq m1 m2 = eq (fromList $ Map.assocs m1) (fromList $ Map.assocs m2)
     variants = variant
-    mapVariables f = Map.fromList . mapVariables f . Map.assocs
-    foldVariables f acc = foldVariables f acc . Map.assocs
 
 ----------------------------------------------------------------------------------------------------
 -- Basic operations on the set

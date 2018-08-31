@@ -10,6 +10,7 @@ import Nominal.Maybe
 import Nominal.Orbit
 import Nominal.Set
 import Nominal.Type
+import Nominal.Variable (Var)
 import Nominal.Variants hiding (fromList, map)
 import Prelude hiding (filter, map, not, or, sum)
 import GHC.Generics (Generic)
@@ -20,7 +21,7 @@ import GHC.Generics (Generic)
 
 -- | A directed graph with vertices of type __a__ and set of pairs representing edges.
 data Graph a = Graph {vertices :: Set a, edges :: Set (a,a)}
-  deriving (Eq, Ord, Show, Read, Generic, NominalType, Conditional, Contextual)
+  deriving (Eq, Ord, Show, Read, Generic, Var, NominalType, Conditional, Contextual)
 
 ----------------------------------------------------------------------------------------------------
 -- Graph constructors

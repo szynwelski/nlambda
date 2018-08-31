@@ -6,7 +6,7 @@ import Data.Set
 import Nominal.Atoms.Signature (Relation(..))
 import Nominal.Formula.Definition
 import Nominal.Formula.Constructors
-import Nominal.Variable (Variable, isConstant)
+import Nominal.Variable (Var(..), Variable, isConstant, renameWithFlatTree)
 import Prelude hiding (and, foldl, foldr, map, not, null, or)
 
 ----------------------------------------------------------------------------------------------------
@@ -259,3 +259,8 @@ getConstraintsFromFormula f = go $ formula f
           go (Or fs) = concatMap (go . formula) $ elems fs
           go (Not f) = go $ formula f
           go _ = []
+
+instance Var Formula where
+    mapVariables (_, f) = mapFormulaVariables f
+    foldVariables (_, f) = foldFormulaVariables f
+    renameVariables = renameWithFlatTree

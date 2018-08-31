@@ -20,6 +20,7 @@ import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Util.Read (readSepBy, skipSpaces, spaces, string)
+import Nominal.Variable (Var(..), renameWithFlatTree)
 import qualified Nominal.Text.Symbols as Symbols
 import Prelude hiding (or, not)
 import Text.Read (ReadPrec, (<++), parens, prec, readPrec, step)
@@ -66,6 +67,11 @@ instance Ord a => Conditional (Variants a) where
 
 instance (Contextual a, Ord a) => Contextual (Variants a) where
     when ctx = fromList . fmap (\(v,c) -> (when (ctx /\ c) v, when ctx c)) . toList
+
+instance (Ord a, Var a) => Var (Variants a) where
+    mapVariables f = fromList . mapVariables f . toList
+    foldVariables f acc = foldl (foldVariables f) acc . toList
+    renameVariables = renameWithFlatTree
 
 ----------------------------------------------------------------------------------------------------
 -- Functions
