@@ -200,8 +200,10 @@ nlambdaName :: String -> String
 nlambdaName name = name ++ nameSuffix name
 
 mkSuffixNamesMap :: [Name] -> CoreM NameMap
-mkSuffixNamesMap names = do names' <- mapM (createNewName nameSuffix) names
-                            return $ Map.fromList $ zip names names'
+mkSuffixNamesMap names = do notPairs' <- mapM (createNewName nameSuffix) notPairs
+                            return $ Map.fromList (pairs ++ zip notPairs notPairs')
+    where pairs = mapMaybe (\n -> (\n' -> (n,n')) <$> find (isNamePair n) names) names
+          notPairs = filter (\n -> all (\(n1,n2) -> n1 /= n && n2 /= n) pairs) names
 
 createNewName :: (String -> String) -> Name -> CoreM Name
 createNewName suffix name = let occName = nameOccName name
@@ -232,6 +234,12 @@ isPreludeThing = (`elem` preludeModules) . getModuleStr
 
 inCurrentModule :: NamedThing a => ModInfo -> a -> Bool
 inCurrentModule mod x = mg_module (guts mod) == nameModule (getName x)
+
+isNamePair :: Name -> Name -> Bool
+isNamePair name nameWithSuffix
+    = nameWithSuffixStr == nlambdaName nameStr || (isInfixOf name_suffix nameWithSuffixStr && replace name_suffix "" nameWithSuffixStr == nameStr)
+    where nameStr = getNameStr name
+          nameWithSuffixStr = getNameStr nameWithSuffix
 
 ----------------------------------------------------------------------------------------
 -- Data constructors
@@ -276,9 +284,14 @@ mkVarMap :: ModInfo -> VarMap
 mkVarMap mod = let g = guts mod in mkMapWithVars mod (getBindsVars g ++ getClassesVars g ++ getDataConsVars g)
 
 mkMapWithVars :: ModInfo -> [Var] -> VarMap
-mkMapWithVars mod vars = (Map.fromList $ zip varsWithPairs $ fmap newVar varsWithPairs, nub (varsWithoutPairs ++ varsFromExprs))
-    where (varsWithPairs, varsWithoutPairs) = partition (not . isIgnoreImportType mod . varType) vars
-          varsFromExprs = getAllVarsFromBinds mod \\ varsWithPairs
+mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs) , nub (varsWithoutPairs ++ varsFromExprs))
+    where (toChangeVars, notToChangeVars) = partition (not . isIgnoreImportType mod . varType) vars
+          varsPairs = mapMaybe (\v -> (\v' -> (v,v')) <$> find (isVarPair v) notToChangeVars) toChangeVars
+          varsForPairs = filter notInPairs toChangeVars
+          varsWithoutPairs = filter notInPairs notToChangeVars
+          notInPairs v = all (\(v1,v2) -> v1 /= v && v2 /= v) varsPairs
+          varsNewPairs = zip varsForPairs $ fmap newVar varsForPairs
+          varsFromExprs = getAllVarsFromBinds mod \\ varsForPairs
           newVar v = let t = changeType mod $ varType v
                          v' = mkExportedLocalVar
                                 (newIdDetails $ idDetails v)
@@ -313,6 +326,10 @@ mkPredVar (cls, tys) = do uniq <- getUniqueM
 isVar :: CoreExpr -> Bool
 isVar (Var _) = True
 isVar _ = False
+
+isVarPair :: Var -> Var -> Bool
+isVarPair v1 v2 = isNamePair n1 n2 && nameModule n1 == nameModule n2
+    where (n1, n2) = (varName v1, varName v2)
 
 ----------------------------------------------------------------------------------------
 -- Imports
@@ -349,7 +366,7 @@ isIgnoreImportType mod = anyNameEnv (\tc -> (isIgnoreImport $ nameModule $ getNa
 
 newExports :: ModInfo -> Avails -> Avails
 newExports mod avls = concatMap go avls
-    where go (Avail n) = [Avail $ newName mod n]
+    where go (Avail n) = if nameMember mod n then [Avail $ newName mod n] else []
           go (AvailTC nm nms) | nameMember mod nm = [AvailTC (newName mod nm) (newName mod <$> nms)]
           go (AvailTC _ nms) = (Avail . newName mod) <$> (drop 1 nms)
 
@@ -530,11 +547,14 @@ getBindsNames :: ModGuts -> [Name]
 getBindsNames = fmap varName . getBindsVars
 
 newBinds :: ModInfo -> [DataCon] -> CoreProgram -> CoreM CoreProgram
-newBinds mod dcs bs = do bs' <- mapM (changeBind mod) $ filter isInVarMap bs
+newBinds mod dcs bs = do bs' <- mapM (changeBind mod) $ filter withoutPair bs
                          bs'' <- mapM (dataBind mod) dcs
                          return $ bs' ++ bs''
-    where isInVarMap (NonRec b e) = varMapMember mod b
-          isInVarMap (Rec bs) = all (varMapMember mod) $ fst <$> bs
+    where ids = fst <$> flattenBinds bs
+          -- ids that are in var map and their pair has no bind
+          idsWithoutPair = filter (\v -> notElem (newVar mod v) ids) $ filter (varMapMember mod) ids
+          withoutPair (NonRec b e) = elem b idsWithoutPair
+          withoutPair (Rec bs) = all (`elem` idsWithoutPair) $ fmap fst bs
 
 changeBind :: ModInfo -> CoreBind -> CoreM CoreBind
 changeBind mod (NonRec b e) = do (b',e') <- changeBindExpr mod (b, e)
@@ -740,12 +760,8 @@ findThing :: [TyThing] -> TyThingType -> Name -> Maybe TyThing
 findThing = findThingByConds (==) (==)
 
 findPairThing :: [TyThing] -> TyThingType -> Name -> Maybe TyThing
-findPairThing things ty name = findThingByConds pairName equivalentModule things ty name
-    where pairName name nameWithSuffix = let nameStr = getNameStr name
-                                             nameWithSuffixStr = getNameStr nameWithSuffix
-                                         in nameWithSuffixStr == nlambdaName nameStr
-                                            || (isInfixOf name_suffix nameWithSuffixStr && replace name_suffix "" nameWithSuffixStr == nameStr)
-          equivalentModule m1 m2 = m1 == m2 || (elem (getModuleNameStr m1) preludeModules && getModuleNameStr m2 == metaModuleName)
+findPairThing things ty name = findThingByConds isNamePair equivalentModule things ty name
+    where equivalentModule m1 m2 = m1 == m2 || (elem (getModuleNameStr m1) preludeModules && getModuleNameStr m2 == metaModuleName)
 
 findPair :: [TyThing] -> TyThingType -> Name -> Maybe (TyThing, TyThing)
 findPair things ty name = (,) <$> findThing things ty name <*>  findPairThing things ty name

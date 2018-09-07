@@ -9,7 +9,7 @@ import Data.List (nub, sort)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Data.Semigroup (Semigroup, (<>))
 import GHC.Generics
-import Nominal.Meta (MetaLevel)
+import Nominal.Meta (MetaLevel, WithMeta)
 import Nominal.Variable (Var, Variable)
 import Tests.ImportClass
 import Tests.ImportData
@@ -356,3 +356,13 @@ test41 x y z = let list = x : y : z : list in take 10 list
 
 test42 :: Variable -> Variable -> Variable -> [UpOrDown Variable Variable]
 test42 x y z = [Up x, Down y, fromJust $ select [Down x, Down y, Up z]]
+
+----------------------------------------------------------------------------
+-- Test explicit meta methods
+----------------------------------------------------------------------------
+
+test43 :: Variable -> Variable -> Variable -> Variable
+test43 x y z = x
+
+test43_nlambda :: WithMeta Variable -> WithMeta Variable -> WithMeta Variable -> WithMeta Variable
+test43_nlambda x y z = x
