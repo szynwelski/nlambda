@@ -1,11 +1,11 @@
-{-# OPTIONS_GHC -fplugin MetaPlugin #-}
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE DeriveAnyClass, DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable #-}
 
-module TestImportData where
+module Tests.ImportData where
 
 import GHC.Generics
-import Meta (MetaLevel)
-import Var (Var)
+import Nominal.Meta (MetaLevel)
+import Nominal.Variable (Var)
 
 data UpOrDown a b = Up a | Down b deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable) -- FIXME Traversable
 

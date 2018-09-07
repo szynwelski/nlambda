@@ -1,4 +1,4 @@
-module MetaPlugin where
+module Nominal.Meta.Plugin where
 
 import Avail
 import qualified BooleanFormula as BF
@@ -13,11 +13,11 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.String.Utils (replace)
-import GhcPlugins hiding (mkApps, mkLocalVar, substTy)
+import GhcPlugins hiding (ModuleName, mkApps, mkLocalVar, substTy)
 import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, is_cls_nm, is_flag, is_orphan, mkImportedInstance)
 import Kind (defaultKind, isOpenTypeKind)
-import Meta
 import MkId (mkDataConWorkId, mkDictSelRhs)
+import Nominal.Meta
 import Pair (pFst, pSnd)
 import TypeRep
 import TcType (tcSplitSigmaTy, tcSplitPhiTy)
@@ -318,7 +318,7 @@ isVar _ = False
 -- Imports
 ----------------------------------------------------------------------------------------
 
-importsToIgnore :: [Meta.ModuleName]
+importsToIgnore :: [ModuleName]
 importsToIgnore = [metaModuleName, "GHC.Generics"]
 
 isIgnoreImport :: Module -> Bool
@@ -691,7 +691,7 @@ noAtomsType t = noAtomsTypeVars [] [] t
                                                          (concatMap dataConOrigArgTys $ tyConDataCons tc)
           noAtomsTypeCon _ _ _ = True
           isAtomsTypeName :: TyCon -> Bool
-          isAtomsTypeName tc = let nm = tyConName tc in getNameStr nm == "Variable" && moduleNameString (moduleName $ nameModule nm) == "Var"
+          isAtomsTypeName tc = let nm = tyConName tc in getNameStr nm == "Variable" && moduleNameString (moduleName $ nameModule nm) == varModuleName
 
 hasNestedFunType :: Type -> Bool
 hasNestedFunType (TyVarTy v) = False
@@ -1179,11 +1179,11 @@ mkAppsIfMatch = foldl mkAppIfMatch
 -- Meta
 ----------------------------------------------------------------------------------------
 
-varModuleName :: Meta.ModuleName
-varModuleName = "Var"
+varModuleName :: ModuleName
+varModuleName = "Nominal.Variable"
 
-metaModuleName :: Meta.ModuleName
-metaModuleName = "Meta"
+metaModuleName :: ModuleName
+metaModuleName = "Nominal.Meta"
 
 type MetaModule = HomeModInfo
 

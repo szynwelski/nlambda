@@ -1,6 +1,6 @@
-{-# OPTIONS_GHC -fplugin MetaPlugin #-}
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 
-module TestImportClass where
+module Tests.ImportClass where
 
 import Data.Maybe (listToMaybe)
 

@@ -1,7 +1,7 @@
-{-# OPTIONS_GHC -fplugin MetaPlugin #-}
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE BangPatterns, DeriveAnyClass, DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable #-}
 
-module Test where
+module Tests.Test where
 
 import Data.Either (isLeft, isRight)
 import Data.Foldable (toList)
@@ -9,11 +9,11 @@ import Data.List (nub, sort)
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust)
 import Data.Semigroup (Semigroup, (<>))
 import GHC.Generics
-import Meta (MetaLevel)
-import TestImportClass
-import TestImportData
-import TestImportInstance
-import Var (Var, Variable)
+import Nominal.Meta (MetaLevel)
+import Nominal.Variable (Var, Variable)
+import Tests.ImportClass
+import Tests.ImportData
+import Tests.ImportInstance
 
 data Wrapper a = Wrapper a deriving (Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable, Traversable)
 data Optional a = Optional a | Null deriving (Show, Generic, Var, Eq, Ord, Generic1, MetaLevel, Functor, Foldable, Traversable)

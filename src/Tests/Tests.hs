@@ -1,16 +1,15 @@
 {-# LANGUAGE CPP #-}
 
-import Test
-import Meta
-import Var
 import qualified Data.Map as Map
-import System.Environment (getArgs)
+import Nominal.Meta
+import Nominal.Variable
+import Tests.Test
 
 withMeta :: a -> [(Identifier, Identifier)] -> WithMeta a
 withMeta x = create x . metaFromMap . Map.fromList
 
-x = Variable 1
-y = Variable 4
+x = setIdentifier 1 $ iterationVariable 0 1
+y = setIdentifier 4 $ iterationVariable 0 2
 m1 = withMeta x [(1,2)]
 m2 = withMeta x [(1,3)]
 m3 = withMeta y [(4,5)]

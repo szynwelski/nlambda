@@ -1,6 +1,6 @@
 {-# LANGUAGE KindSignatures, DefaultSignatures, FlexibleContexts, TypeOperators, RankNTypes #-}
 
-module Meta where
+module Nominal.Meta where
 
 import Data.Char (toLower)
 import Data.Foldable (fold, foldl', foldr', toList)
@@ -15,7 +15,7 @@ import Data.Ratio (Ratio)
 import GHC.Generics
 import GHC.Read (readPrec, readListPrec)
 import GHC.Show (showList__)
-import Var
+import Nominal.Variable
 import Text.ParserCombinators.ReadPrec (ReadPrec)
 
 ------------------------------------------------------------------------------------------
@@ -678,7 +678,7 @@ createEquivalentsMap :: ModuleName -> [(MetaEquivalentType, [MethodName])] -> Me
 createEquivalentsMap mod = Map.singleton mod . Map.fromList
 
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
-preludeEquivalents = Map.unions [nominalVar, ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcReal,
+preludeEquivalents = Map.unions [nominalVariable, ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcReal,
                                  ghcShow, ghcTuple, ghcTypes, dataEither, dataFoldable, dataMaybe, dataOldList, dataSemigroup, dataSetBase,
                                  dataTraverable, dataTuple, controlExceptionBase, systemIO]
 
@@ -698,8 +698,8 @@ metaEquivalent mod name = case maybe Nothing findMethod $ Map.lookup mod prelude
 -- Meta equivalents methods
 ----------------------------------------------------------------------------------------
 
-nominalVar :: MetaEquivalentMap
-nominalVar = createEquivalentsMap "Var" []
+nominalVariable :: MetaEquivalentMap
+nominalVariable = createEquivalentsMap "Nominal.Variable" []
 
 ghcBase :: MetaEquivalentMap
 ghcBase = createEquivalentsMap "GHC.Base"

@@ -19,7 +19,9 @@ changeIterationLevel,
 toParts,
 fromParts,
 FoldVarFun,
+IdMap,
 MapVarFun,
+RenameTree(..),
 Scope(..),
 Var(..),
 collectWith,
@@ -27,6 +29,10 @@ getAllVariables,
 freeVariables,
 mapVariablesIf,
 replaceVariables,
+addMapToTree,
+createNode,
+getChildrenOrNode,
+isTreeEmpty,
 renameWithFlatTree) where
 
 import Data.Char (isAlphaNum, isLetter, isLower)
@@ -75,7 +81,8 @@ variableNameBeforeIndex level = showIntAtBase 25 (toEnum . (+97)) level ""
 
 instance Show Variable where
     show (Var name) = name
-    show (IterationVariable level index _) = variableNameBeforeIndex level ++ Symbols.subscriptIndex index
+    show (IterationVariable level index id) = variableNameBeforeIndex level ++ Symbols.subscriptIndex index
+--        ++ maybe "" (\i -> "(" ++ show i ++ ")") id -- for tests
     show (ConstantVar value) = showConstant value
 
 ----------------------------------------------------------------------------------------------------
