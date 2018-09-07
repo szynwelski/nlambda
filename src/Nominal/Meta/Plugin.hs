@@ -669,6 +669,9 @@ isWithMetaType mod t
     | Just (tc, _) <- splitTyConApp_maybe (getMainType t) = tc == withMetaC mod
     | otherwise = False
 
+isNotWithMetaType :: ModInfo -> Type -> Bool
+isNotWithMetaType mod = not . isWithMetaType mod
+
 getWithoutWithMetaType :: ModInfo -> Type -> Maybe Type
 getWithoutWithMetaType mod t
     | isWithMetaType mod t, Just ts <- tyConAppArgs_maybe t = Just $ headPanic "getWithoutWithMetaType" (ppr t) ts
@@ -850,7 +853,8 @@ changeExpr mod e = newExpr (mkExprMap mod) e
                                                             e'' <- convertMetaType mod e' t
                                                             return (DataAlt con, xs', e'')
           newAlternative eMap m t (alt, [], e) = do e' <- newExpr eMap e
-                                                    return (alt, [], e')
+                                                    e'' <- convertMetaType mod e' t
+                                                    return (alt, [], e'')
 
 -- the type of expression is not open for atoms and there are no free variables open for atoms
 noAtomsSubExpr :: CoreExpr -> Bool
@@ -1270,10 +1274,10 @@ convertMetaType :: ModInfo -> CoreExpr -> Type -> CoreM CoreExpr
 convertMetaType mod e t
     | et == t = return e
     | isClassPred t, Just e' <- findSuperClass t [e] = return e'
-    | Just t' <- getWithoutWithMetaType mod t, t' == et = do e' <- convertMetaType mod e t'
-                                                             noMetaExpr mod e'
-    | Just et' <- getWithoutWithMetaType mod et, t == et' = do e' <- valueExpr mod e
-                                                               convertMetaType mod e' t
+    | Just t' <- getWithoutWithMetaType mod t, isNotWithMetaType mod et = do e' <- convertMetaType mod e t'
+                                                                             noMetaExpr mod e'
+    | isWithMetaType mod et, isNotWithMetaType mod t = do e' <- valueExpr mod e
+                                                          convertMetaType mod e' t
     | length etvs == length tvs, isFunTy et' && isFunTy t', subst <- substFromLists etvs tvs
     = convertMetaFun (funArgTy $ substTy subst $ getMainType et') (splitFunTy $ getMainType t')
     | otherwise = pprPanic "convertMetaType" (text "can't convert (" <+> ppr e <+> text "::" <+> ppr (exprType e) <+> text ") to type:" <+> ppr t)
