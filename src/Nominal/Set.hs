@@ -109,8 +109,7 @@ import Nominal.Atoms.Signature (defaultConstant)
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
-import Nominal.Formula.Constructors (constraint)
-import Nominal.Formula.Operators (getConstraintsFromFormula, getEquationsFromFormula)
+import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (NominalType(..), neq)

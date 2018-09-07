@@ -39,8 +39,6 @@ module Nominal.Formula (
 
 import Nominal.Atoms.Logic (existsVar, forAllVars, model, isFalse, isTrue, simplifyFormula)
 import Nominal.Formula.Definition
-import Nominal.Formula.Constructors
-import Nominal.Formula.Operators
 import Nominal.Variable (Variable)
 import Prelude hiding (and, not, or)
 

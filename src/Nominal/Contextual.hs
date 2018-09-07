@@ -7,7 +7,7 @@ module Nominal.Contextual where
 import Data.Map (Map, assocs, fromList)
 import Data.Set (Set, map)
 import Nominal.Formula
-import Nominal.Formula.Operators
+import Nominal.Formula.Definition (mapFormula)
 import Nominal.Variable (Variable)
 import Prelude hiding (map, not)
 import GHC.Generics

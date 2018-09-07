@@ -5,7 +5,6 @@ module Nominal.Type where
 import Data.Map (Map, findWithDefault)
 import Data.Set (Set, empty, insert)
 import Nominal.Formula
-import Nominal.Formula.Operators (foldFormulaVariables, mapFormulaVariables)
 import Nominal.Variable (Var, Variable)
 import Nominal.Variants (Variants, fromList, map, prod, toList, variant, variantsRelation)
 import Prelude hiding (and, map, not, or)

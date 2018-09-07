@@ -15,9 +15,7 @@ import Data.Monoid ((<>), mconcat, mempty)
 import Data.Set (elems, null)
 import Data.Word (Word)
 import Nominal.Atoms.Signature (Constant, Relation(..), readConstant, relationAscii, relations)
-import Nominal.Formula.Constructors
 import Nominal.Formula.Definition
-import Nominal.Formula.Operators
 import Nominal.Formula.SmtLogger
 import Nominal.Variable (Variable, constantValue, constantVar, fromParts, isConstant, isVariableChar, toParts)
 import Prelude hiding (null, takeWhile)
@@ -318,7 +316,7 @@ parseNot l = do
     spaces
     f <- parseFormula l
     char ')'
-    return $ Nominal.Formula.Operators.not f
+    return $ Nominal.Formula.Definition.not f
 
 parseAnd :: SmtLogic -> Parser Formula
 parseAnd l = do

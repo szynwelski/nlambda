@@ -3,8 +3,6 @@ module Nominal.Formula.Quantification (existsVar, forAllVars) where
 import Data.Set
 import Nominal.Atoms.Signature (Relation(..), symmetricRelation)
 import Nominal.Formula.Definition
-import Nominal.Formula.Constructors
-import Nominal.Formula.Operators
 import Nominal.Variable (Variable, isConstant)
 import Prelude hiding (and, filter, map, not, or)
 
