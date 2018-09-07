@@ -786,6 +786,9 @@ getExpr map v = Map.findWithDefault (pprPanic "no expression for variable: " (pp
 insertVarExpr :: Var -> Var -> ExprMap -> ExprMap
 insertVarExpr v v' = Map.insert v (Var v')
 
+insertVarExprs :: [(Var, Var)] -> ExprMap -> ExprMap
+insertVarExprs vs = Map.union (Map.fromList $ fmap (fmap Var) vs)
+
 insertExpr :: Var -> CoreExpr -> ExprMap -> ExprMap
 insertExpr = Map.insert
 
@@ -814,8 +817,8 @@ changeExpr mod e = newExpr (mkExprMap mod) e
           newExpr eMap (Lam x e) = do x' <- changeBindTypeAndUniq mod x
                                       e' <- newExpr (insertVarExpr x x' eMap) e
                                       return $ Lam x' e'
-          newExpr eMap (Let b e) = do (b', eMap) <- newLetBind b eMap
-                                      e' <- newExpr eMap e
+          newExpr eMap (Let b e) = do (b', eMap') <- newLetBind b eMap
+                                      e' <- newExpr eMap' e
                                       return $ Let b' e'
           newExpr eMap (Case e b t as) = do e' <- newExpr eMap e
                                             e'' <- if isWithMetaType mod $ exprType e'
@@ -841,14 +844,11 @@ changeExpr mod e = newExpr (mkExprMap mod) e
                                             let eMap' = insertVarExpr b b' eMap
                                             e' <- newExpr eMap' e
                                             return (NonRec b' e', eMap')
-          newLetBind (Rec bs) eMap = do (bs', eMap') <- newRecBinds bs eMap
-                                        return (Rec bs', eMap')
-          newRecBinds ((b, e):bs) eMap = do (bs', eMap') <- newRecBinds bs eMap
-                                            b' <- changeBindTypeAndUniq mod b
-                                            let eMap'' = insertVarExpr b b' eMap'
-                                            e' <- newExpr eMap'' e
-                                            return ((b',e'):bs', eMap'')
-          newRecBinds [] eMap = return ([], eMap)
+          newLetBind (Rec bs) eMap = do let (xs, es) = unzip bs
+                                        xs' <- mapM (changeBindTypeAndUniq mod) xs
+                                        let eMap' = insertVarExprs (zip xs xs') eMap
+                                        es' <- mapM (newExpr eMap') es
+                                        return (Rec $ zip xs' es', eMap')
           newAlternative eMap m t (DataAlt con, xs, e) = do xs' <- mapM (changeBindTypeUnderWithMetaAndUniq mod) xs
                                                             es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
                                                             e' <- newExpr (Map.union (Map.fromList $ zip xs es) eMap) e
