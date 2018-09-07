@@ -38,13 +38,15 @@ renameWithFlatTree) where
 import Data.Char (isAlphaNum, isLetter, isLower)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.MultiMap (MultiMap)
+import qualified Data.MultiMap as MM
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Ratio (Ratio, (%), numerator, denominator)
 import Data.Word (Word)
 import GHC.Generics
 import Numeric (showIntAtBase)
-import Nominal.Atoms.Signature (Constant, readConstant, showConstant)
+import Nominal.Atoms.Signature (Constant, Relation, readConstant, showConstant)
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Util.Read (skipSpaces)
 import Text.ParserCombinators.ReadP (munch, satisfy)
@@ -261,7 +263,7 @@ replaceVariables varsMap = mapVariables (All, \var -> Map.findWithDefault var va
 ----------------------------------------------------------------------------------------------------
 
 #define VAR_INSTANCE(type)        \
-instance Var type where;          \
+instance Var (type) where;        \
     mapVariables _ = id;          \
     foldVariables _ acc _ = acc;  \
     renameVariables _ = id;       \
@@ -275,6 +277,8 @@ VAR_INSTANCE(Integer)
 VAR_INSTANCE(Ordering)
 VAR_INSTANCE(Word)
 VAR_INSTANCE((a -> b))
+VAR_INSTANCE(Relation)
+VAR_INSTANCE(ReadPrec a)
 
 instance Var ()
 instance Var a => Var [a]
@@ -301,6 +305,11 @@ instance (Ord a, Var a) => Var (Set.Set a) where
 instance (Ord k, Var k, Var a) => Var (Map k a) where
     mapVariables f = Map.fromList . mapVariables f . Map.assocs
     foldVariables f acc = foldVariables f acc . Map.assocs
+    renameVariables = renameWithFlatTree
+
+instance (Ord k, Var k, Var a) => Var (MultiMap k a) where
+    mapVariables f = MM.fromList . mapVariables f . MM.toList
+    foldVariables f acc = foldVariables f acc . MM.toList
     renameVariables = renameWithFlatTree
 
 instance Var Variable where
