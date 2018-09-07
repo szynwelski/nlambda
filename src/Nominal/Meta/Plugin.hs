@@ -407,7 +407,9 @@ unionTcMaps :: TyConMap -> TyConMap -> TyConMap
 unionTcMaps (m1, l1) (m2, l2) = (Map.union m1 m2, nub $ l1 ++ l2)
 
 newTyCon :: ModInfo -> TyCon -> TyCon
-newTyCon mod tc = Map.findWithDefault metaPrelude tc $ fst $ tcMap mod
+newTyCon mod tc
+    | isClassTyCon tc = Map.findWithDefault metaPrelude tc $ fst $ tcMap mod
+    | otherwise = tc
     where metaPrelude = fromMaybe
                           (pprPgmError "Unknown type constructor:"
                             (ppr tc <+> text ("\nProbably module " ++ getModuleStr tc ++ " is not compiled with NLambda Plugin.")))
