@@ -672,6 +672,14 @@ class Generic a => Generic_nlambda a where
     to_nlambda :: WithMeta (Rep a x) -> WithMeta a
     to_nlambda = idOp to
 
+instance Generic_nlambda ()
+instance Generic_nlambda (a, b)
+instance Generic_nlambda (a, b, c)
+instance Generic_nlambda (a, b, c, d)
+instance Generic_nlambda (a, b, c, d, e)
+instance Generic_nlambda (a, b, c, d, e, f)
+instance Generic_nlambda (a, b, c, d, e, f, g)
+
 class Generic1 f => Generic1_nlambda f where
     from1_nlambda :: Var a => WithMeta (f a) -> WithMeta (Rep1 f a)
     from1_nlambda = idOp from1

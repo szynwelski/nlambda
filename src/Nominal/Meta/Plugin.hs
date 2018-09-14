@@ -19,6 +19,7 @@ import Kind (defaultKind, isOpenTypeKind)
 import MkId (mkDataConWorkId, mkDictSelRhs)
 import Nominal.Meta
 import Pair (pFst, pSnd)
+import PrelNames (anyTyConKey)
 import TypeRep
 import TcType (tcSplitSigmaTy, tcSplitPhiTy)
 import Unify (tcUnifyTy)
@@ -689,6 +690,9 @@ isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPri
 isMonoType :: Type -> Bool
 isMonoType = not . isFunTy . typeKind
 
+isAnyType :: Type -> Bool
+isAnyType = maybe False ((== anyTyConKey) . getUnique) . tyConAppTyCon_maybe
+
 ----------------------------------------------------------------------------------------
 -- Checking type contains atoms
 ----------------------------------------------------------------------------------------
@@ -1180,7 +1184,9 @@ applyExprs = foldlM applyExpr
 
 mkAppOr :: CoreExpr -> CoreExpr -> CoreExpr -> CoreExpr
 mkAppOr f x ifNotMatch
-    | not (isTypeArg x), funArgTy (exprType f) /= exprType x = ifNotMatch
+    | isTypeArg x, not $ isForAllTy $ exprType f = ifNotMatch
+    | not $ isTypeArg x, not $ isFunTy $ exprType f = ifNotMatch
+    | not $ isTypeArg x, funArgTy (exprType f) /= exprType x = ifNotMatch
     | otherwise = mkCoreApp f x
 
 mkApp :: CoreExpr -> CoreExpr -> CoreExpr
@@ -1367,7 +1373,7 @@ mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
 
 isMockInstance :: ModInfo -> CoreExpr -> Bool
-isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod True t
+isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod True t && not (isAnyType $ head $ snd $ getClassPredTys t)
 isMockInstance _ _ = False
 
 addMockedInstances :: ModInfo -> Bool -> CoreExpr -> CoreM CoreExpr

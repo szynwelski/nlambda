@@ -105,13 +105,13 @@ test13 x y z = [length [x,y,z], length (Just x), length (Left x), length (Right 
 test14 :: Variable -> Variable -> Variable -> [Bool]
 test14 x y z = [null [x,y,z], null (Just x), null (Left x), null (Right x), null (Wrapper x),
                 null (Pair x y), null (Optional x), null Null, null $ fromList [x,y,z],
-                elem y [x,y,z], elem y (Just x), elem y (Left x), elem y (Right x :: Either Variable Variable),
+                elem y [x,y,z], elem y (Just x), elem y (Left x), elem y (Right x),
                 elem y (Wrapper x), elem y (Pair x y), elem y (Optional x), elem y Null, elem y $ fromList [x,y,z]]
 
 test15 :: Variable -> Variable -> Variable -> [Variable]
 test15 x y z = [maximum [x,y,z], maximum (Just x), maximum (Right x), maximum (Wrapper x),
                 maximum (Pair x y), maximum (Optional x), maximum $ fromList [x,y,z],
-                minimum [x,y,z], minimum (Just x), minimum (Right x :: Either Variable Variable),
+                minimum [x,y,z], minimum (Just x), minimum (Right x),
                 minimum (Wrapper x), minimum (Pair x y), minimum (Optional x), minimum $ fromList [x,y,z]]
 
 ----------------------------------------------------------------------------
@@ -202,7 +202,7 @@ instance Applicative Optional where
     Null <*> _ = Null
 
 test28 :: Variable -> Variable -> Variable -> [Optional Variable]
-test28 x y z = [pure x, Optional id <*> Optional x, Null <*> Optional z, Optional id <*> Null, Optional x *> Optional y, Optional x <* (Null::Optional Variable)]
+test28 x y z = [pure x, Optional id <*> Optional x, Null <*> Optional z, Optional id <*> Null, Optional x *> Optional y, Optional x <* Null]
 
 -- FIXME
 --instance (Semigroup a, Monoid a) => Applicative (Pair a) where
@@ -235,7 +235,7 @@ instance Monad Optional where
 
 test31 :: Variable -> Variable -> Variable -> [Optional Variable]
 test31 x y z = [Optional x >>= Optional, Null >>= Optional, Optional x >> Optional y, Optional z >> Null,
-                (Null :: Optional Variable) >> Optional x, (Null :: Optional Variable) >> Null, return x]
+                (Null :: Optional Variable) >> Optional x, Null >> Null, return x]
 
 -- FIXME
 --instance (Semigroup a, Monoid a) => Monad (Pair a) where

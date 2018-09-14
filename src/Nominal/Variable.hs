@@ -290,6 +290,10 @@ instance (Var a, Var b, Var c, Var d) => Var (a, b, c, d)
 instance (Var a, Var b, Var c, Var d, Var e) => Var (a, b, c, d, e)
 instance (Var a, Var b, Var c, Var d, Var e, Var f) => Var (a, b, c, d, e, f)
 instance (Var a, Var b, Var c, Var d, Var e, Var f, Var g) => Var (a, b, c, d, e, f, g)
+instance Var c => Var (K1 i c p)
+instance Var (f p) => Var (M1 i c f p)
+instance Var p => Var (Par1 p)
+instance Var (f p) => Var (Rec1 f p)
 
 instance (Integral a, Var a) => Var (Ratio a) where
     mapVariables f r = mapVariables f (numerator r) % mapVariables f (denominator r)
