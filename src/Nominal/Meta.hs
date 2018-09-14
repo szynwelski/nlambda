@@ -662,6 +662,38 @@ instance Traversable_nlambda ((,) a) -- Defined in ‘Data.Traversable’
 showList___nlambda :: (WithMeta a -> ShowS) ->  WithMeta [a] -> ShowS
 showList___nlambda f (WithMeta xs m) = showList__ (metaFun m f) xs
 
+------------------------------------------------------------------------------------------
+-- Meta classes from GHC.Generics
+------------------------------------------------------------------------------------------
+
+class Generic a => Generic_nlambda a where
+    from_nlambda :: WithMeta a -> WithMeta (Rep a x)
+    from_nlambda = idOp from
+    to_nlambda :: WithMeta (Rep a x) -> WithMeta a
+    to_nlambda = idOp to
+
+class Generic1 f => Generic1_nlambda f where
+    from1_nlambda :: Var a => WithMeta (f a) -> WithMeta (Rep1 f a)
+    from1_nlambda = idOp from1
+    to1_nlambda :: Var a => WithMeta (Rep1 f a) -> WithMeta (f a)
+    to1_nlambda = idOp to1
+
+class Constructor c => Constructor_nlambda c where
+  conName_nlambda :: WithMeta (t c (f :: * -> *) a) -> [Char]
+  conName_nlambda = noMetaResOp conName
+  conFixity_nlambda :: WithMeta (t c (f :: * -> *) a) -> Fixity
+  conFixity_nlambda = noMetaResOp conFixity
+  conIsRecord_nlambda :: WithMeta (t c (f :: * -> *) a) -> Bool
+  conIsRecord_nlambda = noMetaResOp conIsRecord
+
+class Datatype d => Datatype_nlambda d where
+  datatypeName_nlambda :: WithMeta (t d (f :: * -> *) a) -> [Char]
+  datatypeName_nlambda = noMetaResOp datatypeName
+  moduleName_nlambda :: WithMeta (t d (f :: * -> *) a) -> [Char]
+  moduleName_nlambda = noMetaResOp moduleName
+  isNewtype_nlambda :: WithMeta (t d (f :: * -> *) a) -> Bool
+  isNewtype_nlambda = noMetaResOp isNewtype
+
 ----------------------------------------------------------------------------------------
 -- Meta equivalents
 ----------------------------------------------------------------------------------------
@@ -694,7 +726,7 @@ createEquivalentsMap mod = Map.singleton mod . Map.fromList
 preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions $
     [nominalAtomsSignature, nominalUtilRead, nominalVariable]
-    ++ [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcRead, ghcReal, ghcShow, ghcTuple, ghcTypes]
+    ++ [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcGenerics, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcRead, ghcReal, ghcShow, ghcTuple, ghcTypes]
     ++ [dataEither, dataFoldable, dataFunctor, dataMaybe, dataMulitMap, dataOldList, dataSemigroup, dataSetBase, dataSetInternal, dataTraverable, dataTuple]
     ++ [controlExceptionBase, systemIO, textParserCombinatorsReadPrec]
 
@@ -755,6 +787,13 @@ ghcErr = createEquivalentsMap "GHC.Err"
 
 ghcFloat :: MetaEquivalentMap
 ghcFloat = createEquivalentsMap "GHC.Float" []
+
+ghcGenerics :: MetaEquivalentMap
+ghcGenerics = createEquivalentsMap "GHC.Generics"
+    [(ConvertFun NoMeta, ["U1"]),
+     (ConvertFun IdOp, ["L1", "R1", "to", "unK1", "unPar1", "unRec1"]),
+     (ConvertFun RenameAndApply2, [":*:"])]
+
 
 ghcIntegerType :: MetaEquivalentMap
 ghcIntegerType = createEquivalentsMap "GHC.Integer.Type" []
@@ -855,7 +894,7 @@ dataMulitMap = createEquivalentsMap "Data.MultiMap"
 
 dataOldList :: MetaEquivalentMap
 dataOldList = createEquivalentsMap "Data.OldList"
-    [(ConvertFun IdOp, ["nub", "sort"])]
+    [(ConvertFun IdOp, ["nub", "permutations", "sort"])]
 
 dataSemigroup :: MetaEquivalentMap
 dataSemigroup = createEquivalentsMap "Data.Semigroup" []

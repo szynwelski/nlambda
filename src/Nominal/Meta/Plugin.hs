@@ -335,18 +335,15 @@ isVarPair v1 v2 = isNamePair n1 n2 && nameModule n1 == nameModule n2
 -- Imports
 ----------------------------------------------------------------------------------------
 
-importsToIgnore :: [ModuleName]
-importsToIgnore = [metaModuleName, "GHC.Generics"]
-
 isIgnoreImport :: Module -> Bool
-isIgnoreImport = (`elem` importsToIgnore) . moduleNameString . moduleName
+isIgnoreImport = (== metaModuleName) . moduleNameString . moduleName
 
 getImportedModules :: ModGuts -> [Module]
 getImportedModules = filter (not . isIgnoreImport) . moduleEnvKeys . mg_dir_imps
 
 getImportedMaps :: ModInfo -> (NameMap, VarMap, TyConMap)
 getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, varWithoutPair), (Map.fromList tcPairs, tcWithoutPair))
-    where mods = catMaybes $ fmap (lookupUFM $ hsc_HPT $ env mod) $ fmap moduleName $ getImportedModules (guts mod)
+    where mods = eltsUFM $ hsc_HPT $ env mod
           things = eltsUFM $ getModulesTyThings mods
           (tcThings, varThings) = fmap (filter isTyThingId) $ partition isTyThingTyCon things
           tcPairs = fmap (\(tt1, tt2) -> (tyThingTyCon tt1, tyThingTyCon tt2)) $ catMaybes $ findPair things TyThingTyCon <$> getName <$> tcThings
@@ -356,9 +353,8 @@ getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, varWithou
           getNamePair (x, y) = (getName x, getName y)
           namePairs = (getNamePair <$> tcPairs) ++ (getNamePair <$> varPairs)
 
--- FIXME check if isAbstractTyCon should be used here
 isIgnoreImportType :: ModInfo -> Type -> Bool
-isIgnoreImportType mod = anyNameEnv (\tc -> (isIgnoreImport $ nameModule $ getName tc) || isAbstractTyCon tc || varC mod == tc) . tyConsOfType
+isIgnoreImportType mod = anyNameEnv (\tc -> (isIgnoreImport $ nameModule $ getName tc) || varC mod == tc) . tyConsOfType
 
 ----------------------------------------------------------------------------------------
 -- Exports
@@ -498,6 +494,7 @@ getClassInstance :: ModInfo -> Class -> Type -> CoreExpr
 getClassInstance mod cl t
     | Just v <- getMetaVarMaybe mod name = v -- for instances in Meta module
     | Just v <- listToMaybe $ filter ((== name) . getNameStr) (allVars mod) = Var v -- for instances in user modules
+    | Just v <- listToMaybe $ fmap instanceDFunId $ filter ((\(_, c, ts) -> c == cl && ts == [t]) . instanceHead) $ mg_insts $ guts mod = Var v
     | otherwise = pgmError ("NLambda plugin requires " ++ className ++ " instance for type: " ++ tcName ++ " (from " ++ getModuleStr tc ++ ")")
     where Just tc = tyConAppTyCon_maybe t
           tcName = getNameStr tc
@@ -617,8 +614,9 @@ changeTypeUnderWithMeta mod skipNoAtoms t = change t
           change t = t
 
 changePredType :: ModInfo -> PredType -> PredType
-changePredType mod t | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc = mkTyConApp (newTyCon mod tc) ts
-changePredType mod t = t
+changePredType mod t
+    | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc = mkTyConApp (newTyCon mod tc) (changeTypeUnderWithMeta mod False <$> ts)
+    | otherwise = t
 
 changeTypeAndApply :: ModInfo -> CoreExpr -> Type -> CoreExpr
 changeTypeAndApply mod e t
@@ -1434,6 +1432,7 @@ noVarInstances = null . varInstances
 findVarInstance :: Type -> ReplaceInfo -> Maybe DictId
 findVarInstance t = lookup t . varInstances
 
+-- FIXME maybe propagate not only Var instances (e.g. Var instance for Set needs Ord instance)
 addVarInstance :: (Type, DictId) -> ReplaceInfo -> ReplaceInfo
 addVarInstance (t, v) ri = ri {varInstances = (t, v) : (varInstances ri)}
 
