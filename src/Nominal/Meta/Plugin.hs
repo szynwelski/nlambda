@@ -802,7 +802,7 @@ changeExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 changeExpr mod e = newExpr (mkExprMap mod) e
     where newExpr :: ExprMap -> CoreExpr -> CoreM CoreExpr
           newExpr eMap e | noAtomsSubExpr e = replaceVars mod eMap e
-          newExpr eMap (Var v) | Map.member v eMap = addMockedInstances mod False $ getExpr eMap v
+          newExpr eMap (Var v) | Map.member v eMap = addMockedInstances mod $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod v
           newExpr eMap (Var v) = pprPgmError "Unknown variable:"
             (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleStr v ++ " is not compiled with NLambda Plugin."))
@@ -1270,7 +1270,7 @@ idOpExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 idOpExpr mod e = applyExpr (idOpV mod) e
 
 renameAndApplyExpr :: ModInfo -> Int -> CoreM CoreExpr
-renameAndApplyExpr mod n = addMockedInstances mod False (renameAndApplyV mod n)
+renameAndApplyExpr mod n = addMockedInstances mod (renameAndApplyV mod n)
 
 ----------------------------------------------------------------------------------------
 -- Convert meta types
@@ -1335,10 +1335,10 @@ getMetaEquivalent :: ModInfo -> Var -> CoreM CoreExpr
 getMetaEquivalent mod v
     = case metaEquivalent (getModuleStr v) (getNameStr v) of
         OrigFun -> addWithMetaTypes mod $ Var v
-        MetaFun name -> addMockedInstances mod False $ getMetaVar mod name
-        MetaConvertFun name -> do convertFun <- addMockedInstances mod False $ getMetaVar mod name
+        MetaFun name -> addMockedInstances mod $ getMetaVar mod name
+        MetaConvertFun name -> do convertFun <- addMockedInstances mod $ getMetaVar mod name
                                   applyExpr convertFun (Var v)
-        NoEquivalent -> addMockedInstances mod True $ Var $ fromMaybe
+        NoEquivalent -> addMockedInstances mod $ Var $ fromMaybe
                           (pprPgmError "No meta equivalent for:" (showVar v <+> text "from module:" <+> text (getModuleStr v)))
                           (getDefinedMetaEquivalentVar mod v)
       where addWithMetaTypes mod e = do (vars, _) <- splitTypeToExprVars $ exprType e
@@ -1363,8 +1363,8 @@ isPredicate mod = isPredicateWith mod $ const True
 isVarPredicate :: ModInfo -> Type -> Bool
 isVarPredicate mod = isPredicateWith mod (== varC mod)
 
-isPredicateForMock :: ModInfo -> Bool -> Type -> Bool
-isPredicateForMock mod mockPrelude = isPredicateWith mod (\tc -> varC mod == tc || metaLevelC mod == tc || (mockPrelude && isPreludeThing tc))
+isPredicateForMock :: ModInfo -> Type -> Bool
+isPredicateForMock mod = isPredicateWith mod (\tc -> varC mod == tc || metaLevelC mod == tc || isPreludeThing tc)
 
 varPredicatesFromType :: ModInfo -> Type -> [PredType]
 varPredicatesFromType mod = filter (isVarPredicate mod) . getAllPreds
@@ -1373,18 +1373,18 @@ mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
 
 isMockInstance :: ModInfo -> CoreExpr -> Bool
-isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod True t && not (isInternalRep $ head $ snd $ getClassPredTys t)
+isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod t && not (isInternalRep $ head $ snd $ getClassPredTys t)
     where isInternalRep t
             | isAnyType t = True
             | Just tc <- tyConAppTyCon_maybe t, isMonoType t = isAbstractTyCon tc -- for empty datatypes generated for Generics
             | otherwise = False
 isMockInstance _ _ = False
 
-addMockedInstances :: ModInfo -> Bool -> CoreExpr -> CoreM CoreExpr
-addMockedInstances mod mockPrelude = addMockedInstancesExcept mod mockPrelude []
+addMockedInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
+addMockedInstances mod = addMockedInstancesExcept mod []
 
-addMockedInstancesExcept :: ModInfo -> Bool -> [PredType] -> CoreExpr -> CoreM CoreExpr
-addMockedInstancesExcept mod mockPrelude exceptTys e
+addMockedInstancesExcept :: ModInfo -> [PredType] -> CoreExpr -> CoreM CoreExpr
+addMockedInstancesExcept mod exceptTys e
     = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
          let exceptTys' = substTy subst <$> exceptTys
          let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
@@ -1398,7 +1398,7 @@ addMockedInstancesExcept mod mockPrelude exceptTys e
                                   then mkCoreLams vvs' e'
                                   else mkCoreLams (vvs' ++ xs) $ mkApps e' es
     where -- isTypeArg checked before call exprType on e
-          forMock exceptTys t = isPredicateForMock mod mockPrelude t && notElem t exceptTys
+          forMock exceptTys t = isPredicateForMock mod t && notElem t exceptTys
           mockPredOrDict exceptTys e = if not (isTypeArg e) && forMock exceptTys (exprType e) then mockInstance (exprType e) else e
           mkMockedArgs n (t:ts) = do x <- mkLocalVar ("x" ++ show (n - length ts)) (typeWithoutVarPreds t)
                                      (vs, t') <- splitTypeToExprVars t
@@ -1496,7 +1496,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                 let (vis1, vis2) = partition (\(t,vi) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (varInstances ri')
                                 return (mkCoreLams (tvs ++ fmap snd vis1) e'', ri' {varInstances = vis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
-                                 = do x'' <- addMockedInstancesExcept mod False (varPredicatesFromType mod $ varType x) (Var x')
+                                 = do x'' <- addMockedInstancesExcept mod (varPredicatesFromType mod $ varType x) (Var x')
                                       return (x'', withMocks ri)
           replace (App f e) dis ri = do (f', ri') <- replace f dis ri
                                         (e', ri'') <- replace e dis ri'
@@ -1533,7 +1533,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
           replaceMock t dis ri
               | Just v <- lookup t dis = return (Var v, ri)
               | isVarPredicate mod t, Just v <- findVarInstance t ri = return (Var v, ri)
-              | Just di <- dictInstance mod t = do di' <- addMockedInstances mod True di
+              | Just di <- dictInstance mod t = do di' <- addMockedInstances mod di
                                                    return (di', withMocks ri)
               | isVarPredicate mod t = do v <- mkPredVar $ getClassPredTys t
                                           return (Var v, addVarInstance (t, v) ri)
