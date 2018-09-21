@@ -1373,7 +1373,11 @@ mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
 
 isMockInstance :: ModInfo -> CoreExpr -> Bool
-isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod True t && not (isAnyType $ head $ snd $ getClassPredTys t)
+isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod True t && not (isInternalRep $ head $ snd $ getClassPredTys t)
+    where isInternalRep t
+            | isAnyType t = True
+            | Just tc <- tyConAppTyCon_maybe t, isMonoType t = isAbstractTyCon tc -- for empty datatypes generated for Generics
+            | otherwise = False
 isMockInstance _ _ = False
 
 addMockedInstances :: ModInfo -> Bool -> CoreExpr -> CoreM CoreExpr
@@ -1496,11 +1500,15 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                       return (x'', withMocks ri)
           replace (App f e) dis ri = do (f', ri') <- replace f dis ri
                                         (e', ri'') <- replace e dis ri'
-                                        let argTy = funArgTy $ exprType f'
-                                        let f'' = if not (isTypeArg e') && isVarPredicate mod argTy && not (isVarPredicate mod $ exprType e')
-                                                  then mkApp f' (mockInstance argTy)
-                                                  else f'
-                                        return (mkApp f'' e', ri'')
+                                        let typeArg = isTypeArg e'
+                                        let isVarArg = isVarPredicate mod $ funArgTy $ exprType f'
+                                        let isVarExpr = isVarPredicate mod (exprType e')
+                                        let res = case () of
+                                                    _ | typeArg                   -> mkApp f' e'
+                                                      | isVarArg && not isVarExpr -> mkApps f' [mockInstance $ funArgTy $ exprType f', e']
+                                                      | not isVarArg && isVarExpr -> f'
+                                                      | otherwise                 -> mkApp f' e'
+                                        return (res, ri'')
           replace (Lam x e) dis ri = do let dis' = if isPredicate mod $ varType x then (varType x, x) : dis else dis
                                         (e', ri') <- replace e dis' ri
                                         return (Lam x e', ri')
@@ -1573,9 +1581,11 @@ showType (LitTy tl) = text "LitTy(" <> ppr tl <> text ")"
 
 showTyCon :: TyCon -> SDoc
 showTyCon = ppr
---showTyCon tc = text "'" <> text (occNameString $ nameOccName $ tyConName tc) <> text "'"
+--showTyCon tc = showName (tyConName tc)
 --    <> text "{"
---    <> ppr (nameUnique $ tyConName tc)
+--    <> ppr (tyConKind tc)
+--    <> ppr (tyConArity tc)
+--    <> ppr (tyConParent tc)
 --    <> (whenT (isAlgTyCon tc) ",Alg")
 --    <> (whenT (isClassTyCon tc) ",Class")
 --    <> (whenT (isFamInstTyCon tc) ",FamInst")
