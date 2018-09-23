@@ -1279,24 +1279,25 @@ renameAndApplyExpr mod n = addMockedInstances mod (renameAndApplyV mod n)
 convertMetaType :: ModInfo -> CoreExpr -> Type -> CoreM CoreExpr
 convertMetaType mod e t
     | et == t = return e
+    | isForAllTy t, isForAllTy et, tyVarsKinds t == tyVarsKinds et = do (vs, _, subst) <- splitTypeToExprVarsWithSubst t
+                                                                        let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
+                                                                        let e' = mkAppsIfMatch e evs
+                                                                        e'' <- convertMetaType mod e' $ substTy subst $ getMainType t
+                                                                        return $ mkCoreLams vvs e''
     | isClassPred t, Just e' <- findSuperClass t [e] = return e'
     | Just t' <- getWithoutWithMetaType mod t, isNotWithMetaType mod et = do e' <- convertMetaType mod e t'
                                                                              noMetaExpr mod e'
     | isWithMetaType mod et, isNotWithMetaType mod t = do e' <- valueExpr mod e
                                                           convertMetaType mod e' t
-    | length etvs == length tvs, isFunTy et' && isFunTy t', subst <- substFromLists etvs tvs
-    = convertMetaFun (funArgTy $ substTy subst $ getMainType et') (splitFunTy $ getMainType t')
-    | otherwise = pprPanic "convertMetaType" (text "can't convert (" <+> ppr e <+> text "::" <+> ppr (exprType e) <+> text ") to type:" <+> ppr t)
+    | isFunTy t, isFunTy et = do let (arg, res) = splitFunTy t
+                                 x <- mkLocalVar "x" arg
+                                 ex <- convertMetaType mod (Var x) (funArgTy et)
+                                 let e' = mkApp e ex
+                                 e'' <- convertMetaType mod e' res
+                                 return $ Lam x e''
+    | otherwise = pprPanic "convertMetaType" (text "can't convert (" <+> pprE "e" e <+> text ") to type:" <+> ppr t)
     where et = exprType e
-          (etvs, et') = splitForAllTys et
-          (tvs, t') = splitForAllTys t
-          convertMetaFun earg (arg, res) = do (vs, _, subst) <- splitTypeToExprVarsWithSubst t
-                                              let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
-                                              x <- mkLocalVar "x" (substTy subst arg)
-                                              ex <- convertMetaType mod (Var x) (substTy subst earg)
-                                              let e' = mkApp (mkAppsIfMatch e evs) ex
-                                              e'' <- convertMetaType mod e' (substTy subst res)
-                                              return $ mkCoreLams (vvs ++ [x]) e''
+          tyVarsKinds = fmap tyVarKind . fst . splitForAllTys
 
 ----------------------------------------------------------------------------------------
 -- Meta Equivalents
