@@ -1361,14 +1361,11 @@ isPredicateWith mod cond t
 isPredicate :: ModInfo -> Type -> Bool
 isPredicate mod = isPredicateWith mod $ const True
 
-isVarPredicate :: ModInfo -> Type -> Bool
-isVarPredicate mod = isPredicateWith mod (== varC mod)
-
 isPredicateForMock :: ModInfo -> Type -> Bool
 isPredicateForMock mod = isPredicateWith mod (\tc -> varC mod == tc || metaLevelC mod == tc || isPreludeThing tc)
 
 varPredicatesFromType :: ModInfo -> Type -> [PredType]
-varPredicatesFromType mod = filter (isVarPredicate mod) . getAllPreds
+varPredicatesFromType mod = filter (isPredicateForMock mod) . getAllPreds
 
 mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
@@ -1404,14 +1401,14 @@ addMockedInstancesExcept mod exceptTys e
           mkMockedArgs n (t:ts) = do x <- mkLocalVar ("x" ++ show (n - length ts)) (typeWithoutVarPreds t)
                                      (vs, t') <- splitTypeToExprVars t
                                      let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
-                                     let evs' = filter (\ev -> isTypeArg ev || not (isVarPredicate mod $ exprType ev)) evs
+                                     let evs' = filter (\ev -> isTypeArg ev || not (isPredicateForMock mod $ exprType ev)) evs
                                      let e = if length evs == length evs' then Var x else mkCoreLams vvs $ mkApps (Var x) evs'
                                      args <- mkMockedArgs n ts
                                      return ((x, e) : args)
           mkMockedArgs _ [] = return []
           typeWithoutVarPreds t
               | Just (tv, t') <- splitForAllTy_maybe t = mkForAllTy tv $ typeWithoutVarPreds t'
-              | Just (t1,t2) <- splitFunTy_maybe t = if isVarPredicate mod t1
+              | Just (t1,t2) <- splitFunTy_maybe t = if isPredicateForMock mod t1
                                                      then typeWithoutVarPreds t2
                                                      else mkFunTy t1 $ typeWithoutVarPreds t2
               | otherwise = t
@@ -1423,7 +1420,7 @@ addMockedInstancesExcept mod exceptTys e
 type DictInstances = [(Type, DictId)]
 type ReplaceVars = [(CoreBndr, CoreBndr)]
 
-data ReplaceInfo = ReplaceInfo {varInstances :: DictInstances, replaceBinds :: ReplaceVars, nextReplaceBinds :: ReplaceVars, noMocks :: Bool}
+data ReplaceInfo = ReplaceInfo {dictInstances :: DictInstances, replaceBinds :: ReplaceVars, nextReplaceBinds :: ReplaceVars, noMocks :: Bool}
 
 instance Outputable ReplaceInfo where
     ppr (ReplaceInfo dis rb nrb nm) = text "ReplaceInfo{" <+> ppr dis <+> text ","
@@ -1437,15 +1434,14 @@ emptyReplaceInfo = ReplaceInfo [] [] [] True
 noMoreReplaceBinds :: ReplaceInfo -> Bool
 noMoreReplaceBinds = null . nextReplaceBinds
 
-noVarInstances :: ReplaceInfo -> Bool
-noVarInstances = null . varInstances
+noDictInstances :: ReplaceInfo -> Bool
+noDictInstances = null . dictInstances
 
-findVarInstance :: Type -> ReplaceInfo -> Maybe DictId
-findVarInstance t = lookup t . varInstances
+findDictInstance :: Type -> ReplaceInfo -> Maybe DictId
+findDictInstance t = lookup t . dictInstances
 
--- FIXME maybe propagate not only Var instances (e.g. Var instance for Set needs Ord instance)
-addVarInstance :: (Type, DictId) -> ReplaceInfo -> ReplaceInfo
-addVarInstance (t, v) ri = ri {varInstances = (t, v) : (varInstances ri)}
+addDictInstance :: (Type, DictId) -> ReplaceInfo -> ReplaceInfo
+addDictInstance (t, v) ri = ri {dictInstances = (t, v) : (dictInstances ri)}
 
 addBindToReplace :: (CoreBndr, CoreBndr) -> ReplaceInfo -> ReplaceInfo
 addBindToReplace (b, b') ri = ri {nextReplaceBinds = (b, b') : (nextReplaceBinds ri)}
@@ -1465,7 +1461,7 @@ replaceMocksByInstancesInProgram mod bs = go bs emptyReplaceInfo
                         if noMoreReplaceBinds ri' && noMocks ri' then return bs' else go bs' $ nextReplaceInfo ri'
           replace ri (b:bs) = do (bs', ri') <- replace ri bs
                                  (b', ri'') <- replaceMocksByInstancesInBind mod (b, [], ri')
-                                 if noVarInstances ri''
+                                 if noDictInstances ri''
                                  then return (b':bs', ri'')
                                  else pprPanic "replaceMocksByInstancesInProgram - not empty var instances to insert:" (ppr ri'' <+> ppr b')
           replace ri [] = return ([], ri)
@@ -1494,22 +1490,14 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
     where replace e dis ri | isMockInstance mod e = replaceMock (exprType e) dis ri
           replace e dis ri | (tvs, e') <- collectTyBinders e, not (null tvs)
                            = do (e'', ri') <- replace e' dis ri
-                                let (vis1, vis2) = partition (\(t,vi) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (varInstances ri')
-                                return (mkCoreLams (tvs ++ fmap snd vis1) e'', ri' {varInstances = vis2})
+                                let (dis1, dis2) = partition (\(t,di) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (dictInstances ri')
+                                return (mkCoreLams (tvs ++ fmap snd dis1) e'', ri' {dictInstances = dis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
                                  = do x'' <- addMockedInstancesExcept mod (varPredicatesFromType mod $ varType x) (Var x')
                                       return (x'', withMocks ri)
           replace (App f e) dis ri = do (f', ri') <- replace f dis ri
                                         (e', ri'') <- replace e dis ri'
-                                        let typeArg = isTypeArg e'
-                                        let isVarArg = isVarPredicate mod $ funArgTy $ exprType f'
-                                        let isVarExpr = isVarPredicate mod (exprType e')
-                                        let res = case () of
-                                                    _ | typeArg                   -> mkApp f' e'
-                                                      | isVarArg && not isVarExpr -> mkApps f' [mockInstance $ funArgTy $ exprType f', e']
-                                                      | not isVarArg && isVarExpr -> f'
-                                                      | otherwise                 -> mkApp f' e'
-                                        return (res, ri'')
+                                        return (replaceApp f' e', ri'')
           replace (Lam x e) dis ri = do let dis' = if isPredicate mod $ varType x then (varType x, x) : dis else dis
                                         (e', ri') <- replace e dis' ri
                                         return (Lam x e', ri')
@@ -1525,6 +1513,14 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
           replace (Tick t e) dis ri = do (e', ri') <- replace e dis ri
                                          return (Tick t e', ri')
           replace e dis ri = return (e, ri)
+          replaceApp f e = let typeArg = isTypeArg e
+                               isVarArg = isPredicateForMock mod $ funArgTy $ exprType f
+                               isVarExpr = isPredicateForMock mod (exprType e)
+                           in case () of
+                                _ | typeArg                   -> mkApp f e
+                                  | isVarArg && not isVarExpr -> replaceApp (mkApp f $ mockInstance $ funArgTy $ exprType f) e
+                                  | not isVarArg && isVarExpr -> f
+                                  | otherwise                 -> mkApp f e
           replaceAlts (a:as) dis ri = do (as', ri') <- replaceAlts as dis ri
                                          (a', ri'') <- replaceAlt a dis ri'
                                          return (a':as', ri'')
@@ -1533,11 +1529,11 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                               return ((con, xs, e'), ri')
           replaceMock t dis ri
               | Just v <- lookup t dis = return (Var v, ri)
-              | isVarPredicate mod t, Just v <- findVarInstance t ri = return (Var v, ri)
+              | isPredicateForMock mod t, Just v <- findDictInstance t ri = return (Var v, ri)
               | Just di <- dictInstance mod t = do di' <- addMockedInstances mod di
                                                    return (di', withMocks ri)
-              | isVarPredicate mod t = do v <- mkPredVar $ getClassPredTys t
-                                          return (Var v, addVarInstance (t, v) ri)
+              | isPredicateForMock mod t = do v <- mkPredVar $ getClassPredTys t
+                                              return (Var v, addDictInstance (t, v) ri)
               | Just sc <- findSuperClass t (Var <$> snd <$> dis) = return (sc, ri)
               | otherwise = pprPanic "replaceMock - can't create class instance for " (ppr t)
 
