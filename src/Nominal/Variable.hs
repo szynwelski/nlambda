@@ -279,6 +279,11 @@ VAR_INSTANCE(Word)
 VAR_INSTANCE((a -> b))
 VAR_INSTANCE(Relation)
 VAR_INSTANCE(ReadPrec a)
+VAR_INSTANCE(C)
+VAR_INSTANCE(D)
+VAR_INSTANCE(R)
+VAR_INSTANCE(S)
+VAR_INSTANCE(NoSelector)
 
 instance Var ()
 instance Var a => Var [a]

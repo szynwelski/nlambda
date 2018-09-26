@@ -193,11 +193,11 @@ instance MetaLevel IO where
     liftMeta x = noMeta $ fmap value x
     dropMeta (WithMeta x m) = fmap (`create` m) x
 
-instance Eq k => MetaLevel (Map k) where
-    liftMeta s = create (Map.fromAscList $ zip ks vs') m
-        where (ks, vs) = unzip $ Map.toAscList s
+instance MetaLevel (Map k) where
+    liftMeta map = create (Map.fromDistinctAscList $ zip ks vs') m
+        where (ks, vs) = unzip $ Map.toAscList map
               (WithMeta vs' m) = liftMeta vs
-    dropMeta (WithMeta s m) = Map.map (`create` m) s
+    dropMeta (WithMeta map m) = Map.map (`create` m) map
 
 instance MetaLevel ReadPrec where
     liftMeta = noMeta . fmap value
@@ -295,6 +295,7 @@ instance Eq_nlambda a => Eq_nlambda (Maybe a) -- Defined in ‘GHC.Base’
 instance Eq_nlambda Variable
 instance Eq_nlambda Relation
 instance (Ord a, Eq_nlambda a) => Eq_nlambda (Set a)
+instance (Ord k, Eq_nlambda k, Eq_nlambda a) => Eq_nlambda (Map k a)
 
 class (Floating a, Fractional_nlambda a) => Floating_nlambda a where
   pi_nlambda :: WithMeta a
@@ -402,6 +403,7 @@ instance Functor_nlambda IO -- Defined in ‘GHC.Base’
 instance Functor_nlambda ((->) r) -- Defined in ‘GHC.Base’
 instance Functor_nlambda ((,) a) -- Defined in ‘GHC.Base’
 instance Functor_nlambda ReadPrec
+instance Functor_nlambda (Map k)
 
 class (Integral a, Real_nlambda a, Enum_nlambda a) => Integral_nlambda a where
   quot_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
@@ -513,6 +515,7 @@ instance Ord_nlambda a => Ord_nlambda (Maybe a) -- Defined in ‘GHC.Base’
 instance Ord_nlambda Variable
 instance Ord_nlambda Relation
 instance Ord_nlambda a => Ord_nlambda (Set a)
+instance (Ord_nlambda k, Ord_nlambda a) => Ord_nlambda (Map k a)
 
 class Read a => Read_nlambda a where
   readsPrec_nlambda :: Int -> String -> WithMeta [(a, String)]
@@ -672,6 +675,11 @@ class Generic a => Generic_nlambda a where
     to_nlambda :: WithMeta (Rep a x) -> WithMeta a
     to_nlambda = idOp to
 
+instance Generic_nlambda Bool
+instance Generic_nlambda Ordering
+instance Generic_nlambda [a]
+instance Generic_nlambda (Maybe a)
+instance Generic_nlambda (Either a b)
 instance Generic_nlambda ()
 instance Generic_nlambda (a, b)
 instance Generic_nlambda (a, b, c)
@@ -735,7 +743,8 @@ preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions $
     [nominalAtomsSignature, nominalUtilRead, nominalVariable]
     ++ [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcGenerics, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcRead, ghcReal, ghcShow, ghcTuple, ghcTypes]
-    ++ [dataEither, dataFoldable, dataFunctor, dataMaybe, dataMulitMap, dataOldList, dataSemigroup, dataSetBase, dataSetInternal, dataTraverable, dataTuple]
+    ++ [dataEither, dataFoldable, dataFunctor, dataMapBase, dataMapInternal, dataMaybe, dataMulitMap, dataOldList, dataSemigroup,
+        dataSetBase, dataSetInternal, dataTraverable, dataTuple]
     ++ [controlExceptionBase, systemIO, textParserCombinatorsReadPrec]
 
 preludeModules :: [ModuleName]
@@ -799,7 +808,7 @@ ghcFloat = createEquivalentsMap "GHC.Float" []
 ghcGenerics :: MetaEquivalentMap
 ghcGenerics = createEquivalentsMap "GHC.Generics"
     [(ConvertFun NoMeta, ["U1"]),
-     (ConvertFun IdOp, ["L1", "R1", "to", "unK1", "unPar1", "unRec1"]),
+     (ConvertFun IdOp, ["L1", "R1", "to", "unK1", "unM1", "unPar1", "unRec1"]),
      (ConvertFun RenameAndApply2, [":*:"])]
 
 
@@ -884,6 +893,39 @@ dataFunctor = createEquivalentsMap "Data.Functor" []
 (<$>###) :: (Var b, Var (f b), Functor_nlambda f) => (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
 (<$>###) = fmap_nlambda
 
+dataMapBase :: MetaEquivalentMap
+dataMapBase = createEquivalentsMap "Data.Map.Base" dataMapFuns
+
+dataMapInternal :: MetaEquivalentMap
+dataMapInternal = createEquivalentsMap "Data.Map.Internal" dataMapFuns
+
+dataMapFuns :: [(MetaEquivalentType, [MethodName])]
+dataMapFuns = [(ConvertFun NoMeta, ["empty"]),
+               (ConvertFun NoMetaResOp, ["null", "size"]),
+               (ConvertFun IdOp, ["assocs", "elems", "fromAscList", "fromDescList", "fromDistinctAscList", "fromList", "keys", "toAscList", "toList"]),
+               (ConvertFun RenameAndApply2, ["delete", "difference", "lookup", "intersection", "singleton", "union"]),
+               (ConvertFun RenameAndApply3, ["findWithDefault", "insert"]),
+               (ConvertFun NoMetaRes2ArgOp, ["member", "notMember"]),
+               (ConvertFun NoMetaResFunOp, ["filter", "partition"]),
+               (CustomFun "map_map_nlambda", ["map"])]
+
+filterWithKey_nlambda :: (WithMeta k -> WithMeta a -> Bool) -> WithMeta (Map k a) -> WithMeta (Map k a)
+filterWithKey_nlambda f (WithMeta map m) = create map' m
+    where map' = Map.fromDistinctAscList $ filter (\(k,v) -> f (create k m) (create v m)) $ Map.toAscList map
+
+fromListWith_nlambda :: (Var a, Ord_nlambda k) => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta [(k, a)] -> WithMeta (Map k a)
+fromListWith_nlambda f l = lift $ Map.fromListWith f (dropMeta <$> dropMeta l)
+
+mapKeysWith_nlambda :: (Var a, Ord_nlambda k2) => (WithMeta a -> WithMeta a -> WithMeta a) -> (WithMeta k1 -> WithMeta k2) -> WithMeta (Map k1 a) -> WithMeta (Map k2 a)
+mapKeysWith_nlambda fv fk (WithMeta map m) = fromListWith_nlambda fv list
+    where list = lift $ fmap (\(k, v) -> let WithMeta k' m' = fk $ create k m in create (k', v) m') (Map.assocs map)
+
+map_map_nlambda :: (Var b, Var k, Ord k) => (WithMeta a -> WithMeta b) -> WithMeta (Map k a) -> WithMeta (Map k b)
+map_map_nlambda f = lift . Map.map f . dropMeta
+
+unionWith_nlambda :: (Var a, Ord_nlambda k) => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta (Map k a) -> WithMeta (Map k a) -> WithMeta (Map k a)
+unionWith_nlambda f m1 m2 = lift $ Map.unionWith f (dropMeta m1) (dropMeta m2)
+
 dataMaybe :: MetaEquivalentMap
 dataMaybe = createEquivalentsMap "Data.Maybe"
     [(ConvertFun NoMetaResOp, ["isJust", "isNothing"]),
@@ -907,6 +949,12 @@ dataOldList = createEquivalentsMap "Data.OldList"
 dataSemigroup :: MetaEquivalentMap
 dataSemigroup = createEquivalentsMap "Data.Semigroup" []
 
+dataSetBase :: MetaEquivalentMap
+dataSetBase = createEquivalentsMap "Data.Set.Base" dataSetFuns
+
+dataSetInternal :: MetaEquivalentMap
+dataSetInternal = createEquivalentsMap "Data.Set.Internal" dataSetFuns
+
 dataSetFuns :: [(MetaEquivalentType, [MethodName])]
 dataSetFuns = [(ConvertFun NoMeta, ["empty"]),
                (ConvertFun NoMetaResOp, ["null", "size"]),
@@ -919,7 +967,7 @@ dataSetFuns = [(ConvertFun NoMeta, ["empty"]),
                (CustomFun "set_foldr_nlambda", ["foldr"]),
                (CustomFun "set_foldl_nlambda", ["foldl"])]
 
-set_map_nlambda :: (Var b, Ord b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
+set_map_nlambda :: (Var b, Ord_nlambda b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 set_map_nlambda f (WithMeta s m) = create (Set.fromAscList list) m'
     where (WithMeta list m') = map_nlambda f $ create (Set.toAscList s) m
 
@@ -928,12 +976,6 @@ set_foldr_nlambda f x (WithMeta s m) = foldr_nlambda f x $ create (Set.toAscList
 
 set_foldl_nlambda :: (WithMeta a -> WithMeta b -> WithMeta a) -> WithMeta a -> WithMeta (Set b) -> WithMeta a
 set_foldl_nlambda f x (WithMeta s m) = foldl_nlambda f x $ create (Set.toAscList s) m
-
-dataSetBase :: MetaEquivalentMap
-dataSetBase = createEquivalentsMap "Data.Set.Base" dataSetFuns
-
-dataSetInternal :: MetaEquivalentMap
-dataSetInternal = createEquivalentsMap "Data.Set.Internal" dataSetFuns
 
 dataTraverable :: MetaEquivalentMap
 dataTraverable = createEquivalentsMap "Data.Traversable" []
@@ -962,5 +1004,5 @@ textParserCombinatorsReadPrec :: MetaEquivalentMap
 textParserCombinatorsReadPrec = createEquivalentsMap "Text.ParserCombinators.ReadPrec"
     [(ConvertFun NoMeta, ["pfail"]),
      (ConvertFun IdOp, ["step"]),
-     (ConvertFun RenameAndApply2, ["+++"]),
+     (ConvertFun RenameAndApply2, ["+++", "<++"]),
      (ConvertFun RightIdOp, ["prec"])]
