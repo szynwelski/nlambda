@@ -743,7 +743,7 @@ preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions $
     [nominalAtomsSignature, nominalUtilRead, nominalVariable]
     ++ [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcGenerics, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcRead, ghcReal, ghcShow, ghcTuple, ghcTypes]
-    ++ [dataEither, dataFoldable, dataFunctor, dataMapBase, dataMapInternal, dataMaybe, dataMulitMap, dataOldList, dataSemigroup,
+    ++ [dataEither, dataEitherUtils, dataFoldable, dataFunctor, dataMapBase, dataMapInternal, dataMaybe, dataMulitMap, dataOldList, dataSemigroup,
         dataSetBase, dataSetInternal, dataTraverable, dataTuple]
     ++ [controlExceptionBase, systemIO, textParserCombinatorsReadPrec]
 
@@ -878,6 +878,10 @@ dataEither = createEquivalentsMap "Data.Either"
 
 either_nlambda :: (WithMeta a -> WithMeta c) -> (WithMeta b -> WithMeta c) -> WithMeta (Either a b) -> WithMeta c
 either_nlambda f1 f2 (WithMeta e m) = either (metaFun m f1) (metaFun m f2) e
+
+dataEitherUtils :: MetaEquivalentMap
+dataEitherUtils = createEquivalentsMap "Data.Either.Utils"
+    [(ConvertFun IdOp, ["fromEither", "fromLeft", "fromRight"])]
 
 dataFoldable :: MetaEquivalentMap
 dataFoldable = createEquivalentsMap "Data.Foldable"
