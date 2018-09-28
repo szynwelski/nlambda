@@ -91,7 +91,7 @@ pass env onlyShow guts =
 --            modInfo "module" mg_module guts'
 --            modInfo "binds" (sortBinds . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
---            modInfo "imported" getImportedModules guts'
+--            modInfo "imported" (moduleEnvKeys . mg_dir_imps) guts'
 --            modInfo "exports" mg_exports guts'
 --            modInfo "type constructors" mg_tcs guts'
 --            modInfo "used names" mg_used_names guts'
@@ -195,7 +195,7 @@ mkNamesMap guts impNameMap = do nameMap <- mkSuffixNamesMap (getDataConsNames gu
                                 return $ Map.union nameMap impNameMap
 
 nameSuffix :: String -> String
-nameSuffix name = if any isLetter name then name_suffix else op_suffix
+nameSuffix name = if any isLetter $ replace "$dm" "" $ name then name_suffix else op_suffix
 
 nlambdaName :: String -> String
 nlambdaName name = name ++ nameSuffix name
@@ -286,7 +286,7 @@ mkVarMap mod = let g = guts mod in mkMapWithVars mod (getBindsVars g ++ getClass
 
 mkMapWithVars :: ModInfo -> [Var] -> VarMap
 mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs) , nub (varsWithoutPairs ++ varsFromExprs))
-    where (toChangeVars, notToChangeVars) = partition (not . isIgnoreImportType mod . varType) vars
+    where (notToChangeVars, toChangeVars) = partition isIgnoreVar vars
           varsPairs = mapMaybe (\v -> (\v' -> (v,v')) <$> find (isVarPair v) notToChangeVars) toChangeVars
           varsForPairs = filter notInPairs toChangeVars
           varsWithoutPairs = filter notInPairs notToChangeVars
@@ -306,6 +306,7 @@ mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs) , nub (varsWi
           newIdDetails (FCallId call) = FCallId call
           newIdDetails (DFunId n b) = DFunId n b
           newIdDetails _ = VanillaId
+          isIgnoreVar v = isVarDict mod v || isVarInstanceMethod v || hasMetaTyCon v
 
 getAllVarsFromBinds :: ModInfo -> [Var]
 getAllVarsFromBinds = nub . concatMap getAllNotLocalVarsFromExpr . concatMap rhssOfBind . mg_binds . guts
@@ -336,12 +337,6 @@ isVarPair v1 v2 = isNamePair n1 n2 && nameModule n1 == nameModule n2
 -- Imports
 ----------------------------------------------------------------------------------------
 
-isIgnoreImport :: Module -> Bool
-isIgnoreImport = (== metaModuleName) . moduleNameString . moduleName
-
-getImportedModules :: ModGuts -> [Module]
-getImportedModules = filter (not . isIgnoreImport) . moduleEnvKeys . mg_dir_imps
-
 getImportedMaps :: ModInfo -> (NameMap, VarMap, TyConMap)
 getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, varWithoutPair), (Map.fromList tcPairs, tcWithoutPair))
     where mods = eltsUFM $ hsc_HPT $ env mod
@@ -354,9 +349,6 @@ getImportedMaps mod = (Map.fromList namePairs, (Map.fromList varPairs, varWithou
           getNamePair (x, y) = (getName x, getName y)
           namePairs = (getNamePair <$> tcPairs) ++ (getNamePair <$> varPairs)
 
-isIgnoreImportType :: ModInfo -> Type -> Bool
-isIgnoreImportType mod = anyNameEnv (\tc -> (isIgnoreImport $ nameModule $ getName tc) || varC mod == tc) . tyConsOfType
-
 ----------------------------------------------------------------------------------------
 -- Exports
 ----------------------------------------------------------------------------------------
@@ -365,7 +357,7 @@ newExports :: ModInfo -> Avails -> Avails
 newExports mod avls = concatMap go avls
     where go (Avail n) = if nameMember mod n then [Avail $ newName mod n] else []
           go (AvailTC nm nms) | nameMember mod nm = [AvailTC (newName mod nm) (newName mod <$> nms)]
-          go (AvailTC _ nms) = (Avail . newName mod) <$> (drop 1 nms)
+          go (AvailTC _ nms) = (Avail . newName mod) <$> (tail nms)
 
 ----------------------------------------------------------------------------------------
 -- Classes
@@ -405,6 +397,7 @@ unionTcMaps (m1, l1) (m2, l2) = (Map.union m1 m2, nub $ l1 ++ l2)
 
 newTyCon :: ModInfo -> TyCon -> TyCon
 newTyCon mod tc
+    | isVarTyCon mod tc = tc
     | isClassTyCon tc = Map.findWithDefault metaPrelude tc $ fst $ tcMap mod
     | otherwise = tc
     where metaPrelude = fromMaybe
@@ -804,16 +797,15 @@ changeExpr mod e = newExpr (mkExprMap mod) e
           newExpr eMap e | noAtomsSubExpr e = replaceVars mod eMap e
           newExpr eMap (Var v) | Map.member v eMap = addMockedInstances mod $ getExpr eMap v
           newExpr eMap (Var v) | isMetaEquivalent mod v = getMetaEquivalent mod v
+          newExpr eMap (Var v) | isVarDict mod v = return $ Var v
           newExpr eMap (Var v) = pprPgmError "Unknown variable:"
             (showVar v <+> text "::" <+> ppr (varType v) <+> text ("\nProbably module " ++ getModuleStr v ++ " is not compiled with NLambda Plugin."))
           newExpr eMap (Lit l) = noMetaExpr mod (Lit l)
           newExpr eMap (App f (Type t)) = do f' <- newExpr eMap f
                                              return $ changeTypeAndApply mod f' t
           newExpr eMap (App f e) = do f' <- newExpr eMap f
-                                      f'' <- if isWithMetaType mod $ exprType f' then valueExpr mod f' else return f'
                                       e' <- newExpr eMap e
-                                      e'' <- convertMetaType mod e' $ funArgTy $ exprType f''
-                                      return $ mkApp f'' e''
+                                      appWithMock mod f' e'
           newExpr eMap (Lam x e) | isTKVar x = do e' <- newExpr eMap e
                                                   return $ Lam x e' -- FIXME new uniq for x (and then replace all occurrences)?
           newExpr eMap (Lam x e) = do x' <- changeBindTypeAndUniq mod x
@@ -1245,11 +1237,24 @@ withMetaC mod = getTyCon mod "WithMeta"
 metaLevelC mod = getTyCon mod "MetaLevel"
 varC mod = getTyCon mod "Var"
 
+hasMetaTyCon :: Var -> Bool
+hasMetaTyCon = anyNameEnv ((== metaModuleName) . getModuleNameStr . nameModule . getName) . tyConsOfType . varType
+
 withMetaType :: ModInfo -> Type -> Type
 withMetaType mod t = mkTyConApp (withMetaC mod) [t]
 
 varPredType :: ModInfo -> Type -> Type
 varPredType mod t = mkTyConApp (varC mod) [t]
+
+isVarTyCon :: ModInfo -> TyCon -> Bool
+isVarTyCon mod tc = varC mod == tc
+
+isVarDict :: ModInfo -> Var -> Bool
+isVarDict mod v | isDFunId v, Just tc <- tyConAppTyCon_maybe $ getMainType $ varType v = isVarTyCon mod tc
+isVarDict mod v = False
+
+isVarInstanceMethod :: Var -> Bool
+isVarInstanceMethod v = elem (getNameStr v) ["$cfoldVariables", "$cmapVariables", "$crenameVariables"]
 
 noMetaExpr :: ModInfo -> CoreExpr -> CoreM CoreExpr
 noMetaExpr mod e | isInternalType $ exprType e = return e
@@ -1281,7 +1286,7 @@ convertMetaType mod e t
     | et == t = return e
     | isForAllTy t, isForAllTy et, tyVarsKinds t == tyVarsKinds et = do (vs, _, subst) <- splitTypeToExprVarsWithSubst t
                                                                         let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
-                                                                        let e' = mkAppsIfMatch e evs
+                                                                        e' <- addMockedInstances mod $ mkAppsIfMatch e evs
                                                                         e'' <- convertMetaType mod e' $ substTy subst $ getMainType t
                                                                         return $ mkCoreLams vvs e''
     | isClassPred t, Just e' <- findSuperClass t [e] = return e'
@@ -1321,7 +1326,7 @@ getDefinedMetaEquivalentVar :: ModInfo -> Var -> Maybe Var
 getDefinedMetaEquivalentVar mod v
     | not $ isPreludeThing v = Nothing
     -- super class selectors should be shift by one because of additional dependency for meta classes
-    --FIXME count no nlambda dependencies and shift by this number
+    --FIXME count number of nlambda dependencies and shift by this number
     | isPrefixOf "$p" $ getNameStr v, isJust metaVar = Just $ getVar mod $ nlambdaName ("$p" ++ (show $ succ superClassNr) ++ drop 3 (getNameStr v))
     | otherwise = metaVar
     where metaVar = getVar mod . getNameStr <$> findPairThing (metaTyThings mod) TyThingId (getName v)
@@ -1362,10 +1367,10 @@ isPredicate :: ModInfo -> Type -> Bool
 isPredicate mod = isPredicateWith mod $ const True
 
 isPredicateForMock :: ModInfo -> Type -> Bool
-isPredicateForMock mod = isPredicateWith mod (\tc -> varC mod == tc || metaLevelC mod == tc || isPreludeThing tc)
+isPredicateForMock mod = isPredicateWith mod (\tc -> isVarTyCon mod tc || metaLevelC mod == tc || isPreludeThing tc)
 
-varPredicatesFromType :: ModInfo -> Type -> [PredType]
-varPredicatesFromType mod = filter (isPredicateForMock mod) . getAllPreds
+dictPredicatesFromType :: ModInfo -> Type -> [PredType]
+dictPredicatesFromType mod = filter (isPredicateForMock mod) . getAllPreds
 
 mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
@@ -1398,7 +1403,7 @@ addMockedInstancesExcept mod exceptTys e
     where -- isTypeArg checked before call exprType on e
           forMock exceptTys t = isPredicateForMock mod t && notElem t exceptTys
           mockPredOrDict exceptTys e = if not (isTypeArg e) && forMock exceptTys (exprType e) then mockInstance (exprType e) else e
-          mkMockedArgs n (t:ts) = do x <- mkLocalVar ("x" ++ show (n - length ts)) (typeWithoutVarPreds t)
+          mkMockedArgs n (t:ts) = do x <- mkLocalVar ("x" ++ show (n - length ts)) (typeWithoutDictPreds t)
                                      (vs, t') <- splitTypeToExprVars t
                                      let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
                                      let evs' = filter (\ev -> isTypeArg ev || not (isPredicateForMock mod $ exprType ev)) evs
@@ -1406,12 +1411,26 @@ addMockedInstancesExcept mod exceptTys e
                                      args <- mkMockedArgs n ts
                                      return ((x, e) : args)
           mkMockedArgs _ [] = return []
-          typeWithoutVarPreds t
-              | Just (tv, t') <- splitForAllTy_maybe t = mkForAllTy tv $ typeWithoutVarPreds t'
-              | Just (t1,t2) <- splitFunTy_maybe t = if isPredicateForMock mod t1
-                                                     then typeWithoutVarPreds t2
-                                                     else mkFunTy t1 $ typeWithoutVarPreds t2
+          typeWithoutDictPreds t
+              | Just (tv, t') <- splitForAllTy_maybe t = mkForAllTy tv $ typeWithoutDictPreds t'
+              | Just (t1, t2) <- splitFunTy_maybe t = if isPredicateForMock mod t1
+                                                      then typeWithoutDictPreds t2
+                                                      else mkFunTy t1 $ typeWithoutDictPreds t2
               | otherwise = t
+
+appWithMock :: ModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
+appWithMock mod f e
+    | isTypeArg e && isForAllTy (exprType f) = return $ mkApp f e
+    | isJust $ findSuperClass argTy [e] = makeApp f e
+    | isDictArg && not isDictExpr = appWithMock mod (mkApp f $ mockInstance argTy) e
+    | not isDictArg && isDictExpr = return f
+    | otherwise = makeApp f e
+    where argTy = funArgTy $ exprType f
+          isDictArg = isFunTy (exprType f) && isPredicateForMock mod argTy
+          isDictExpr = isPredicateForMock mod (exprType e)
+          makeApp f e = do f' <- if isWithMetaType mod $ exprType f then valueExpr mod f else return f
+                           e' <- convertMetaType mod e $ funArgTy $ exprType f'
+                           return $ mkApp f' e'
 
 ----------------------------------------------------------------------------------------
 -- Replace mocked class instances with real ones
@@ -1493,11 +1512,12 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                 let (dis1, dis2) = partition (\(t,di) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (dictInstances ri')
                                 return (mkCoreLams (tvs ++ fmap snd dis1) e'', ri' {dictInstances = dis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
-                                 = do x'' <- addMockedInstancesExcept mod (varPredicatesFromType mod $ varType x) (Var x')
+                                 = do x'' <- addMockedInstancesExcept mod (dictPredicatesFromType mod $ varType x) (Var x')
                                       return (x'', withMocks ri)
-          replace (App f e) dis ri = do (f', ri') <- replace f dis ri
-                                        (e', ri'') <- replace e dis ri'
-                                        return (replaceApp f' e', ri'')
+          replace (App f x) dis ri = do (f', ri') <- replace f dis ri
+                                        (x', ri'') <- replace x dis ri'
+                                        e <- appWithMock mod f' x'
+                                        return (e, ri'')
           replace (Lam x e) dis ri = do let dis' = if isPredicate mod $ varType x then (varType x, x) : dis else dis
                                         (e', ri') <- replace e dis' ri
                                         return (Lam x e', ri')
@@ -1513,14 +1533,6 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
           replace (Tick t e) dis ri = do (e', ri') <- replace e dis ri
                                          return (Tick t e', ri')
           replace e dis ri = return (e, ri)
-          replaceApp f e = let typeArg = isTypeArg e
-                               isVarArg = isPredicateForMock mod $ funArgTy $ exprType f
-                               isVarExpr = isPredicateForMock mod (exprType e)
-                           in case () of
-                                _ | typeArg                   -> mkApp f e
-                                  | isVarArg && not isVarExpr -> replaceApp (mkApp f $ mockInstance $ funArgTy $ exprType f) e
-                                  | not isVarArg && isVarExpr -> f
-                                  | otherwise                 -> mkApp f e
           replaceAlts (a:as) dis ri = do (as', ri') <- replaceAlts as dis ri
                                          (a', ri'') <- replaceAlt a dis ri'
                                          return (a':as', ri'')

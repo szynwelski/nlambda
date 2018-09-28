@@ -606,7 +606,7 @@ class Semigroup a => Semigroup_nlambda a where
   (<>###) = renameAndApply2 (<>)
   sconcat_nlambda :: WithMeta (NonEmpty a) -> WithMeta a
   sconcat_nlambda = idOp sconcat
-  stimes_nlambda :: (Var a, Var b, Integral_nlambda b) => WithMeta b -> WithMeta a -> WithMeta a
+  stimes_nlambda :: (Var a, Integral_nlambda b) => WithMeta b -> WithMeta a -> WithMeta a
   stimes_nlambda = renameAndApply2 stimes
 
 instance Semigroup_nlambda Ordering
@@ -785,14 +785,13 @@ ghcBase = createEquivalentsMap "GHC.Base"
     [(SameOp, ["$", "$!", ".", "const", "flip", "id"]),
      (ConvertFun NoMeta, ["Nothing"]),
      (ConvertFun IdOp, ["Just"]),
-     (ConvertFun RenameAndApply2, ["++", "$dm<$", "$dm<*", "$dm*>", "$dm>>"])]
+     (ConvertFun RenameAndApply2, ["++"])]
 
 map_nlambda :: Var b => (WithMeta a -> WithMeta b) -> WithMeta [a] -> WithMeta [b]
 map_nlambda = fmap_nlambda
 
 ghcClasses :: MetaEquivalentMap
-ghcClasses = createEquivalentsMap "GHC.Classes"
-    [(ConvertFun NoMetaRes2ArgOp, ["$dm==", "$dm/=", "$dm<", "$dm<=", "$dm>", "$dm>="])]
+ghcClasses = createEquivalentsMap "GHC.Classes" []
 
 ghcEnum :: MetaEquivalentMap
 ghcEnum = createEquivalentsMap "GHC.Enum" []
@@ -837,8 +836,7 @@ scanr1_nlambda :: Var a => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta 
 scanr1_nlambda f = lift . scanr1 f . dropMeta
 
 ghcNum :: MetaEquivalentMap
-ghcNum = createEquivalentsMap "GHC.Num"
-    [(ConvertFun RenameAndApply2, ["$dm-"])]
+ghcNum = createEquivalentsMap "GHC.Num" []
 
 ghcPrim :: MetaEquivalentMap
 ghcPrim = createEquivalentsMap "GHC.Prim"
