@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE CPP, MultiParamTypeClasses #-}
 module Nominal.Atoms.Logic where
 

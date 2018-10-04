@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 module Nominal.Atoms where
 
 import Nominal.Atoms.Signature (Constant)

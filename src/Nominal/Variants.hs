@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 module Nominal.Variants (
 Variants,
 variant,
@@ -23,7 +24,7 @@ import Nominal.Util.Read (readSepBy, skipSpaces, spaces, string)
 import Nominal.Variable (Var(..), renameWithFlatTree)
 import qualified Nominal.Text.Symbols as Symbols
 import Prelude hiding (or, not)
-import Text.Read (ReadPrec, (<++), parens, prec, readPrec, step)
+import Text.Read (ReadPrec, (<++), parens, readPrec, step)
 
 ----------------------------------------------------------------------------------------------------
 -- Variants

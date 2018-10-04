@@ -161,7 +161,7 @@ instance (Semigroup a, Monoid a) => Monoid (Wrapper a) where
 test22 :: Variable -> Variable -> Variable -> [Wrapper [Variable]]
 test22 x y z = [mempty, mappend (Wrapper [x]) (Wrapper [y,z]), mconcat [Wrapper [x], Wrapper [y,z]]]
 
-instance (Semigroup a) => Monoid (Optional a) where
+instance Semigroup a => Monoid (Optional a) where
     mempty = Null
     mappend = (<>)
 

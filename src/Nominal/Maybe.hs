@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 module Nominal.Maybe where
 
 import qualified Data.Maybe as Maybe

@@ -1,6 +1,5 @@
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
+{-# LANGUAGE DefaultSignatures, FlexibleContexts, TypeOperators #-}
 
 module Nominal.Contextual where
 

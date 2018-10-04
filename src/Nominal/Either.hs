@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 module Nominal.Either where
 
 import qualified Data.Either.Utils as Utils

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 module Nominal.Formula.Quantification (existsVar, forAllVars) where
 
 import Data.Set

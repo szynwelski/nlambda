@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE DefaultSignatures, FlexibleContexts, CPP, TypeOperators #-}
 
 module Nominal.Type where

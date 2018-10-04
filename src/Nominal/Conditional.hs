@@ -1,7 +1,5 @@
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeOperators #-}
-
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
+{-# LANGUAGE DefaultSignatures, FlexibleContexts, TypeOperators #-}
 module Nominal.Conditional (Conditional(cond), ite) where
 
 import Nominal.Formula
@@ -28,7 +26,6 @@ instance Conditional Formula where
 
 instance Conditional b => Conditional (a -> b) where
     cond c f1 f2 x = cond c (f1 x) (f2 x)
-
 
 instance Conditional ()
 instance (Conditional a, Conditional b) => Conditional (a,b)

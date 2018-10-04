@@ -1,4 +1,16 @@
-module Nominal.Formula.Solver (isTrue, isFalse, lia, lra, model, simplifyFormula) where
+module Nominal.Formula.Solver (
+isTrue,
+isTrue_nlambda,
+isFalse,
+isFalse_nlambda,
+lia,
+lia_nlambda,
+lra,
+lra_nlambda,
+model,
+model_nlambda,
+simplifyFormula,
+simplifyFormula_nlambda) where
 
 import Control.Applicative ((<|>), (*>), (<*))
 import Data.Attoparsec.ByteString.Char8 (Parser, char, digit, isDigit, many1, satisfy, sepBy, sepBy1, skipWhile, string, takeWhile, takeWhile1)
@@ -17,6 +29,7 @@ import Data.Word (Word)
 import Nominal.Atoms.Signature (Constant, Relation(..), readConstant, relationAscii, relations)
 import Nominal.Formula.Definition
 import Nominal.Formula.SmtLogger
+import Nominal.Meta
 import Nominal.Variable (Variable, constantValue, constantVar, fromParts, isConstant, isVariableChar, toParts)
 import Prelude hiding (null, takeWhile)
 import System.Directory (findExecutable)
@@ -372,3 +385,25 @@ parseModelVariable l = do
     spaces
     char ')'
     return (v,c)
+
+----------------------------------------------------------------------------------------------------
+-- Meta equivalents
+----------------------------------------------------------------------------------------------------
+
+lia_nlambda :: WithMeta SmtLogic
+lia_nlambda = noMeta lia
+
+lra_nlambda :: WithMeta SmtLogic
+lra_nlambda = noMeta lra
+
+isTrue_nlambda :: WithMeta SmtLogic -> WithMeta Formula -> Bool
+isTrue_nlambda l f = isTrue (value l) (value f)
+
+isFalse_nlambda :: WithMeta SmtLogic -> WithMeta Formula -> Bool
+isFalse_nlambda l f = isFalse (value l) (value f)
+
+simplifyFormula_nlambda :: WithMeta SmtLogic -> WithMeta Formula -> WithMeta Formula
+simplifyFormula_nlambda l f = create (simplifyFormula (value l) (value f)) (meta f)
+
+model_nlambda :: WithMeta SmtLogic -> WithMeta Formula -> WithMeta (Map Variable Variable)
+model_nlambda l f = create (model (value l) (value f)) (meta f)
