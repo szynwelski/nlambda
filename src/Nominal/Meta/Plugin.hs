@@ -8,7 +8,7 @@ import Control.Applicative ((<|>))
 import Control.Monad (liftM)
 import Data.Char (isLetter, isLower)
 import Data.Foldable (foldlM)
-import Data.List ((\\), delete, find, findIndex, intersect, isInfixOf, isPrefixOf, nub, partition)
+import Data.List ((\\), delete, find, findIndex, intersect, isInfixOf, isPrefixOf, isSuffixOf, nub, partition)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -58,10 +58,7 @@ pprV n v = text (n ++ " =") <+> ppr v <+> text "::" <+> ppr (varType v)
 
 pass :: HscEnv -> Bool -> ModGuts -> CoreM ModGuts
 pass env onlyShow guts =
-    if withMetaAnnotation guts
-    then do putMsg $ text "Ignore module: " <+> (ppr $ mg_module guts)
-            return guts
-    else do putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:"
+         do putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:"
                      <+> (ppr $ mg_module guts)
                      <+> if onlyShow then text "[only show]" else text ""
 
@@ -153,11 +150,12 @@ newGuts mod guts = do binds <- newBinds mod (getDataCons guts) (mg_binds guts)
 -- Annotation
 ----------------------------------------------------------------------------------------
 
-withMetaAnnotation :: ModGuts -> Bool
-withMetaAnnotation guts = isJust $ find isMetaAnn $ mg_anns guts
-    where isMetaAnn a = case fromSerialized deserializeWithData $ ann_value a of
-                          Just "WithMeta" -> True
-                          _ -> False
+annotatedWithNoMetaFunction :: ModInfo -> Var -> Bool
+annotatedWithNoMetaFunction mod v = any isNoMetaFunAnnotation $ filter hasName $ mg_anns $ guts mod
+    where hasName a = getAnnTargetName_maybe (ann_target a) == Just (getName v)
+          isNoMetaFunAnnotation a = case fromSerialized deserializeWithData $ ann_value a of
+                                      Just NoMetaFunction -> True
+                                      _ -> False
 
 ----------------------------------------------------------------------------------------
 -- Implicit Binds - copy from compiler/main/TidyPgm.hs
@@ -199,6 +197,9 @@ nameSuffix name = if any isLetter $ replace "$dm" "" $ name then name_suffix els
 
 nlambdaName :: String -> String
 nlambdaName name = name ++ nameSuffix name
+
+isNLambdaName :: String -> Bool
+isNLambdaName name = isInfixOf name_suffix name || isSuffixOf op_suffix name
 
 mkSuffixNamesMap :: [Name] -> CoreM NameMap
 mkSuffixNamesMap names = do notPairs' <- mapM (createNewName nameSuffix) notPairs
@@ -306,7 +307,7 @@ mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs) , nub (varsWi
           newIdDetails (FCallId call) = FCallId call
           newIdDetails (DFunId n b) = DFunId n b
           newIdDetails _ = VanillaId
-          isIgnoreVar v = isVarDict mod v || isVarInstanceMethod v || hasMetaTyCon v
+          isIgnoreVar v = isVarDict mod v || isVarInstanceMethod v || hasMetaTyCon v || annotatedWithNoMetaFunction mod v || isNLambdaName (getNameStr v)
 
 getAllVarsFromBinds :: ModInfo -> [Var]
 getAllVarsFromBinds = nub . concatMap getAllNotLocalVarsFromExpr . concatMap rhssOfBind . mg_binds . guts
@@ -357,7 +358,7 @@ newExports :: ModInfo -> Avails -> Avails
 newExports mod avls = concatMap go avls
     where go (Avail n) = if nameMember mod n then [Avail $ newName mod n] else []
           go (AvailTC nm nms) | nameMember mod nm = [AvailTC (newName mod nm) (newName mod <$> nms)]
-          go (AvailTC _ nms) = (Avail . newName mod) <$> (tail nms)
+          go (AvailTC _ nms) = (Avail . newName mod) <$> (filter (nameMember mod) nms)
 
 ----------------------------------------------------------------------------------------
 -- Classes
@@ -410,8 +411,11 @@ newClass mod = fromJust . tyConClass_maybe . newTyCon mod . classTyCon
 
 mkTyConMap :: ModInfo -> [TyCon] -> TyConMap
 mkTyConMap mod tcs = let ctcs = filter isClassTyCon tcs
-                         ctcs' = fmap (newTyConClass mod {tcMap = tcMap}) ctcs
-                         tcMap = (Map.fromList $ zip ctcs ctcs', filter isAlgTyCon tcs)
+                         pairs = mapMaybe (\c -> fmap (\c' -> (c,c')) $ find (isTyConPair c) ctcs) ctcs
+                         withoutPairs = filter notInPairs ctcs
+                         notInPairs tc = all (\(tc1,tc2) -> tc1 /= tc && tc2 /= tc) pairs
+                         withoutPairs' = fmap (newTyConClass mod {tcMap = tcMap}) withoutPairs
+                         tcMap = (Map.fromList $ pairs ++ zip withoutPairs withoutPairs', filter isAlgTyCon tcs)
                      in tcMap
 
 newTyConClass :: ModInfo -> TyCon -> TyCon
@@ -486,14 +490,20 @@ createClass mod tc cls =
 
 getClassInstance :: ModInfo -> Class -> Type -> CoreExpr
 getClassInstance mod cl t
-    | Just v <- getMetaVarMaybe mod name = v -- for instances in Meta module
-    | Just v <- listToMaybe $ filter ((== name) . getNameStr) (allVars mod) = Var v -- for instances in user modules
-    | Just v <- listToMaybe $ fmap instanceDFunId $ filter ((\(_, c, ts) -> c == cl && ts == [t]) . instanceHead) $ mg_insts $ guts mod = Var v
+     -- for instances in Meta module
+    | Just (Var v) <- getMetaVarMaybe mod name, isClassInst v = Var v
+     -- for instances in user modules
+    | Just v <- find isClassInst $ fmap instanceDFunId $ mg_insts $ guts mod = Var v
+    | Just v <- find isClassInst $ filter (isPrefixOf name . getNameStr) (allVars mod) = Var v
     | otherwise = pgmError ("NLambda plugin requires " ++ className ++ " instance for type: " ++ tcName ++ " (from " ++ getModuleStr tc ++ ")")
     where Just tc = tyConAppTyCon_maybe t
           tcName = getNameStr tc
           className = getNameStr cl
           name = "$f" ++ className ++ tcName
+          isClassInst v = case splitTyConApp_maybe (getMainType $ varType v) of
+                            Just (vTc, vTs) -> let vt = headPanic "isClassInst" (pprV "v" v) vTs
+                                               in isDFunId v && Just cl == tyConClass_maybe vTc && Just tc == tyConAppTyCon_maybe vt
+                            _               -> False
 
 findSuperClass :: Type -> [CoreExpr] -> Maybe CoreExpr
 findSuperClass t (e:es)
@@ -525,6 +535,10 @@ userClassOpId mod v
     where classOpPrefix = "$c"
           modClasses = filter (inCurrentModule mod) $ allClasses mod
           userClassMethods = concatMap (\c -> fmap (\m -> (classOpPrefix ++ getNameStr m, c)) (classMethods c)) modClasses
+
+isTyConPair :: TyCon -> TyCon -> Bool
+isTyConPair tc1 tc2 = isNamePair n1 n2 && nameModule n1 == nameModule n2
+    where (n1, n2) = (getName tc1, getName tc2)
 
 ----------------------------------------------------------------------------------------
 -- Binds
@@ -581,7 +595,7 @@ changeBindTypeUnderWithMetaAndUniq :: ModInfo -> CoreBndr -> CoreM CoreBndr
 changeBindTypeUnderWithMetaAndUniq mod x = mkVarUnique $ setVarType x $ changeTypeUnderWithMeta mod False $ varType x
 
 changeType :: ModInfo -> Type -> Type
-changeType mod t = (changeTypeOrSkip mod True) t
+changeType mod = changeTypeOrSkip mod True
 
 changeTypeOrSkip :: ModInfo -> Bool -> Type -> Type
 changeTypeOrSkip mod skipNoAtoms t = change t
@@ -699,16 +713,16 @@ noAtomsType t = noAtomsTypeVars [] [] t
           noAtomsTypeVars tcs vs (AppTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
           noAtomsTypeVars tcs vs (TyConApp tc ts) = noAtomsTypeCon tcs tc (length ts) && (all (noAtomsTypeVars tcs vs) ts)
           noAtomsTypeVars tcs vs (FunTy t1 t2) = noAtomsTypeVars tcs vs t1 && noAtomsTypeVars tcs vs t2
-          noAtomsTypeVars tcs vs (ForAllTy v _) = elem v vs
+          noAtomsTypeVars tcs vs (ForAllTy v t) = False
           noAtomsTypeVars tcs vs (LitTy _ ) = True
           -- tcs - for recursive definitions, n - number of applied args to tc
           noAtomsTypeCon :: [TyCon] -> TyCon -> Int -> Bool
           noAtomsTypeCon tcs tc _ | elem tc tcs = True
-          noAtomsTypeCon _ tc _ | isAtomsTypeName tc = False
-          noAtomsTypeCon _ tc _ | isClassTyCon tc = False -- classes should be replaced by meta equivalent
-          noAtomsTypeCon _ tc _ | isPrimTyCon tc = True
-          noAtomsTypeCon tcs tc n | isDataTyCon tc = all (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc)
-                                                         (concatMap dataConOrigArgTys $ tyConDataCons tc)
+          noAtomsTypeCon _   tc _ | isAtomsTypeName tc = False
+          noAtomsTypeCon _   tc _ | isClassTyCon tc = False -- classes should be replaced by meta equivalent
+          noAtomsTypeCon _   tc _ | isPrimTyCon tc = True
+          noAtomsTypeCon tcs tc n | isDataTyCon tc || isNewTyCon tc = all (noAtomsTypeVars (nub $ tc : tcs) $ take n $ tyConTyVars tc)
+                                                                          (concatMap dataConOrigArgTys $ tyConDataCons tc)
           noAtomsTypeCon _ _ _ = True
           isAtomsTypeName :: TyCon -> Bool
           isAtomsTypeName tc = let nm = tyConName tc in getNameStr nm == "Variable" && moduleNameString (moduleName $ nameModule nm) == varModuleName
@@ -1586,7 +1600,7 @@ showType (AppTy t1 t2) = text "AppTy(" <> showType t1 <+> showType t2 <> text ")
 showType (TyConApp tc ts) = text "TyConApp(" <> showTyCon tc <+> hsep (fmap showType ts) <> text ")"
 showType (FunTy t1 t2) = text "FunTy(" <> showType t1 <+> showType t2 <> text ")"
 showType (ForAllTy v t) = text "ForAllTy(" <> showVar v <+> showType t <> text ")"
-showType (LitTy tl) = text "LitTy(" <> ppr tl <> text ")"
+showType (LitTy l) = text "LitTy(" <> ppr l <> text ")"
 
 showTyCon :: TyCon -> SDoc
 showTyCon = ppr

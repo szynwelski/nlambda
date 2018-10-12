@@ -1,9 +1,11 @@
-{-# LANGUAGE KindSignatures, DefaultSignatures, FlexibleContexts, TypeOperators, RankNTypes #-}
+{-# LANGUAGE KindSignatures, DefaultSignatures, DeriveDataTypeable, FlexibleContexts, TypeOperators, RankNTypes #-}
 
 module Nominal.Meta where
 
 import Data.Char (toLower)
+import Data.Data (Data)
 import Data.Foldable (fold, foldl', foldr', toList)
+import Data.Functor.Identity (Identity)
 import Data.List (isSuffixOf)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map
@@ -53,6 +55,9 @@ noMeta x = WithMeta x emptyMeta
 
 create :: a -> Meta -> WithMeta a
 create x m = WithMeta x m
+
+-- annotation to not crete meta equivalent for a function
+data NoMetaFunction = NoMetaFunction deriving Data
 
 ------------------------------------------------------------------------------------------
 -- Rename methods
@@ -123,6 +128,9 @@ renameAndApply5 f (WithMeta x1 m1) (WithMeta x2 m2) (WithMeta x3 m3) (WithMeta x
 
 noMetaRes2ArgOp :: (Var a, Var b) => (a -> b -> c) -> WithMeta a -> WithMeta b -> c
 noMetaRes2ArgOp op x = value . renameAndApply2 op x
+
+noMeta2ArgOp :: Var c => (a -> b -> c) -> a -> b -> WithMeta c
+noMeta2ArgOp op x = noMeta . op x
 
 (.*) :: (c -> d) -> (a -> b -> c) -> (a -> b -> d)
 (.*) = (.) . (.)
@@ -203,6 +211,8 @@ instance MetaLevel ReadPrec where
     liftMeta = noMeta . fmap value
     dropMeta = fmap noMeta . value
 
+instance MetaLevel Identity
+
 lift :: (MetaLevel f, Var (f a)) => f (WithMeta a) -> WithMeta (f a)
 lift = rename . liftMeta
 
@@ -228,6 +238,7 @@ instance Applicative_nlambda IO -- Defined in ‘GHC.Base’
 instance Applicative_nlambda ((->) a) -- Defined in ‘GHC.Base’
 instance Monoid_nlambda a => Applicative_nlambda ((,) a) -- Defined in ‘GHC.Base’
 instance Applicative_nlambda ReadPrec
+instance Applicative_nlambda Identity
 
 class Bounded a => Bounded_nlambda a where
   minBound_nlambda :: WithMeta a
@@ -404,6 +415,7 @@ instance Functor_nlambda ((->) r) -- Defined in ‘GHC.Base’
 instance Functor_nlambda ((,) a) -- Defined in ‘GHC.Base’
 instance Functor_nlambda ReadPrec
 instance Functor_nlambda (Map k)
+instance Functor_nlambda Identity
 
 class (Integral a, Real_nlambda a, Enum_nlambda a) => Integral_nlambda a where
   quot_nlambda :: WithMeta a -> WithMeta a -> WithMeta a
@@ -442,6 +454,7 @@ instance Monad_nlambda Maybe -- Defined in ‘GHC.Base’
 instance Monad_nlambda IO -- Defined in ‘GHC.Base’
 instance Monad_nlambda ((->) r) -- Defined in ‘GHC.Base’
 instance Monad_nlambda ReadPrec
+instance Monad_nlambda Identity
 
 class (Var a, Monoid a) => Monoid_nlambda a where
   mempty_nlambda :: WithMeta a
@@ -542,6 +555,7 @@ instance (Read_nlambda a, Read_nlambda b) => Read_nlambda (a, b) -- Defined in �
 instance (Read_nlambda a, Read_nlambda b, Read_nlambda c) => Read_nlambda (a, b, c)  -- Defined in ‘GHC.Read’
 instance (Read_nlambda a, Read_nlambda b) => Read_nlambda (Either a b)  -- Defined in ‘Data.Either’
 instance Read_nlambda Variable
+instance Read_nlambda Relation
 
 class (Real a, Num_nlambda a, Ord_nlambda a) => Real_nlambda a where
   toRational_nlambda :: WithMeta a -> Rational
@@ -723,7 +737,7 @@ op_suffix = "###"
 -- TODO ConvertFun could be selected automatically by type
 data ConvertFun = NoMeta | IdOp | NoMetaArgOp | NoMetaResOp | LeftIdOp | RightIdOp
     | RenameAndApply2 | RenameAndApply3 | RenameAndApply4 | RenameAndApply5
-    | NoMetaRes2ArgOp | MetaFunOp | NoMetaResFunOp deriving (Show, Eq, Ord)
+    | NoMetaRes2ArgOp | NoMeta2ArgOp | MetaFunOp | NoMetaResFunOp deriving (Show, Eq, Ord)
 
 convertFunName :: ConvertFun -> String
 convertFunName fun = (toLower $ head $ show fun) : (tail $ show fun)
@@ -743,8 +757,8 @@ preludeEquivalents :: Map ModuleName (Map MetaEquivalentType [MethodName])
 preludeEquivalents = Map.unions $
     [nominalAtomsSignature, nominalUtilRead, nominalVariable]
     ++ [ghcBase, ghcClasses, ghcEnum, ghcErr, ghcFloat, ghcGenerics, ghcIntegerType, ghcList, ghcNum, ghcPrim, ghcRead, ghcReal, ghcShow, ghcTuple, ghcTypes]
-    ++ [dataEither, dataEitherUtils, dataFoldable, dataFunctor, dataMapBase, dataMapInternal, dataMaybe, dataMulitMap, dataOldList, dataSemigroup,
-        dataSetBase, dataSetInternal, dataTraverable, dataTuple]
+    ++ [dataEither, dataEitherUtils, dataFoldable, dataFunctor, dataFunctorIdentity, dataMapBase, dataMapInternal, dataMaybe, dataMulitMap, dataOldList,
+        dataSemigroup, dataSetBase, dataSetInternal, dataTraverable, dataTuple]
     ++ [controlExceptionBase, systemIO, textParserCombinatorsReadPrec]
 
 preludeModules :: [ModuleName]
@@ -769,11 +783,17 @@ nominalAtomsSignature :: MetaEquivalentMap
 nominalAtomsSignature = createEquivalentsMap "Nominal.Atoms.Signature" []
 
 nominalUtilRead :: MetaEquivalentMap
-nominalUtilRead = createEquivalentsMap "Nominal.Util.Read" []
+nominalUtilRead = createEquivalentsMap "Nominal.Util.Read"
+    [(ConvertFun NoMeta, ["skipSpaces"]),
+     (ConvertFun NoMetaArgOp, ["string"]),
+     (ConvertFun IdOp, ["optional"])]
 
 nominalVariable :: MetaEquivalentMap
 nominalVariable = createEquivalentsMap "Nominal.Variable"
-    [(ConvertFun NoMetaResOp, ["constantValue", "isConstant"])]
+    [(ConvertFun NoMetaResOp, ["constantValue", "isConstant"]),
+     (ConvertFun NoMetaArgOp, ["constantVar", "variable"]),
+     (ConvertFun NoMeta2ArgOp, ["iterationVariable"]),
+     (ConvertFun IdOp, ["freeVariables"])]
 
 readSepBy_nlambda :: Bool -> String -> WithMeta (ReadPrec a) -> WithMeta (ReadPrec [a])
 readSepBy_nlambda b s = noMeta . readSepBy b s . value
@@ -844,8 +864,9 @@ ghcPrim = createEquivalentsMap "GHC.Prim"
 
 ghcRead :: MetaEquivalentMap
 ghcRead = createEquivalentsMap "GHC.Read"
-    [(ConvertFun NoMeta, ["readPrec"]),
-     (ConvertFun IdOp, ["parens"])]
+    [(ConvertFun NoMeta, ["lexP", "readPrec"]),
+     (ConvertFun IdOp, ["parens"]),
+     (ConvertFun NoMetaArgOp, ["expectP"])]
 
 ghcReal :: MetaEquivalentMap
 ghcReal = createEquivalentsMap "GHC.Real"
@@ -894,6 +915,9 @@ dataFunctor = createEquivalentsMap "Data.Functor" []
 
 (<$>###) :: (Var b, Var (f b), Functor_nlambda f) => (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
 (<$>###) = fmap_nlambda
+
+dataFunctorIdentity :: MetaEquivalentMap
+dataFunctorIdentity = createEquivalentsMap "Data.Functor.Identity" []
 
 dataMapBase :: MetaEquivalentMap
 dataMapBase = createEquivalentsMap "Data.Map.Base" dataMapFuns
@@ -946,7 +970,7 @@ dataMulitMap = createEquivalentsMap "Data.MultiMap"
 
 dataOldList :: MetaEquivalentMap
 dataOldList = createEquivalentsMap "Data.OldList"
-    [(ConvertFun IdOp, ["nub", "permutations", "sort"])]
+    [(ConvertFun IdOp, ["nub", "permutations", "sort", "tails"])]
 
 dataSemigroup :: MetaEquivalentMap
 dataSemigroup = createEquivalentsMap "Data.Semigroup" []
@@ -1005,6 +1029,6 @@ systemIO = createEquivalentsMap "System.IO"
 textParserCombinatorsReadPrec :: MetaEquivalentMap
 textParserCombinatorsReadPrec = createEquivalentsMap "Text.ParserCombinators.ReadPrec"
     [(ConvertFun NoMeta, ["pfail"]),
-     (ConvertFun IdOp, ["step"]),
+     (ConvertFun IdOp, ["reset", "step"]),
      (ConvertFun RenameAndApply2, ["+++", "<++"]),
      (ConvertFun RightIdOp, ["prec"])]
