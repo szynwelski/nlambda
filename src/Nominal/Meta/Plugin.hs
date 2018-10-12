@@ -606,7 +606,7 @@ changeTypeOrSkip mod skipNoAtoms t = change t
           change t | (Just (tv, t')) <- splitForAllTy_maybe t = mkForAllTy tv (change t')
           change t | (Just (t1, t2)) <- splitFunTy_maybe t = mkFunTy (change t1) (change t2)
           change t | (Just (t1, t2)) <- splitAppTy_maybe t
-                   = withMetaType mod $ mkAppTy t1 (changeTypeUnderWithMeta mod skipNoAtoms t2)
+                   = withMetaType mod $ mkAppTy (changeTypeUnderWithMeta mod skipNoAtoms t1) (changeTypeUnderWithMeta mod skipNoAtoms t2)
           change t | (Just (tc, ts)) <- splitTyConApp_maybe t
                    = withMetaType mod $ mkTyConApp tc (changeTypeUnderWithMeta mod skipNoAtoms <$> ts)
           change t = withMetaType mod t
