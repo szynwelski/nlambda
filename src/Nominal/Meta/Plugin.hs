@@ -592,38 +592,34 @@ changeBindTypeAndUniq :: ModInfo -> CoreBndr -> CoreM CoreBndr
 changeBindTypeAndUniq mod x = mkVarUnique $ setVarType x $ changeType mod $ varType x
 
 changeBindTypeUnderWithMetaAndUniq :: ModInfo -> CoreBndr -> CoreM CoreBndr
-changeBindTypeUnderWithMetaAndUniq mod x = mkVarUnique $ setVarType x $ changeTypeUnderWithMeta mod False $ varType x
+changeBindTypeUnderWithMetaAndUniq mod x = mkVarUnique $ setVarType x $ changeTypeUnderWithMeta mod $ varType x
 
 changeType :: ModInfo -> Type -> Type
-changeType mod = changeTypeOrSkip mod True
-
-changeTypeOrSkip :: ModInfo -> Bool -> Type -> Type
-changeTypeOrSkip mod skipNoAtoms t = change t
-    where change t | skipNoAtoms, noAtomsType t = t
+changeType mod = change
+    where change t | noAtomsType t = t
           change t | isVoidTy t = t
           change t | isPrimitiveType t = t
           change t | isPredTy t = changePredType mod t
           change t | (Just (tv, t')) <- splitForAllTy_maybe t = mkForAllTy tv (change t')
           change t | (Just (t1, t2)) <- splitFunTy_maybe t = mkFunTy (change t1) (change t2)
           change t | (Just (t1, t2)) <- splitAppTy_maybe t
-                   = withMetaType mod $ mkAppTy (changeTypeUnderWithMeta mod skipNoAtoms t1) (changeTypeUnderWithMeta mod skipNoAtoms t2)
+                   = withMetaType mod $ mkAppTy (changeTypeUnderWithMeta mod t1) (changeTypeUnderWithMeta mod t2)
           change t | (Just (tc, ts)) <- splitTyConApp_maybe t
-                   = withMetaType mod $ mkTyConApp tc (changeTypeUnderWithMeta mod skipNoAtoms <$> ts)
+                   = withMetaType mod $ mkTyConApp tc (changeTypeUnderWithMeta mod <$> ts)
           change t = withMetaType mod t
 
-changeTypeUnderWithMeta :: ModInfo -> Bool -> Type -> Type
-changeTypeUnderWithMeta mod skipNoAtoms t = change t
-    where change t | skipNoAtoms, noAtomsType t = t
+changeTypeUnderWithMeta :: ModInfo -> Type -> Type
+changeTypeUnderWithMeta mod = change
+    where change t | noAtomsType t = t
           change t | (Just (tv, t')) <- splitForAllTy_maybe t = mkForAllTy tv (change t')
-          change t | (Just (t1, t2)) <- splitFunTy_maybe t
-                   = mkFunTy (changeTypeOrSkip mod skipNoAtoms t1) (changeTypeOrSkip mod skipNoAtoms t2)
+          change t | (Just (t1, t2)) <- splitFunTy_maybe t = mkFunTy (changeType mod t1) (changeType mod t2)
           change t | (Just (t1, t2)) <- splitAppTy_maybe t = mkAppTy (change t1) (change t2)
           change t | (Just (tc, ts)) <- splitTyConApp_maybe t = mkTyConApp tc (change <$> ts)
           change t = t
 
 changePredType :: ModInfo -> PredType -> PredType
 changePredType mod t
-    | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc = mkTyConApp (newTyCon mod tc) (changeTypeUnderWithMeta mod False <$> ts)
+    | (Just (tc, ts)) <- splitTyConApp_maybe t, isClassTyCon tc = mkTyConApp (newTyCon mod tc) (changeTypeUnderWithMeta mod <$> ts)
     | otherwise = t
 
 changeTypeAndApply :: ModInfo -> CoreExpr -> Type -> CoreExpr
@@ -631,7 +627,7 @@ changeTypeAndApply mod e t
     | otherwise = (mkApp e . Type . change) t
     where (tyVars, eTy) = splitForAllTys $ exprType e
           tyVar = headPanic "changeTypeAndApply" (pprE "e" e) tyVars
-          change t = if isFunTy t && isMonoType t then changeTypeOrSkip mod (not $ isTyVarNested tyVar eTy) t else t
+          change t = if isFunTy t && isMonoType t then changeType mod t else t
 
 addVarContextForHigherOrderClass :: ModInfo -> Class -> Type -> Type
 addVarContextForHigherOrderClass mod cls t
@@ -661,16 +657,6 @@ isTyVarWrappedByWithMeta mod t tv = all wrappedByWithMeta $ getFunTypeParts t
           wrappedByWithMeta (FunTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
           wrappedByWithMeta (ForAllTy _ t') = wrappedByWithMeta t'
           wrappedByWithMeta (LitTy _) = True
-
--- is ty var under app type
-isTyVarNested :: TyVar -> Type -> Bool
-isTyVarNested tv t = isNested False t
-    where isNested nested (TyVarTy tv') = nested && (tv == tv')
-          isNested nested (AppTy t1 t2) = isNested nested t1 || isNested True t2
-          isNested nested (TyConApp tc ts) = any (isNested True) ts
-          isNested nested (FunTy t1 t2) = isNested nested t1 || isNested nested t2
-          isNested nested (ForAllTy _ t) = isNested nested t
-          isNested nested (LitTy _) = False
 
 isWithMetaType :: ModInfo -> Type -> Bool
 isWithMetaType mod t
@@ -851,12 +837,14 @@ changeExpr mod e = newExpr (mkExprMap mod) e
           newLetBind (NonRec b e) eMap = do b' <- changeBindTypeAndUniq mod b
                                             let eMap' = insertVarExpr b b' eMap
                                             e' <- newExpr eMap' e
-                                            return (NonRec b' e', eMap')
+                                            e'' <- convertMetaType mod e' $ varType b'
+                                            return (NonRec b' e'', eMap')
           newLetBind (Rec bs) eMap = do let (xs, es) = unzip bs
                                         xs' <- mapM (changeBindTypeAndUniq mod) xs
                                         let eMap' = insertVarExprs (zip xs xs') eMap
                                         es' <- mapM (newExpr eMap') es
-                                        return (Rec $ zip xs' es', eMap')
+                                        es'' <- mapM (\(x,e) -> convertMetaType mod e $ varType x) (zip xs' es')
+                                        return (Rec $ zip xs' es'', eMap')
           newAlternative eMap m t (DataAlt con, xs, e) = do xs' <- mapM (changeBindTypeUnderWithMetaAndUniq mod) xs
                                                             es <- mapM (\x -> if (isFunTy $ varType x) then return $ Var x else createExpr mod (Var x) m) xs'
                                                             e' <- newExpr (Map.union (Map.fromList $ zip xs es) eMap) e
@@ -950,7 +938,7 @@ changeCoercion mod c = change True c
           change topLevel (LRCo lr c) = LRCo lr $ change topLevel c
           change topLevel (InstCo c t) = InstCo (change topLevel c) (changeTy topLevel t)
           change topLevel (SubCo c) = SubCo $ change topLevel c
-          changeTy topLevel = if topLevel then changeType mod else changeTypeUnderWithMeta mod False
+          changeTy topLevel = if topLevel then changeType mod else changeTypeUnderWithMeta mod
 
 changeBranchedCoAxiom :: ModInfo -> CoAxiom Branched -> CoAxiom Branched
 changeBranchedCoAxiom mod = changeCoAxiom mod toBranchList Nothing
@@ -971,10 +959,10 @@ changeCoAxBranch mod cls (CoAxBranch loc tvs roles lhs rhs incpoms)
         loc
         tvs
         roles
-        (changeTypeUnderWithMeta mod False <$> lhs)
+        (changeTypeUnderWithMeta mod <$> lhs)
         (newRhs cls)
         (changeCoAxBranch mod cls <$> incpoms)
-    where rhs' = changeTypeUnderWithMeta mod False rhs
+    where rhs' = changeTypeUnderWithMeta mod rhs
           newRhs (Just c) = addVarContextForHigherOrderClass mod c rhs'
           newRhs _ = rhs'
 
@@ -1398,10 +1386,10 @@ isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForM
 isMockInstance _ _ = False
 
 addMockedInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
-addMockedInstances mod = addMockedInstancesExcept mod []
+addMockedInstances mod = addMockedInstancesExcept mod False []
 
-addMockedInstancesExcept :: ModInfo -> [PredType] -> CoreExpr -> CoreM CoreExpr
-addMockedInstancesExcept mod exceptTys e
+addMockedInstancesExcept :: ModInfo -> Bool -> [PredType] -> CoreExpr -> CoreM CoreExpr
+addMockedInstancesExcept mod mockAllPreds exceptTys e
     = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
          let exceptTys' = substTy subst <$> exceptTys
          let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
@@ -1415,7 +1403,7 @@ addMockedInstancesExcept mod exceptTys e
                                   then mkCoreLams vvs' e'
                                   else mkCoreLams (vvs' ++ xs) $ mkApps e' es
     where -- isTypeArg checked before call exprType on e
-          forMock exceptTys t = isPredicateForMock mod t && notElem t exceptTys
+          forMock exceptTys t = (if mockAllPreds then isPredicate else isPredicateForMock) mod t && notElem t exceptTys
           mockPredOrDict exceptTys e = if not (isTypeArg e) && forMock exceptTys (exprType e) then mockInstance (exprType e) else e
           mkMockedArgs n (t:ts) = do x <- mkLocalVar ("x" ++ show (n - length ts)) (typeWithoutDictPreds t)
                                      (vs, t') <- splitTypeToExprVars t
@@ -1526,7 +1514,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
                                 let (dis1, dis2) = partition (\(t,di) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (dictInstances ri')
                                 return (mkCoreLams (tvs ++ fmap snd dis1) e'', ri' {dictInstances = dis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
-                                 = do x'' <- addMockedInstancesExcept mod (dictPredicatesFromType mod $ varType x) (Var x')
+                                 = do x'' <- addMockedInstancesExcept mod False (dictPredicatesFromType mod $ varType x) (Var x')
                                       return (x'', withMocks ri)
           replace (App f x) dis ri = do (f', ri') <- replace f dis ri
                                         (x', ri'') <- replace x dis ri'
@@ -1556,7 +1544,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
           replaceMock t dis ri
               | Just v <- lookup t dis = return (Var v, ri)
               | isPredicateForMock mod t, Just v <- findDictInstance t ri = return (Var v, ri)
-              | Just di <- dictInstance mod t = do di' <- addMockedInstances mod di
+              | Just di <- dictInstance mod t = do di' <- addMockedInstancesExcept mod True [] di
                                                    return (di', withMocks ri)
               | isPredicateForMock mod t = do v <- mkPredVar $ getClassPredTys t
                                               return (Var v, addDictInstance (t, v) ri)
