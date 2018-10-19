@@ -1423,7 +1423,10 @@ addMockedInstancesExcept mod mockAllPreds exceptTys e
 appWithMock :: ModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 appWithMock mod f e
     | isTypeArg e && isForAllTy (exprType f) = return $ mkApp f e
-    | isJust $ findSuperClass argTy [e] = makeApp f e
+    | isJust $ findSuperClass argTy [e],
+      tc1 <- fromJust $ tyConAppTyCon_maybe argTy,
+      tc2 <- fromJust $ tyConAppTyCon_maybe $ exprType e,
+      isNamePair (getName tc1) (getName tc2) = makeApp f e
     | isDictArg && not isDictExpr = appWithMock mod (mkApp f $ mockInstance argTy) e
     | not isDictArg && isDictExpr = return f
     | otherwise = makeApp f e
