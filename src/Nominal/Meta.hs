@@ -724,6 +724,10 @@ class Datatype d => Datatype_nlambda d where
   isNewtype_nlambda :: WithMeta (t d (f :: * -> *) a) -> Bool
   isNewtype_nlambda = noMetaResOp isNewtype
 
+class Selector s => Selector_nlambda s where
+    selName_nlambda :: WithMeta (t s (f :: * -> *) a) -> [Char]
+    selName_nlambda = selName . value
+
 ----------------------------------------------------------------------------------------
 -- Meta equivalents
 ----------------------------------------------------------------------------------------
@@ -864,7 +868,7 @@ ghcPrim = createEquivalentsMap "GHC.Prim"
 
 ghcRead :: MetaEquivalentMap
 ghcRead = createEquivalentsMap "GHC.Read"
-    [(ConvertFun NoMeta, ["lexP", "readPrec"]),
+    [(ConvertFun NoMeta, ["lexP", "readListDefault", "readListPrecDefault", "readPrec"]),
      (ConvertFun IdOp, ["parens"]),
      (ConvertFun NoMetaArgOp, ["expectP"])]
 
@@ -970,7 +974,9 @@ dataMulitMap = createEquivalentsMap "Data.MultiMap"
 
 dataOldList :: MetaEquivalentMap
 dataOldList = createEquivalentsMap "Data.OldList"
-    [(ConvertFun IdOp, ["nub", "permutations", "sort", "tails"])]
+    [(ConvertFun IdOp, ["nub", "permutations", "sort", "tails"]),
+     (ConvertFun NoMetaRes2ArgOp, ["elemIndex"]),
+     (ConvertFun RenameAndApply2, ["delete"])]
 
 dataSemigroup :: MetaEquivalentMap
 dataSemigroup = createEquivalentsMap "Data.Semigroup" []
@@ -1008,7 +1014,7 @@ dataTraverable = createEquivalentsMap "Data.Traversable" []
 
 dataTuple :: MetaEquivalentMap
 dataTuple = createEquivalentsMap "Data.Tuple"
-    [(ConvertFun IdOp, ["fst", "snd"])]
+    [(ConvertFun IdOp, ["fst", "snd", "swap"])]
 
 curry_nlambda :: (Var a, Var b) => (WithMeta (a, b) -> WithMeta c) -> WithMeta a -> WithMeta b -> WithMeta c
 curry_nlambda f x y = f $ renameAndApply2 (,) x y

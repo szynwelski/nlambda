@@ -56,6 +56,11 @@ pprE n e = text (n ++ " =") <+> ppr e <+> text "::" <+> ppr (exprType e)
 pprV :: String -> CoreBndr -> SDoc
 pprV n v = text (n ++ " =") <+> ppr v <+> text "::" <+> ppr (varType v)
 
+for :: ModInfo -> String -> SDoc -> CoreM ()
+for mod modName doc
+    | modName == getModuleNameStr (mg_module $ guts mod) = putMsg doc
+    | otherwise = return ()
+
 pass :: HscEnv -> Bool -> ModGuts -> CoreM ModGuts
 pass env onlyShow guts =
          do putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:"
@@ -135,13 +140,15 @@ showMap header map showElem = text (header ++ ":\n")
 
 newGuts :: ModInfo -> ModGuts -> CoreM ModGuts
 newGuts mod guts = do binds <- newBinds mod (getDataCons guts) (mg_binds guts)
-                      binds' <- replaceMocksByInstancesInProgram mod (checkCoreProgram binds)
+                      let binds' = checkCoreProgram $ simplifyBinds binds
+                      binds'' <- replaceMocksByInstancesInProgram mod binds'
+                      let binds''' = checkCoreProgram $ simplifyBinds binds''
                       let exps = newExports mod (mg_exports guts)
                       let usedNames = newUsedNames mod (mg_used_names guts)
                       let clsInsts = newClassInstances mod (mg_insts guts)
                       let tcs = filter (inCurrentModule mod) $ Map.elems (tcsWithPairs mod)
                       return $ guts {mg_tcs = mg_tcs guts ++ tcs,
-                                     mg_binds = mg_binds guts ++ checkCoreProgram binds',
+                                     mg_binds = mg_binds guts ++ binds''',
                                      mg_exports = mg_exports guts ++ exps,
                                      mg_insts = mg_insts guts ++ clsInsts,
                                      mg_used_names = usedNames}
@@ -556,7 +563,7 @@ getBindsNames = fmap varName . getBindsVars
 newBinds :: ModInfo -> [DataCon] -> CoreProgram -> CoreM CoreProgram
 newBinds mod dcs bs = do bs' <- mapM (changeBind mod) $ filter withoutPair bs
                          bs'' <- mapM (dataBind mod) dcs
-                         return $ bs' ++ bs''
+                         return $ simplifyBinds $ bs' ++ bs''
     where ids = fst <$> flattenBinds bs
           -- ids that are in var map and their pair has no bind
           idsWithoutPair = filter (\v -> notElem (newVar mod v) ids) $ filter (varMapMember mod) ids
@@ -573,16 +580,21 @@ changeBindExpr :: ModInfo -> (CoreBndr, CoreExpr) -> CoreM (CoreBndr, CoreExpr)
 changeBindExpr mod (b, e) = do e' <- changeExpr mod e
                                let b' = newVar mod b
                                e'' <- convertMetaType mod e' $ varType b'
-                               return (b', simpleOptExpr e'')
+                               return (b', e'')
 
 dataBind :: ModInfo -> DataCon -> CoreM CoreBind
 dataBind mod dc
     | noAtomsType $ dataConOrigResTy dc = return $ NonRec b' (Var b)
     | otherwise = do e <- dataConExpr mod dc
                      e' <- convertMetaType mod e $ varType b'
-                     return $ NonRec b' $ simpleOptExpr e'
+                     return $ NonRec b' e'
     where b = dataConWrapId dc
           b' = newVar mod b
+
+simplifyBinds :: CoreProgram -> CoreProgram
+simplifyBinds bs = simplify <$> bs
+    where simplify (NonRec b e) = NonRec b (simpleOptExpr e)
+          simplify (Rec bs) = Rec $ (\(b,e) -> (b, simpleOptExpr e)) <$> bs
 
 ----------------------------------------------------------------------------------------
 -- Type
@@ -1010,71 +1022,77 @@ checkCoreProgram bs = if all checkBinds bs then bs else pprPanic "checkCoreProgr
                                      text "expr:" <+> ppr e,
                                      text "expr type:" <+> ppr (exprType e),
                                      text "\n=======================================================================|"])
-          checkBind (b,e) = checkExpr b e
-          checkExpr b (Var v) = True
-          checkExpr b (Lit l) = True
-          checkExpr b (App f (Type t)) | not $ isForAllTy $ exprType f
-                                       = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
-                                           (vcat [text "fun expr: " <+> ppr f,
-                                                  text "fun type: " <+> ppr (exprType f),
-                                                  text "arg: " <+> ppr t,
-                                                  text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
-                                                  text "\n=======================================================================|"])
-          checkExpr b (App f (Type t)) = checkExpr b f
-          checkExpr b (App f x) | not $ isFunTy $ exprType f
-                                = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
-                                    (vcat [text "fun expr: " <+> ppr f,
-                                           text "fun type: " <+> ppr (exprType f),
-                                           text "arg: " <+> ppr x,
-                                           text "arg type: " <+> ppr (exprType x),
-                                           text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
+          checkBind (b,e) = checkExpr (b,e) e
+          checkExpr be (Var v) = True
+          checkExpr be (Lit l) = True
+          checkExpr be (App f (Type t)) | not $ isForAllTy $ exprType f
+                                        = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
+                                            (vcat [text "fun expr: " <+> ppr f,
+                                                   text "fun type: " <+> ppr (exprType f),
+                                                   text "arg: " <+> ppr t,
+                                                   text "for bind: " <+> ppr (fst be) <+> text "::" <+> ppr (varType $ fst be),
+                                                   text "bind expr:" <+> ppr (snd be) <+> text "::" <+> ppr (exprType $ snd be),
+                                                   text "\n=======================================================================|"])
+          checkExpr be (App f (Type t)) = checkExpr be f
+          checkExpr be (App f x) | not $ isFunTy $ exprType f
+                                 = pprPanic "\n================= NOT FUNCTION IN APPLICATION ========================="
+                                     (vcat [text "fun expr: " <+> ppr f,
+                                            text "fun type: " <+> ppr (exprType f),
+                                            text "arg: " <+> ppr x,
+                                            text "arg type: " <+> ppr (exprType x),
+                                            text "for bind: " <+> ppr (fst be) <+> text "::" <+> ppr (varType $ fst be),
+                                            text "bind expr:" <+> ppr (snd be) <+> text "::" <+> ppr (exprType $ snd be),
                                            text "\n=======================================================================|"])
-          checkExpr b (App f x) | funArgTy (exprType f) /= exprType x
-                                = pprPanic "\n================= INCONSISTENT TYPES IN APPLICATION ===================="
-                                    (vcat [text "fun: " <+> ppr f,
-                                           text "fun type: " <+> ppr (exprType f),
-                                           text "fun arg type: " <+> ppr (funArgTy $ exprType f),
-                                           text "arg: " <+> ppr x,
-                                           text "arg type: " <+> ppr (exprType x),
-                                           text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
+          checkExpr be (App f x) | funArgTy (exprType f) /= exprType x
+                                 = pprPanic "\n================= INCONSISTENT TYPES IN APPLICATION ===================="
+                                     (vcat [text "fun: " <+> ppr f,
+                                            text "fun type: " <+> ppr (exprType f),
+                                            text "fun arg type: " <+> ppr (funArgTy $ exprType f),
+                                            text "arg: " <+> ppr x,
+                                            text "arg type: " <+> ppr (exprType x),
+                                            text "for bind: " <+> ppr (fst be) <+> text "::" <+> ppr (varType $ fst be),
+                                            text "bind expr:" <+> ppr (snd be) <+> text "::" <+> ppr (exprType $ snd be),
                                            text "\n=======================================================================|"])
-          checkExpr b (App f x) = checkExpr b f && checkExpr b x
-          checkExpr b (Lam x e) = checkExpr b e
-          checkExpr b (Let x e) = checkBinds x && checkExpr b e
-          checkExpr b (Case e x t as) = checkBind (x,e) && all (checkAlternative b t) as && all (checkAltConType b $ exprType e) as
-          checkExpr b (Cast e c) | exprType e /= pFst (coercionKind c)
-                                 = pprPanic "\n================= INCONSISTENT TYPES IN CAST ==========================="
-                                    (vcat [text "expr: " <+> ppr e,
-                                           text "expr type: " <+> ppr (exprType e),
-                                           text "coercion: " <+> ppr c,
-                                           text "coercion: " <+> showCoercion c,
-                                           text "coercion type: " <+> ppr (coercionType c),
-                                           text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
-                                           text "\n=======================================================================|"])
-          checkExpr b (Cast e c) = checkExpr b e
-          checkExpr b (Tick t e) = checkExpr b e
-          checkExpr b (Type t) = undefined -- type should be handled in (App f (Type t)) case
-          checkExpr b (Coercion c) = True
-          checkAlternative b t (ac, xs, e) | t /= exprType e
-                                           = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
-                                               (vcat [text "type in case: " <+> ppr t,
-                                                      text "case alternative expression: " <+> ppr e,
-                                                      text "case alternative expression type: " <+> ppr (exprType e),
-                                                      text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
-                                                      text "\n=======================================================================|"])
-          checkAlternative b t (ac, xs, e) = checkExpr b e
-          checkAltConType b t (DataAlt dc, xs, e) = checkAltConTypes b (ppr dc) (dataConOrigResTy dc) t xs -- FIXME better evaluation of pattern type
-          checkAltConType b t (LitAlt l, xs, e) = checkAltConTypes b (ppr l) (literalType l) t xs
-          checkAltConType b _ _ = True
-          checkAltConTypes b conDoc pt vt xs | not $ canUnifyTypes pt vt
-                                             = pprPanic "\n========== INCONSISTENT TYPES IN CASE ALTERNATIVE PATTERN =============="
-                                                 (vcat [text "type of value: " <+> ppr vt,
-                                                        text "case alternative constructor: " <+> conDoc,
-                                                        text "case alternative arguments: " <+> hcat ((\x -> ppr x <+> text "::" <+> ppr (varType x)) <$> xs),
-                                                        text "case alternative pattern type: " <+> ppr pt,
-                                                        text "for bind: " <+> ppr b <+> text "::" <+> ppr (varType b),
-                                                        text "\n=======================================================================|"])
-          checkAltConTypes b conDoc pt vt xs = True
+          checkExpr be (App f x) = checkExpr be f && checkExpr be x
+          checkExpr be (Lam x e) = checkExpr be e
+          checkExpr be (Let x e) = checkBinds x && checkExpr be e
+          checkExpr be (Case e x t as) = checkBind (x,e) && all (checkAlternative be t) as && all (checkAltConType be $ exprType e) as
+          checkExpr be (Cast e c) | exprType e /= pFst (coercionKind c)
+                                  = pprPanic "\n================= INCONSISTENT TYPES IN CAST ==========================="
+                                     (vcat [text "expr: " <+> ppr e,
+                                            text "expr type: " <+> ppr (exprType e),
+                                            text "coercion: " <+> ppr c,
+                                            text "coercion: " <+> showCoercion c,
+                                            text "coercion type: " <+> ppr (coercionType c),
+                                            text "for bind: " <+> ppr (fst be) <+> text "::" <+> ppr (varType $ fst be),
+                                            text "bind expr:" <+> ppr (snd be) <+> text "::" <+> ppr (exprType $ snd be),
+                                            text "\n=======================================================================|"])
+          checkExpr be (Cast e c) = checkExpr be e
+          checkExpr be (Tick t e) = checkExpr be e
+          checkExpr be (Type t) = undefined -- type should be handled in (App f (Type t)) case
+          checkExpr be (Coercion c) = True
+          checkAlternative be t (ac, xs, e) | t /= exprType e
+                                            = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
+                                                (vcat [text "type in case: " <+> ppr t,
+                                                       text "case alternative expression: " <+> ppr e,
+                                                       text "case alternative expression type: " <+> ppr (exprType e),
+                                                       text "for bind: " <+> ppr (fst be) <+> text "::" <+> ppr (varType $ fst be),
+                                                       text "bind expr:" <+> ppr (snd be) <+> text "::" <+> ppr (exprType $ snd be),
+                                                       text "\n=======================================================================|"])
+          checkAlternative be t (ac, xs, e) = checkExpr be e
+          checkAltConType be t (DataAlt dc, xs, e) = checkAltConTypes be (ppr dc) (dataConOrigResTy dc) t xs -- FIXME better evaluation of pattern type
+          checkAltConType be t (LitAlt l, xs, e) = checkAltConTypes be (ppr l) (literalType l) t xs
+          checkAltConType be _ _ = True
+          checkAltConTypes be conDoc pt vt xs | not $ canUnifyTypes pt vt
+                                              = pprPanic "\n========== INCONSISTENT TYPES IN CASE ALTERNATIVE PATTERN =============="
+                                                  (vcat [text "type of value: " <+> ppr vt,
+                                                         text "case alternative constructor: " <+> conDoc,
+                                                         text "case alternative arguments: " <+> hcat ((\x -> ppr x <+> text "::" <+> ppr (varType x)) <$> xs),
+                                                         text "case alternative pattern type: " <+> ppr pt,
+                                                         text "for bind: " <+> ppr (fst be) <+> text "::" <+> ppr (varType $ fst be),
+                                                         text "bind expr:" <+> ppr (snd be) <+> text "::" <+> ppr (exprType $ snd be),
+                                                         text "\n=======================================================================|"])
+          checkAltConTypes be conDoc pt vt xs = True
 
 ----------------------------------------------------------------------------------------
 -- Apply expression
@@ -1291,6 +1309,11 @@ convertMetaType mod e t
                                                                         e' <- addMockedInstances mod $ mkAppsIfMatch e evs
                                                                         e'' <- convertMetaType mod e' $ substTy subst $ getMainType t
                                                                         return $ mkCoreLams vvs e''
+    | not $ null (getAllPreds et \\ getAllPreds t)
+    = do e' <- addMockedInstancesExcept mod True (getAllPreds t) e
+         if not $ null (getAllPreds (exprType e') \\ getAllPreds t)
+         then pprPanic "convertMetaType - invalid number of predicates" (pprE "e" e <+> pprE "e'" e' <+> text "|" <+> ppr t)
+         else convertMetaType mod e' t
     | isClassPred t, Just e' <- findSuperClass t [e] = return e'
     | Just t' <- getWithoutWithMetaType mod t, isNotWithMetaType mod et = do e' <- convertMetaType mod e t'
                                                                              noMetaExpr mod e'
@@ -1399,9 +1422,7 @@ addMockedInstancesExcept mod mockAllPreds exceptTys e
          let argTys = init $ getFunTypeParts $ exprType e'
          args <- mkMockedArgs (length argTys) argTys
          let (xs, es) = unzip args
-         return $ simpleOptExpr $ if all isVar es
-                                  then mkCoreLams vvs' e'
-                                  else mkCoreLams (vvs' ++ xs) $ mkApps e' es
+         return $ if all isVar es then mkCoreLams vvs' e' else mkCoreLams (vvs' ++ xs) $ mkApps e' es
     where -- isTypeArg checked before call exprType on e
           forMock exceptTys t = (if mockAllPreds then isPredicate else isPredicateForMock) mod t && notElem t exceptTys
           mockPredOrDict exceptTys e = if not (isTypeArg e) && forMock exceptTys (exprType e) then mockInstance (exprType e) else e
@@ -1420,22 +1441,37 @@ addMockedInstancesExcept mod mockAllPreds exceptTys e
                                                       else mkFunTy t1 $ typeWithoutDictPreds t2
               | otherwise = t
 
+
 appWithMock :: ModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
-appWithMock mod f e
-    | isTypeArg e && isForAllTy (exprType f) = return $ mkApp f e
+appWithMock mod f e = do f' <- if isWithMetaType mod (exprType f) && not (isTypeArg e) then valueExpr mod f else return f
+                         appFunWithMock mod f' e
+
+appFunWithMock :: ModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
+appFunWithMock mod f e
+    | isTypeArg e && isForAllTy fTy = return $ mkApp f e
+    | isTypeArg e = pprPanic "appFunWithMock - isTypeArg" (pprE "f" f <+> pprE "e" e)
+    | isForAllTy fTy = pprPanic "appFunWithMock - isForAllTy" (pprE "f" f <+> pprE "e" e)
+    | argTy == eTy = return $ mkApp f e
+    | isJust $ findSuperClass argTy [e], willMatch = convertApp
     | isJust $ findSuperClass argTy [e],
       tc1 <- fromJust $ tyConAppTyCon_maybe argTy,
-      tc2 <- fromJust $ tyConAppTyCon_maybe $ exprType e,
-      isNamePair (getName tc1) (getName tc2) = makeApp f e
-    | isDictArg && not isDictExpr = appWithMock mod (mkApp f $ mockInstance argTy) e
-    | not isDictArg && isDictExpr = return f
-    | otherwise = makeApp f e
-    where argTy = funArgTy $ exprType f
-          isDictArg = isFunTy (exprType f) && isPredicateForMock mod argTy
-          isDictExpr = isPredicateForMock mod (exprType e)
-          makeApp f e = do f' <- if isWithMetaType mod $ exprType f then valueExpr mod f else return f
-                           e' <- convertMetaType mod e $ funArgTy $ exprType f'
-                           return $ mkApp f' e'
+      tc2 <- fromJust $ tyConAppTyCon_maybe eTy,
+      isNamePair (getName tc1) (getName tc2) = convertApp
+    | dictArg, not dictExpr || willMatch = appWithMock mod (mkApp f $ mockInstance argTy) e
+    | not dictArg, dictExpr, isVar e = return f
+    | dictArg || dictExpr = pprPanic "appFunWithMock - isDict" (pprE "f" f <+> pprE "e" e)
+    | otherwise = convertApp
+    where fTy = exprType f
+          argTy = funArgTy fTy
+          eTy = exprType e
+          dictArg = isFunTy fTy && isPredicateForMock mod argTy
+          dictExpr = isPredicateForMock mod eTy
+          match t = t == eTy || isJust (findSuperClass t [e])
+          willMatch = any match $ safeTail $ getAllPreds fTy
+          safeTail [] = []
+          safeTail xs = tail xs
+          convertApp = do e' <- convertMetaType mod e argTy
+                          return $ mkApp f e'
 
 ----------------------------------------------------------------------------------------
 -- Replace mocked class instances with real ones
@@ -1482,7 +1518,8 @@ withMocks ri = ri {noMocks = False}
 replaceMocksByInstancesInProgram :: ModInfo -> CoreProgram -> CoreM CoreProgram
 replaceMocksByInstancesInProgram mod bs = go bs emptyReplaceInfo
     where go bs ri = do (bs', ri') <- replace ri bs
-                        if noMoreReplaceBinds ri' && noMocks ri' then return bs' else go bs' $ nextReplaceInfo ri'
+                        let bs'' = checkCoreProgram bs'
+                        if noMoreReplaceBinds ri' && noMocks ri' then return bs'' else go bs'' $ nextReplaceInfo ri'
           replace ri (b:bs) = do (bs', ri') <- replace ri bs
                                  (b', ri'') <- replaceMocksByInstancesInBind mod (b, [], ri')
                                  if noDictInstances ri''
@@ -1509,13 +1546,13 @@ replaceMocksByInstancesInBind mod (b, dis, ri) = replace b dis ri
 
 -- args: mod info, (expression, dict instances from surrounding expression, replace info)
 replaceMocksByInstancesInExpr :: ModInfo -> (CoreExpr, DictInstances, ReplaceInfo) -> CoreM (CoreExpr, ReplaceInfo)
-replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis ri
-                                                    return (simpleOptExpr e', ri')
+replaceMocksByInstancesInExpr mod (e, dis, ri) = replace e dis ri
     where replace e dis ri | isMockInstance mod e = replaceMock (exprType e) dis ri
           replace e dis ri | (tvs, e') <- collectTyBinders e, not (null tvs)
                            = do (e'', ri') <- replace e' dis ri
                                 let (dis1, dis2) = partition (\(t,di) -> any (`elemVarSet` (tyVarsOfType t)) tvs) (dictInstances ri')
-                                return (mkCoreLams (tvs ++ fmap snd dis1) e'', ri' {dictInstances = dis2})
+                                let dicts = filter (\(t,di) -> notElem t $ getAllPreds $ exprType e'') dis1
+                                return (mkCoreLams (tvs ++ fmap snd dicts) e'', ri' {dictInstances = dis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
                                  = do x'' <- addMockedInstancesExcept mod False (dictPredicatesFromType mod $ varType x) (Var x')
                                       return (x'', withMocks ri)
@@ -1549,9 +1586,9 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = do (e', ri') <- replace e dis r
               | isPredicateForMock mod t, Just v <- findDictInstance t ri = return (Var v, ri)
               | Just di <- dictInstance mod t = do di' <- addMockedInstancesExcept mod True [] di
                                                    return (di', withMocks ri)
+              | Just sc <- findSuperClass t (Var <$> snd <$> dis) = return (sc, ri)
               | isPredicateForMock mod t = do v <- mkPredVar $ getClassPredTys t
                                               return (Var v, addDictInstance (t, v) ri)
-              | Just sc <- findSuperClass t (Var <$> snd <$> dis) = return (sc, ri)
               | otherwise = pprPanic "replaceMock - can't create class instance for " (ppr t)
 
 dictInstance :: ModInfo -> Type -> Maybe CoreExpr
@@ -1665,11 +1702,11 @@ showOccName n = text "<"
                 <> text ">"
 
 showVar :: Var -> SDoc
-showVar = ppr
---showVar v = text "["
---            <> showName (varName v)
---            <+> ppr (varUnique v)
---            <+> showType (varType v)
+--showVar = ppr
+showVar v = text "["
+            <> showName (varName v)
+            <+> ppr (varUnique v)
+            <+> showType (varType v)
 ----            <+> showOccName (nameOccName $ varName v)
 --            <> (when (isId v) (idDetails v))
 --            <> (when (isId v) (arityInfo $ idInfo v))
@@ -1700,7 +1737,7 @@ showVar = ppr
 --            <> (whenT (isId v && isRecordSelector v) "RecordSelector")
 --            <> (whenT (isId v && isFCallId v) "FCallId")
 --            <> (whenT (isId v && hasNoBinding v) "NoBinding")
---            <> text "]"
+            <> text "]"
 
 showExpr :: CoreExpr -> SDoc
 showExpr (Var i) = text "<" <> showVar i <> text ">"
