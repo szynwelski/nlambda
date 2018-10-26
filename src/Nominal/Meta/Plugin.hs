@@ -261,7 +261,7 @@ getDataConsVars :: ModGuts -> [Var]
 getDataConsVars = concatMap dataConImplicitIds . getDataCons
 
 getDataConsNames :: ModGuts -> [Name]
-getDataConsNames = concatMap (\dc -> dataConName dc : (idName <$> dataConImplicitIds dc)) . getDataCons
+getDataConsNames = concatMap (\dc -> idName <$> dataConImplicitIds dc) . getDataCons
 
 ----------------------------------------------------------------------------------------
 -- Variables
@@ -1450,6 +1450,7 @@ appFunWithMock :: ModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 appFunWithMock mod f e
     | isTypeArg e && isForAllTy fTy = return $ mkApp f e
     | isTypeArg e = pprPanic "appFunWithMock - isTypeArg" (pprE "f" f <+> pprE "e" e)
+    | isForAllTy fTy, dictExpr = return f
     | isForAllTy fTy = pprPanic "appFunWithMock - isForAllTy" (pprE "f" f <+> pprE "e" e)
     | argTy == eTy = return $ mkApp f e
     | isJust $ findSuperClass argTy [e], willMatch = convertApp
@@ -1458,7 +1459,7 @@ appFunWithMock mod f e
       tc2 <- fromJust $ tyConAppTyCon_maybe eTy,
       isNamePair (getName tc1) (getName tc2) = convertApp
     | dictArg, not dictExpr || willMatch = appWithMock mod (mkApp f $ mockInstance argTy) e
-    | not dictArg, dictExpr, isVar e = return f
+    | not dictArg, dictExpr = return f
     | dictArg || dictExpr = pprPanic "appFunWithMock - isDict" (pprE "f" f <+> pprE "e" e)
     | otherwise = convertApp
     where fTy = exprType f
