@@ -1707,7 +1707,7 @@ showVar :: Var -> SDoc
 showVar v = text "["
             <> showName (varName v)
             <+> ppr (varUnique v)
-            <+> showType (varType v)
+--            <+> showType (varType v)
 ----            <+> showOccName (nameOccName $ varName v)
 --            <> (when (isId v) (idDetails v))
 --            <> (when (isId v) (arityInfo $ idInfo v))

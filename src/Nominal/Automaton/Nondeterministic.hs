@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 module Nominal.Automaton.Nondeterministic where
 
 import Nominal.Atoms

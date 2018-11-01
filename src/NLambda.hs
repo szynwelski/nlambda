@@ -15,7 +15,6 @@ import Nominal.Atoms as Export
 import Nominal.Atoms as Export hiding (lt, le, gt, ge)
 #endif
 import Nominal.Atoms.Signature as Export (Constant)
-import Nominal.Atoms.Space as Export
 import Nominal.Automaton.Base as Export
 import Nominal.Automaton.Deterministic as Export
 import Nominal.Automaton.Nondeterministic as Export

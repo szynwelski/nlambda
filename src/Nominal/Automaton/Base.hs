@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Automaton.Base where
 

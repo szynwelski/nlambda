@@ -7,7 +7,8 @@ import Data.Map (Map, assocs, fromList)
 import Data.Set (Set, map)
 import Nominal.Formula
 import Nominal.Formula.Definition (mapFormula)
-import Nominal.Variable (Variable)
+import Nominal.Meta (Ord_nlambda, WithMeta)
+import Nominal.Variable (Var, Variable)
 import Prelude hiding (map, not)
 import GHC.Generics
 
@@ -30,6 +31,10 @@ class Contextual a where
 -- > simplify = when true
 simplify :: Contextual a => a -> a
 simplify = when true
+
+
+class (Ord_nlambda a, Var a) => Contextual_nlambda a where
+    when_nlambda :: WithMeta Formula -> WithMeta a -> WithMeta a
 
 ----------------------------------------------------------------------------------------------------
 -- Instances

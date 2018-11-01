@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 module Nominal.Set (
 Set,
 -- ** Construction
@@ -91,7 +92,17 @@ isSupremum,
 isConnected,
 isOpen,
 isClosed,
-isCompact) where
+isCompact,
+-- ** Meta equivalents
+empty_nlambda,
+isNotEmpty_nlambda,
+insert_nlambda,
+delete_nlambda,
+map_nlambda,
+filter_nlambda,
+sum_nlambda,
+atoms_nlambda,
+element_nlambda) where
 
 import Control.Arrow ((***), first)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
@@ -111,8 +122,9 @@ import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
+import Nominal.Meta (NoMetaFunction(..), WithMeta)
 import qualified Nominal.Text.Symbols as Symbols
-import Nominal.Type (NominalType(..), neq)
+import Nominal.Type (NominalType(..), NominalType_nlambda, neq)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
 import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
@@ -133,12 +145,14 @@ import Text.Read (Lexeme(Punc), ReadPrec, (+++), (<++), lexP, readPrec, reset)
 
 type SetElementCondition = (Set.Set Variable, Formula)
 
+{-# ANN getCondition NoMetaFunction #-}
 getCondition :: SetElementCondition -> Formula
 getCondition (vs, c) = Set.foldr (∃) c vs
 
 sumCondition :: SetElementCondition -> SetElementCondition -> SetElementCondition
 sumCondition (vs1, c1) (vs2, c2) = (Set.union vs1 vs2, c1 \/ c2)
 
+{-# ANN checkVariablesInElement NoMetaFunction #-}
 checkVariablesInElement :: NominalType a => (a, SetElementCondition) -> (a, SetElementCondition)
 checkVariablesInElement (v, (vs, c)) =
     let iterVars = foldVariables (All, \var -> if Set.member var vs then ISet.insert var else id) ISet.empty v
@@ -154,15 +168,18 @@ checkVariablesInElement (v, (vs, c)) =
                else let replaceMap = (Map.fromList $ zip oldIterVars newIterVars)
                     in (replaceVariables replaceMap v, (Set.fromList newIterVars, replaceVariables replaceMap c'))
 
+{-# ANN checkVariables NoMetaFunction #-}
 checkVariables :: NominalType a => Map a SetElementCondition -> Map a SetElementCondition
 checkVariables = Map.fromListWith sumCondition . Map.foldrWithKey (\v c es -> checkVariablesInElement (v, c) : es) []
 
+{-# ANN filterSetElems NoMetaFunction #-}
 filterSetElems :: NominalType a => (a -> SetElementCondition) -> Map a SetElementCondition -> Map a SetElementCondition
 filterSetElems f = filterNotFalse . Map.mapWithKey (\v (vs, c) -> (Set.union vs *** (/\) c) $ f v)
 
 filterNotFalse :: Map a SetElementCondition -> Map a SetElementCondition
 filterNotFalse = Map.filter ((/= false) . snd)
 
+{-# ANN checkEquality NoMetaFunction #-}
 checkEquality :: NominalType a => (a, SetElementCondition) -> (a, SetElementCondition)
 checkEquality (v, (vs, c)) =
     if Set.null eqs || Map.null eqsMap
@@ -179,6 +196,7 @@ checkEquality (v, (vs, c)) =
 -- Identifiers
 ----------------------------------------------------------------------------------------------------
 
+{-# ANN checkIdentifiers NoMetaFunction #-}
 checkIdentifiers :: (NominalType a, NominalType b) => Identifier -> (a, (b, SetElementCondition)) -> (a, (b, SetElementCondition))
 checkIdentifiers id (oldV, (newV, cond)) =
     let otherVarsLevels = Set.toAscList $ collectWith (\var -> if hasIdentifierNotEquals id var then getIterationLevel var else Nothing) (oldV, newV)
@@ -187,18 +205,21 @@ checkIdentifiers id (oldV, (newV, cond)) =
         changeLevelsMap = Map.fromList $ zip iterVarsLevels newIterVarsLevels
     in mapVariablesIf (hasIdentifierEquals id) (clearIdentifier . changeIterationLevel changeLevelsMap) (oldV, (newV, cond))
 
-counter :: IORef Word
+{-# ANN counter NoMetaFunction #-}
 {-# NOINLINE counter #-}
+counter :: IORef Word
 counter = unsafePerformIO $ newIORef 0
 
-getVariableId :: Set.Set Variable -> Word
+{-# ANN getVariableId NoMetaFunction #-}
 {-# NOINLINE getVariableId #-}
+getVariableId :: Set.Set Variable -> Word
 getVariableId vs = unsafePerformIO $
   do
     i <- readIORef counter
     writeIORef counter (i + fromIntegral (Set.size vs) + 1)
     return i
 
+{-# ANN applyWithIdentifiers NoMetaFunction #-}
 applyWithIdentifiers :: (NominalType a, NominalType b) => (a -> b) -> (a, SetElementCondition) -> [(a, (b, SetElementCondition))]
 applyWithIdentifiers f (v, cond) =
     let id = getVariableId $ fst cond
@@ -263,16 +284,20 @@ instance (Contextual a, Ord a) => Contextual (Set a) where
                             $ Map.fromListWith sumCondition
                             $ (\(v,(vs, c)) -> (when (ctx /\ c) v, when ctx (vs, c))) <$> Map.assocs es
 
+{-# ANN mapWithout NoMetaFunction #-}
 mapWithout :: Set.Set Variable -> (Variable -> Variable) -> Variable -> Variable
 mapWithout vs f x = if Set.member x vs then x else f x
 
+{-# ANN mapSetVariables NoMetaFunction #-}
 mapSetVariables :: Var a => MapVarFun -> (a, SetElementCondition) -> (a, SetElementCondition)
 mapSetVariables (All, f) se = mapVariables (All, f) se
 mapSetVariables (Free, f) (v, (vs, c)) = mapVariables (Free, mapWithout vs f) (v, (vs, c))
 
+{-# ANN foldWithout NoMetaFunction #-}
 foldWithout :: Set.Set Variable -> (Variable -> b -> b) -> Variable -> b -> b
 foldWithout vs f x = if Set.member x vs then id else f x
 
+{-# ANN foldSetVariables NoMetaFunction #-}
 foldSetVariables :: Var a => FoldVarFun b -> b -> (a, SetElementCondition) -> b
 foldSetVariables (All, f) acc se = foldVariables (All, f) acc se
 foldSetVariables (Free, f) acc (v, (vs, c)) = foldVariables (Free, foldWithout vs f) acc (v, (vs, c))
@@ -348,6 +373,37 @@ sum = Set . checkVariables
 atoms :: Set Atom
 atoms = let iterVar = iterationVariable 0 1
         in Set $ Map.singleton (variant iterVar) (Set.singleton iterVar, true)
+
+----------------------------------------------------------------------------------------------------
+-- Meta equivalents for basic operations on the set
+----------------------------------------------------------------------------------------------------
+
+empty_nlambda :: WithMeta (Set a)
+empty_nlambda = undefined
+
+isNotEmpty_nlambda :: WithMeta (Set a) -> WithMeta Formula
+isNotEmpty_nlambda = undefined
+
+insert_nlambda :: NominalType_nlambda a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
+insert_nlambda = undefined
+
+delete_nlambda :: NominalType_nlambda a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
+delete_nlambda = undefined
+
+map_nlambda :: (NominalType_nlambda a, NominalType_nlambda b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
+map_nlambda = undefined
+
+filter_nlambda :: NominalType_nlambda a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
+filter_nlambda = undefined
+
+sum_nlambda :: NominalType_nlambda a => WithMeta (Set (Set a)) -> WithMeta (Set a)
+sum_nlambda = undefined
+
+atoms_nlambda :: WithMeta (Set Atom)
+atoms_nlambda = undefined
+
+element_nlambda :: (Contextual_nlambda a, NominalType_nlambda a) => WithMeta (Set a) -> WithMeta (NominalMaybe a)
+element_nlambda = undefined
 
 ----------------------------------------------------------------------------------------------------
 -- Additional functions
