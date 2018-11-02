@@ -18,6 +18,7 @@ import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, is_cls_
 import Kind (defaultKind, isOpenTypeKind)
 import MkId (mkDataConWorkId, mkDictSelRhs)
 import Nominal.Meta
+import Nominal.Meta.Modules
 import Pair (pFst, pSnd)
 import PrelNames (anyTyConKey)
 import TypeRep
