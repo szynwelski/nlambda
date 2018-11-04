@@ -1,4 +1,4 @@
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE KindSignatures, RankNTypes #-}
 module Nominal.Meta.GHC.Generics where
 
 import GHC.Generics
@@ -53,13 +53,13 @@ class Selector s => NLambda_Selector s where
 nlambda_U1 :: WithMeta (U1 p)
 nlambda_U1 = noMeta U1
 
-nlambda_L1 :: WithMeta (f p) -> WithMeta ((:+:) f g p)
+nlambda_L1 :: forall (f :: * -> *) (g :: * -> *) p . WithMeta (f p) -> WithMeta ((:+:) f g p)
 nlambda_L1 = idOp L1
 
-nlambda_R1 :: WithMeta (g p) -> WithMeta ((:+:) f g p)
+nlambda_R1 :: forall (f :: * -> *) (g :: * -> *) p . WithMeta (g p) -> WithMeta ((:+:) f g p)
 nlambda_R1 = idOp R1
 
-(###:*:) :: (Var (f p), Var (g p)) => WithMeta (f p) -> WithMeta (g p) -> WithMeta ((:*:) f g p)
+(###:*:) :: forall (f :: * -> *) (g :: * -> *) p . (Var (f p), Var (g p)) => WithMeta (f p) -> WithMeta (g p) -> WithMeta ((:*:) f g p)
 (###:*:) = renameAndApply2 (:*:)
 
 nlambda_unK1 :: WithMeta (K1 i c p) -> WithMeta c

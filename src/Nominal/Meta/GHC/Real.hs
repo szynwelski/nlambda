@@ -63,8 +63,8 @@ class (RealFrac a, NLambda_Real a, NLambda_Fractional a) => NLambda_RealFrac a w
 (###^^) :: (NLambda_Fractional a, NLambda_Integral b) => WithMeta a -> WithMeta b -> WithMeta a
 (###^^) = renameAndApply2 (^^)
 
-nlambda_even :: Integral a => WithMeta a -> Bool
+nlambda_even :: NLambda_Integral a => WithMeta a -> Bool
 nlambda_even = even . value
 
-nlambda_odd :: Integral a => WithMeta a -> Bool
+nlambda_odd :: NLambda_Integral a => WithMeta a -> Bool
 nlambda_odd = odd . value

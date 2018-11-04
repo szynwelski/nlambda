@@ -94,15 +94,15 @@ isOpen,
 isClosed,
 isCompact,
 -- ** Meta equivalents
-empty_nlambda,
-isNotEmpty_nlambda,
-insert_nlambda,
-delete_nlambda,
-map_nlambda,
-filter_nlambda,
-sum_nlambda,
-atoms_nlambda,
-element_nlambda) where
+nlambda_empty,
+nlambda_isNotEmpty,
+nlambda_insert,
+nlambda_delete,
+nlambda_map,
+nlambda_filter,
+nlambda_sum,
+nlambda_atoms,
+nlambda_element) where
 
 import Control.Arrow ((***), first)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
@@ -124,7 +124,7 @@ import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFo
 import Nominal.Maybe
 import Nominal.Meta (NoMetaFunction(..), WithMeta)
 import qualified Nominal.Text.Symbols as Symbols
-import Nominal.Type (NominalType(..), NominalType_nlambda, neq)
+import Nominal.Type (NominalType(..), NLambda_NominalType, neq)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
 import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
@@ -378,32 +378,32 @@ atoms = let iterVar = iterationVariable 0 1
 -- Meta equivalents for basic operations on the set
 ----------------------------------------------------------------------------------------------------
 
-empty_nlambda :: WithMeta (Set a)
-empty_nlambda = undefined
+nlambda_empty :: WithMeta (Set a)
+nlambda_empty = undefined
 
-isNotEmpty_nlambda :: WithMeta (Set a) -> WithMeta Formula
-isNotEmpty_nlambda = undefined
+nlambda_isNotEmpty :: WithMeta (Set a) -> WithMeta Formula
+nlambda_isNotEmpty = undefined
 
-insert_nlambda :: NominalType_nlambda a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
-insert_nlambda = undefined
+nlambda_insert :: NLambda_NominalType a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
+nlambda_insert = undefined
 
-delete_nlambda :: NominalType_nlambda a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
-delete_nlambda = undefined
+nlambda_delete :: NLambda_NominalType a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
+nlambda_delete = undefined
 
-map_nlambda :: (NominalType_nlambda a, NominalType_nlambda b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
-map_nlambda = undefined
+nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
+nlambda_map = undefined
 
-filter_nlambda :: NominalType_nlambda a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
-filter_nlambda = undefined
+nlambda_filter :: NLambda_NominalType a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
+nlambda_filter = undefined
 
-sum_nlambda :: NominalType_nlambda a => WithMeta (Set (Set a)) -> WithMeta (Set a)
-sum_nlambda = undefined
+nlambda_sum :: NLambda_NominalType a => WithMeta (Set (Set a)) -> WithMeta (Set a)
+nlambda_sum = undefined
 
-atoms_nlambda :: WithMeta (Set Atom)
-atoms_nlambda = undefined
+nlambda_atoms :: WithMeta (Set Atom)
+nlambda_atoms = undefined
 
-element_nlambda :: (Contextual_nlambda a, NominalType_nlambda a) => WithMeta (Set a) -> WithMeta (NominalMaybe a)
-element_nlambda = undefined
+nlambda_element :: (NLambda_Contextual a, NLambda_NominalType a) => WithMeta (Set a) -> WithMeta (NominalMaybe a)
+nlambda_element = undefined
 
 ----------------------------------------------------------------------------------------------------
 -- Additional functions

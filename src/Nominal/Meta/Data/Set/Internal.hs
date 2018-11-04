@@ -1,4 +1,4 @@
-module Nominal.Meta.Data.Set.Base where
+module Nominal.Meta.Data.Set.Internal where
 
 import Data.Set
 import Nominal.Meta hiding (union, unions)

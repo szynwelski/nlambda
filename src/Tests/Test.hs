@@ -364,5 +364,5 @@ test42 x y z = [Up x, Down y, fromJust $ select [Down x, Down y, Up z]]
 test43 :: Variable -> Variable -> Variable -> Variable
 test43 x y z = x
 
-test43_nlambda :: WithMeta Variable -> WithMeta Variable -> WithMeta Variable -> WithMeta Variable
-test43_nlambda x y z = x
+nlambda_test43 :: WithMeta Variable -> WithMeta Variable -> WithMeta Variable -> WithMeta Variable
+nlambda_test43 x y z = x

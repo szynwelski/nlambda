@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 module Nominal.Meta.Data.Either where
 
 import Data.Either
@@ -21,10 +22,10 @@ instance (NLambda_Read a, NLambda_Read b) => NLambda_Read (Either a b)
 
 instance (NLambda_Show a, NLambda_Show b) => NLambda_Show (Either a b)
 
-nlambda_Left :: WithMeta a -> WithMeta (Either a b)
+nlambda_Left :: forall a b . WithMeta a -> WithMeta (Either a b)
 nlambda_Left = idOp Left
 
-nlambda_Right :: WithMeta b -> WithMeta (Either a b)
+nlambda_Right :: forall a b . WithMeta b -> WithMeta (Either a b)
 nlambda_Right = idOp Right
 
 nlambda_isLeft :: WithMeta (Either a b) -> Bool

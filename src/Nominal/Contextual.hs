@@ -1,13 +1,13 @@
 {-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE DefaultSignatures, FlexibleContexts, TypeOperators #-}
-
 module Nominal.Contextual where
 
 import Data.Map (Map, assocs, fromList)
 import Data.Set (Set, map)
 import Nominal.Formula
 import Nominal.Formula.Definition (mapFormula)
-import Nominal.Meta (Ord_nlambda, WithMeta)
+import Nominal.Meta (WithMeta)
+import Nominal.Meta.GHC.Classes (NLambda_Ord)
 import Nominal.Variable (Var, Variable)
 import Prelude hiding (map, not)
 import GHC.Generics
@@ -33,8 +33,8 @@ simplify :: Contextual a => a -> a
 simplify = when true
 
 
-class (Ord_nlambda a, Var a) => Contextual_nlambda a where
-    when_nlambda :: WithMeta Formula -> WithMeta a -> WithMeta a
+class (NLambda_Ord a, Var a) => NLambda_Contextual a where
+    nlambda_when :: WithMeta Formula -> WithMeta a -> WithMeta a
 
 ----------------------------------------------------------------------------------------------------
 -- Instances

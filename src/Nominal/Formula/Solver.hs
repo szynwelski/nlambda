@@ -1,16 +1,16 @@
 module Nominal.Formula.Solver (
 isTrue,
-isTrue_nlambda,
+nlambda_isTrue,
 isFalse,
-isFalse_nlambda,
+nlambda_isFalse,
 lia,
-lia_nlambda,
+nlambda_lia,
 lra,
-lra_nlambda,
+nlambda_lra,
 model,
-model_nlambda,
+nlambda_model,
 simplifyFormula,
-simplifyFormula_nlambda) where
+nlambda_simplifyFormula) where
 
 import Control.Applicative ((<|>), (*>), (<*))
 import Data.Attoparsec.ByteString.Char8 (Parser, char, digit, isDigit, many1, satisfy, sepBy, sepBy1, skipWhile, string, takeWhile, takeWhile1)
@@ -390,20 +390,20 @@ parseModelVariable l = do
 -- Meta equivalents
 ----------------------------------------------------------------------------------------------------
 
-lia_nlambda :: WithMeta SmtLogic
-lia_nlambda = noMeta lia
+nlambda_lia :: WithMeta SmtLogic
+nlambda_lia = noMeta lia
 
-lra_nlambda :: WithMeta SmtLogic
-lra_nlambda = noMeta lra
+nlambda_lra :: WithMeta SmtLogic
+nlambda_lra = noMeta lra
 
-isTrue_nlambda :: WithMeta SmtLogic -> WithMeta Formula -> Bool
-isTrue_nlambda l f = isTrue (value l) (value f)
+nlambda_isTrue :: WithMeta SmtLogic -> WithMeta Formula -> Bool
+nlambda_isTrue l f = isTrue (value l) (value f)
 
-isFalse_nlambda :: WithMeta SmtLogic -> WithMeta Formula -> Bool
-isFalse_nlambda l f = isFalse (value l) (value f)
+nlambda_isFalse :: WithMeta SmtLogic -> WithMeta Formula -> Bool
+nlambda_isFalse l f = isFalse (value l) (value f)
 
-simplifyFormula_nlambda :: WithMeta SmtLogic -> WithMeta Formula -> WithMeta Formula
-simplifyFormula_nlambda l f = create (simplifyFormula (value l) (value f)) (meta f)
+nlambda_simplifyFormula :: WithMeta SmtLogic -> WithMeta Formula -> WithMeta Formula
+nlambda_simplifyFormula l f = create (simplifyFormula (value l) (value f)) (meta f)
 
-model_nlambda :: WithMeta SmtLogic -> WithMeta Formula -> WithMeta (Map Variable Variable)
-model_nlambda l f = create (model (value l) (value f)) (meta f)
+nlambda_model :: WithMeta SmtLogic -> WithMeta Formula -> WithMeta (Map Variable Variable)
+nlambda_model l f = create (model (value l) (value f)) (meta f)

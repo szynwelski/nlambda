@@ -14,7 +14,7 @@ m1 = withMeta x [(1,2)]
 m2 = withMeta x [(1,3)]
 m3 = withMeta y [(4,5)]
 
-#define DO_TEST(number) do {print "============================= Test number ==================================="; print (test/**/number x x y); print (test/**/number/**/_nlambda m1 m2 m3)}
+#define DO_TEST(number) do {print "============================= Test number ==================================="; print (test/**/number x x y); print (nlambda_test/**/number/**/ m1 m2 m3)}
 
 main = do DO_TEST(1)
           DO_TEST(2)

@@ -1,12 +1,12 @@
 {-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE DefaultSignatures, FlexibleContexts, CPP, TypeOperators #-}
-
 module Nominal.Type where
 
 import Data.Map (Map, findWithDefault)
 import Data.Set (Set, empty, insert)
 import Nominal.Formula
-import Nominal.Meta (WithMeta, Ord_nlambda)
+import Nominal.Meta (WithMeta)
+import Nominal.Meta.GHC.Classes (NLambda_Ord)
 import Nominal.Variable (Var, Variable)
 import Nominal.Variants (Variants, fromList, map, prod, toList, variant, variantsRelation)
 import Prelude hiding (and, map, not, or)
@@ -42,9 +42,9 @@ class (Ord a, Var a) => NominalType a where
 neq :: NominalType a => a -> a -> Formula
 neq x1 x2 = not $ eq x1 x2
 
-class (Ord_nlambda a, Var a) => NominalType_nlambda a where
-    eq_nlambda :: WithMeta a -> WithMeta a -> WithMeta Formula
-    variants_nlambda :: WithMeta a -> WithMeta (Variants a)
+class (NLambda_Ord a, Var a) => NLambda_NominalType a where
+    nlambda_eq :: WithMeta a -> WithMeta a -> WithMeta Formula
+    nlambda_variants :: WithMeta a -> WithMeta (Variants a)
 
 ----------------------------------------------------------------------------------------------------
 -- Instances

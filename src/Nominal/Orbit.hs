@@ -13,7 +13,7 @@ import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
 import Nominal.Maybe (NominalMaybe)
 import Nominal.Meta (WithMeta)
 import Nominal.Set (Set, element, empty, filter, intersect, isSingleton, map, maxSizeWith, member, replicateAtoms, replicateSetUntil, sizeWith, sum, unions)
-import Nominal.Type (NominalType, NominalType_nlambda, eq)
+import Nominal.Type (NominalType, NLambda_NominalType, eq)
 import Nominal.Variable (Scope(..), freeVariables, mapVariables)
 import Nominal.Variants (Variants, fromVariant, variant, variantsRelation)
 import Prelude hiding (and, filter, map, sum)
@@ -49,8 +49,8 @@ isEquivariant = fromBool . null . leastSupport
 groupAction :: NominalType a => (Atom -> Atom) -> a -> a
 groupAction action = mapVariables (Free, fromVariant . action . variant)
 
-groupAction_nlambda :: NominalType_nlambda a => (WithMeta Atom -> WithMeta Atom) -> WithMeta a -> WithMeta a
-groupAction_nlambda = undefined
+nlambda_groupAction :: NLambda_NominalType a => (WithMeta Atom -> WithMeta Atom) -> WithMeta a -> WithMeta a
+nlambda_groupAction = undefined
 
 -- | Returns an orbit of an element with a given support.
 orbit :: NominalType a => [Atom] -> a -> Set a

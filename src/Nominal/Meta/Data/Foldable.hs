@@ -63,5 +63,5 @@ nlambda_concatMap f = lift . concatMap (dropMeta . f) . dropMeta
 nlambda_find :: NLambda_Foldable t => (WithMeta a -> Bool) -> WithMeta (t a) -> WithMeta (Maybe a)
 nlambda_find = noMetaResFunOp find
 
-nlambda_notElem :: (Var (t a), NLambda_Eq a, NLambda_Foldable t) => WithMeta a -> WithMeta (t a) -> Bool
+nlambda_notElem :: (Var (t a), NLambda_Foldable t, NLambda_Eq a) => WithMeta a -> WithMeta (t a) -> Bool
 nlambda_notElem = noMetaRes2ArgOp elem
