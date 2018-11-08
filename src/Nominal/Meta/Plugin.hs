@@ -1394,7 +1394,6 @@ hasMetaEquivalent mod x = elem (getMetaEquivalentModule $ getModuleStr x) module
 
 getMetaEquivalent :: ModInfo -> Var -> CoreM CoreExpr
 getMetaEquivalent mod v
---    | getNameStr v == "unions", pprTrace "getMetaEquivalent" (pprV "v" v <+> pprE "v'" (fromJust $ getMetaVarMaybe mod (Just metaModule) metaName)) False = undefined
     | Just v' <- getMetaVarMaybe mod (Just metaModule) metaName = addMockedInstances mod v'
     | hasMetaEquivalent mod v = pprPanic ("getMetaEquivalent - no meta equivalent variable " ++ metaName ++ " in module " ++ metaModule) (pprV "v" v)
     | otherwise = pprPanic ("getMetaEquivalent - no meta equivalent module " ++ metaModule) (pprV "v" v)

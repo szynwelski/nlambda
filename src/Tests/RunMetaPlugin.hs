@@ -3,7 +3,7 @@
 import qualified Data.Map as Map
 import Nominal.Meta
 import Nominal.Variable
-import Tests.Test
+import Tests.MetaPlugin
 
 withMeta :: a -> [(Identifier, Identifier)] -> WithMeta a
 withMeta x = create x . metaFromMap . Map.fromList

@@ -39,8 +39,8 @@ nlambda_lexP = noMeta lexP
 nlambda_parens :: WithMeta (ReadPrec a) -> WithMeta (ReadPrec a)
 nlambda_parens = idOp parens
 
-nlambda_readListDefault :: Read a => WithMeta (ReadS [a])
+nlambda_readListDefault :: NLambda_Read a => WithMeta (ReadS [a])
 nlambda_readListDefault = noMeta readListDefault
 
-nlambda_readListPrecDefault :: Read a => WithMeta (ReadPrec [a])
+nlambda_readListPrecDefault :: NLambda_Read a => WithMeta (ReadPrec [a])
 nlambda_readListPrecDefault = noMeta readListPrecDefault

@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE BangPatterns, DeriveAnyClass, DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable #-}
 
-module Tests.Test where
+module Tests.MetaPlugin where
 
 import Data.Either (isLeft, isRight)
 import Data.Foldable (toList)
