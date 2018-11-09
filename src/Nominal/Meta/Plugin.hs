@@ -92,7 +92,7 @@ pass env onlyShow guts =
 --            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --            modInfo "module" mg_module guts'
---            modInfo "binds" (sortBinds . mg_binds) guts'
+            modInfo "binds" (sortBinds . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
 --            modInfo "imported" (moduleEnvKeys . mg_dir_imps) guts'
 --            modInfo "exports" mg_exports guts'
@@ -148,10 +148,12 @@ newGuts mod guts = do binds <- newBinds mod (getDataCons guts) (mg_binds guts)
                       let usedNames = newUsedNames mod (mg_used_names guts)
                       let clsInsts = newClassInstances mod (mg_insts guts)
                       let tcs = filter (inCurrentModule mod) $ Map.elems (tcsWithPairs mod)
+                      let gre = newGlobalRdrEnv mod (mg_rdr_env guts)
                       return $ guts {mg_tcs = mg_tcs guts ++ tcs,
                                      mg_binds = mg_binds guts ++ binds''',
                                      mg_exports = mg_exports guts ++ exps,
                                      mg_insts = mg_insts guts ++ clsInsts,
+                                     mg_rdr_env = gre,
                                      mg_used_names = usedNames}
 
 ----------------------------------------------------------------------------------------
@@ -231,6 +233,8 @@ replaceReservedOperators "(,)" = "#"
 replaceReservedOperators "(,,)" = "##"
 replaceReservedOperators "(,,,)" = "###"
 replaceReservedOperators "(,,,,)" = "####"
+replaceReservedOperators "(,,,,,)" = "#####"
+replaceReservedOperators "(,,,,,,)" = "######"
 replaceReservedOperators n = n
 
 nlambdaName :: OccName -> OccName
@@ -264,16 +268,23 @@ getModuleStr = maybe "" getModuleNameStr . nameModule_maybe . getName
 getModuleNameStr :: Module -> String
 getModuleNameStr = moduleNameString . moduleName
 
+inCurrentModule :: NamedThing a => ModInfo -> a -> Bool
+inCurrentModule mod x = mg_module (guts mod) == nameModule (getName x)
+
 newUsedNames :: ModInfo -> NameSet -> NameSet
 newUsedNames mod ns = mkNameSet (nms ++ nms')
     where nms = nameSetElems ns
           nms' = fmap (newName mod) $ filter (nameMember mod) nms
 
-inCurrentModule :: NamedThing a => ModInfo -> a -> Bool
-inCurrentModule mod x = mg_module (guts mod) == nameModule (getName x)
-
 isNamePair :: Name -> Name -> Bool
 isNamePair name nameWithPrefix = nameOccName nameWithPrefix == nlambdaName (nameOccName name)
+
+newGlobalRdrEnv :: ModInfo -> GlobalRdrEnv -> GlobalRdrEnv
+newGlobalRdrEnv mod gre = plusGlobalRdrEnv gre gre'
+    where gre' = mkGlobalRdrEnv $ fmap newElem $ filter (nameMember mod . gre_name) $ globalRdrEnvElts gre
+          newElem e = GRE (newName mod $ gre_name e) (newParent $ gre_par e) (gre_prov e)
+          newParent NoParent = NoParent
+          newParent (ParentIs n) = ParentIs (newName mod n)
 
 ----------------------------------------------------------------------------------------
 -- Data constructors

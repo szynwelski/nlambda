@@ -117,6 +117,14 @@ renameAndApply5 :: (Var a, Var b, Var c, Var d, Var e) => (a -> b -> c -> d -> e
 renameAndApply5 f (WithMeta x1 m1) (WithMeta x2 m2) (WithMeta x3 m3) (WithMeta x4 m4) (WithMeta x5 m5) = create (f x1' x2' x3' x4' x5') m
     where (WithMeta (x1',x2',x3',x4',x5') m) = rename $ create (x1,x2,x3,x4,x5) (unions [m1,m2,m3,m4,m5])
 
+renameAndApply6 :: (Var a, Var b, Var c, Var d, Var e, Var f) => (a -> b -> c -> d -> e -> f -> g) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d -> WithMeta e -> WithMeta f -> WithMeta g
+renameAndApply6 f (WithMeta x1 m1) (WithMeta x2 m2) (WithMeta x3 m3) (WithMeta x4 m4) (WithMeta x5 m5) (WithMeta x6 m6) = create (f x1' x2' x3' x4' x5' x6') m
+    where (WithMeta (x1',x2',x3',x4',x5',x6') m) = rename $ create (x1,x2,x3,x4,x5,x6) (unions [m1,m2,m3,m4,m5,m6])
+
+renameAndApply7 :: (Var a, Var b, Var c, Var d, Var e, Var f, Var g) => (a -> b -> c -> d -> e -> f -> g -> h) -> WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d -> WithMeta e -> WithMeta f -> WithMeta g -> WithMeta h
+renameAndApply7 f (WithMeta x1 m1) (WithMeta x2 m2) (WithMeta x3 m3) (WithMeta x4 m4) (WithMeta x5 m5) (WithMeta x6 m6) (WithMeta x7 m7) = create (f x1' x2' x3' x4' x5' x6' x7') m
+    where (WithMeta (x1',x2',x3',x4',x5',x6',x7') m) = rename $ create (x1,x2,x3,x4,x5,x6,x7) (unions [m1,m2,m3,m4,m5,m6,m7])
+
 noMetaRes2ArgOp :: (Var a, Var b) => (a -> b -> c) -> WithMeta a -> WithMeta b -> c
 noMetaRes2ArgOp op x = value . renameAndApply2 op x
 

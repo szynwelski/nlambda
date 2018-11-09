@@ -5,6 +5,9 @@ import Control.Exception.Base
 import GHC.Prim
 import Nominal.Meta
 
+nlambda_irrefutPatError :: Addr# -> WithMeta a
+nlambda_irrefutPatError = irrefutPatError
+
 nlambda_noMethodBindingError :: Addr# -> WithMeta a
 nlambda_noMethodBindingError = noMethodBindingError
 

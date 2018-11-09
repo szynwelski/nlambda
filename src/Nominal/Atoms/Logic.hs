@@ -4,7 +4,7 @@ module Nominal.Atoms.Logic where
 
 import Data.List (permutations)
 import Data.Map (Map)
-import Nominal.Formula.Definition (Formula, and, equals, notEquals)
+import Nominal.Formula.Definition (Formula, and, equals, lessThan, notEquals)
 import qualified Nominal.Formula.Solver as S
 import qualified Nominal.Formula.Quantification as Q
 import Nominal.Variable (Variable)

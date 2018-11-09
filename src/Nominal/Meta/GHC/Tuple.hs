@@ -14,3 +14,9 @@ import Nominal.Variable
 
 (#######) :: (Var a, Var b, Var c, Var d, Var e) => WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d -> WithMeta e -> WithMeta (a, b, c, d, e)
 (#######) = renameAndApply5 (,,,,)
+
+(########) :: (Var a, Var b, Var c, Var d, Var e, Var f) => WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d -> WithMeta e -> WithMeta f -> WithMeta (a, b, c, d, e, f)
+(########) = renameAndApply6 (,,,,,)
+
+(#########) :: (Var a, Var b, Var c, Var d, Var e, Var f, Var g) => WithMeta a -> WithMeta b -> WithMeta c -> WithMeta d -> WithMeta e -> WithMeta f -> WithMeta g -> WithMeta (a, b, c, d, e, f, g)
+(#########) = renameAndApply7 (,,,,,,)
