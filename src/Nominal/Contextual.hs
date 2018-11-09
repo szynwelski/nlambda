@@ -32,8 +32,7 @@ class Contextual a where
 simplify :: Contextual a => a -> a
 simplify = when true
 
-
-class (NLambda_Ord a, Var a) => NLambda_Contextual a where
+class NLambda_Contextual a where
     nlambda_when :: WithMeta Formula -> WithMeta a -> WithMeta a
 
 ----------------------------------------------------------------------------------------------------

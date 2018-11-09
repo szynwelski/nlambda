@@ -92,7 +92,7 @@ pass env onlyShow guts =
 --            putMsg $ text "classes:\n" <+> (vcat $ fmap showClass $ getClasses guts')
 
 --            modInfo "module" mg_module guts'
-            modInfo "binds" (sortBinds . mg_binds) guts'
+--            modInfo "binds" (sortBinds . mg_binds) guts'
 --            modInfo "dependencies" (dep_mods . mg_deps) guts'
 --            modInfo "imported" (moduleEnvKeys . mg_dir_imps) guts'
 --            modInfo "exports" mg_exports guts'
