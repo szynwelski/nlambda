@@ -14,7 +14,7 @@ import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.String.Utils (replace)
 import GhcPlugins hiding (ModuleName, mkApps, mkLocalVar, substTy)
-import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, is_cls_nm, is_flag, is_orphan, mkImportedInstance)
+import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, instEnvElts, is_cls_nm, is_flag, is_orphan, mkImportedInstance)
 import Kind (defaultKind, isOpenTypeKind)
 import MkId (mkDataConWorkId, mkDictSelRhs)
 import Nominal.Meta
@@ -70,7 +70,7 @@ pass env onlyShow guts =
 
             -- mod info - all info in one place
             let metaMods = getMetaModules env
-            let mod = modInfoEmptyMaps env guts metaMods
+            mod <- modInfoEmptyMaps env guts metaMods
 
             -- imported maps
             let (impNameMap, impVarMap, impTcMap) = getImportedMaps mod
@@ -117,10 +117,17 @@ pass env onlyShow guts =
 -- Mod info
 ----------------------------------------------------------------------------------------
 
-data ModInfo = ModInfo {env :: HscEnv, guts :: ModGuts, metaModules :: [MetaModule], nameMap :: NameMap, tcMap :: TyConMap, varMap :: VarMap}
+data ModInfo = ModInfo {env :: HscEnv,
+                        guts :: ModGuts,
+                        eps :: ExternalPackageState,
+                        metaModules :: [MetaModule],
+                        nameMap :: NameMap,
+                        tcMap :: TyConMap,
+                        varMap :: VarMap}
 
-modInfoEmptyMaps :: HscEnv -> ModGuts -> [MetaModule] -> ModInfo
-modInfoEmptyMaps env guts metaMods = ModInfo env guts metaMods Map.empty emptyTcMap emptyVarMap
+modInfoEmptyMaps :: HscEnv -> ModGuts -> [MetaModule] -> CoreM ModInfo
+modInfoEmptyMaps env guts metaMods = do eps <- liftIO $ hscEPS env
+                                        return $ ModInfo env guts eps metaMods Map.empty emptyTcMap emptyVarMap
 
 instance Outputable ModInfo where
     ppr mod = text "\n======== ModInfo =========================================================="
@@ -535,6 +542,8 @@ getClassInstance :: ModInfo -> Class -> Type -> CoreExpr
 getClassInstance mod cl t
      -- for instances in Meta module
     | Just (Var v) <- getMetaVarMaybe mod Nothing name, isClassInst v = Var v
+     -- for instances in external modules
+    | Just v <- find isClassInst $ fmap instanceDFunId $ instEnvElts $ eps_inst_env $ eps mod = Var v
      -- for instances in user modules
     | Just v <- find isClassInst $ fmap instanceDFunId $ mg_insts $ guts mod = Var v
     | Just v <- find isClassInst $ filter (isPrefixOf name . getNameStr) (allVars mod) = Var v

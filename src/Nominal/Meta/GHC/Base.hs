@@ -23,8 +23,6 @@ instance NLambda_Applicative IO
 instance NLambda_Applicative ((->) a)
 instance NLambda_Monoid a => NLambda_Applicative ((,) a)
 
-instance NLambda_Eq a => NLambda_Eq (Maybe a)
-
 -- intentional excessive Var context for MetaPlugin
 class (MetaLevel f, Functor f) => NLambda_Functor (f :: * -> *) where
     nlambda_fmap :: (Var b, Var (f b)) => (WithMeta a -> WithMeta b) -> WithMeta (f a) -> WithMeta (f b)
@@ -70,6 +68,7 @@ instance NLambda_Monoid ()
 instance (NLambda_Monoid a, NLambda_Monoid b) => NLambda_Monoid (a, b)
 instance (NLambda_Monoid a, NLambda_Monoid b, NLambda_Monoid c) => NLambda_Monoid (a, b, c)
 
+instance NLambda_Eq a => NLambda_Eq (Maybe a)
 instance NLambda_Ord a => NLambda_Ord (Maybe a)
 
 (###$) :: (WithMeta a -> WithMeta b) -> WithMeta a -> WithMeta b
