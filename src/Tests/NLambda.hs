@@ -49,10 +49,34 @@ test9 :: [Formula]
 test9 = exclusiveConditions [x, y, z]
 
 test10 :: [Atom]
-test10 = fmap (\f -> ite f a b) formulas
+test10 = ite (eq a b) id (const c) d : fmap (\f -> ite f a b) formulas
 
 test11 :: [Formula]
 test11 = fmap simplify formulas
 
 test12 :: [Formula]
 test12 = fmap (when $ eq a b) formulas
+
+test13 :: [Variants Int]
+test13 = [iteV (eq a b) 1 2, variant 3]
+
+test14 :: ()
+test14 = fromVariant $ variant ()
+
+test15 :: [NominalEither Atom Atom]
+test15 = [right a, left b]
+
+test16 :: [Variants Atom]
+test16 = fmap fromEither test15
+
+test17 :: [Formula]
+test17 = fmap isLeft test15 ++ fmap isRight test15
+
+test18 :: [NominalMaybe Atom]
+test18 = [nothing, just a]
+
+test19 :: [Variants Atom]
+test19 = [fromJust $ just a, maybe a id $ just a]
+
+test20 :: [Formula]
+test20 = fmap isJust test18 ++ fmap isNothing test18
