@@ -36,6 +36,7 @@ instance NLambda_Integral Integer
 instance NLambda_Integral Int
 
 instance NLambda_Integral a => NLambda_Num (Ratio a)
+instance NLambda_Integral a => NLambda_Fractional (Ratio a)
 
 class (Real a, NLambda_Num a, NLambda_Ord a) => NLambda_Real a where
     nlambda_toRational :: WithMeta a -> Rational

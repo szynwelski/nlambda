@@ -4,6 +4,7 @@ module Tests.NLambda where
 import Data.Map (Map)
 import NLambda
 import Nominal.Atoms.Logic (exclusiveConditions)
+import Nominal.Variants (toList)
 import qualified Prelude as P
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 
@@ -24,7 +25,7 @@ test1 = [true, false, fromBool True, fromBool False,
          true <==> true, true <==> false, false <==> true, false <==> false]
 
 test2 :: [Atom]
-test2 = [a,b,c,d,e,f]
+test2 = [a,b,c,d,e,f, constant 1, constant (1/2)]
 
 test3 :: [Formula]
 test3 = [eq a a, eq a b, eq b a, eq b b, lt c c, lt c d, lt d c, le d d, le c c, le c d, le d c, le d d,
@@ -80,3 +81,11 @@ test19 = [fromJust $ just a, maybe a id $ just a]
 
 test20 :: [Formula]
 test20 = fmap isJust test18 ++ fmap isNothing test18
+
+test21 :: [Formula]
+test21 = [eq (1::Int) 1, eq ["a"] ["b"], eq (just a) (just a), eq (a,b,c) (c,b,a), eq true false, eq a b, eq (left a) (right a)]
+
+test22 :: [Int]
+test22 = [f a, f (1::Int), f true, f [a,b,c], f $ just d]
+    where f :: NominalType a => a -> Int
+          f = length . toList . variants

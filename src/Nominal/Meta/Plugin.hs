@@ -336,7 +336,7 @@ mkVarMap :: ModInfo -> VarMap
 mkVarMap mod = let g = guts mod in mkMapWithVars mod (getBindsVars g ++ getClassesVars g ++ getDataConsVars g)
 
 mkMapWithVars :: ModInfo -> [Var] -> VarMap
-mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs) , nub (varsWithoutPairs ++ varsFromExprs))
+mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs), nub (varsWithoutPairs ++ varsFromExprs))
     where (notToChangeVars, toChangeVars) = partition isIgnoreVar vars
           varsPairs = mapMaybe (\v -> (\v' -> (v,v')) <$> find (isVarPair v) notToChangeVars) toChangeVars
           varsForPairs = filter notInPairs toChangeVars
@@ -885,8 +885,8 @@ changeExpr mod e = newExpr (mkExprMap mod) e
                                        return $ Cast e'' c'
           newExpr eMap (Tick t e) = do e' <- newExpr eMap e
                                        return $ Tick t e'
-          newExpr eMap (Type t) = undefined -- type should be served in (App f (Type t)) case
-          newExpr eMap (Coercion c) = undefined
+          newExpr eMap (Type t) = pprPanic "type should be served in (App f (Type t)) case" (ppr t)
+          newExpr eMap (Coercion c) = pprPanic "coercion should be served in (Cast e c) case" (ppr c)
           newLetBind (NonRec b e) eMap = do b' <- changeBindTypeAndUniq mod b
                                             let eMap' = insertVarExpr b b' eMap
                                             e' <- newExpr eMap' e
@@ -1110,7 +1110,7 @@ checkCoreProgram bs = if all checkBinds bs then bs else pprPanic "checkCoreProgr
                                             text "\n=======================================================================|"])
           checkExpr be (Cast e c) = checkExpr be e
           checkExpr be (Tick t e) = checkExpr be e
-          checkExpr be (Type t) = undefined -- type should be handled in (App f (Type t)) case
+          checkExpr be (Type t) = pprPanic "type should be handled in (App f (Type t)) case" (ppr t)
           checkExpr be (Coercion c) = True
           checkAlternative be t (ac, xs, e) | t /= exprType e
                                             = pprPanic "\n================= INCONSISTENT TYPES IN CASE ALTERNATIVE ==============="
@@ -1448,7 +1448,7 @@ mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
 
 isMockInstance :: ModInfo -> CoreExpr -> Bool
-isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && isPredicateForMock mod t && not (isInternalRep $ head $ snd $ getClassPredTys t)
+isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && not (isInternalRep $ head $ snd $ getClassPredTys t)
     where isInternalRep t
             | isAnyType t = True
             | Just tc <- tyConAppTyCon_maybe t, isMonoType t = isAbstractTyCon tc -- for empty datatypes generated for Generics
@@ -1528,7 +1528,7 @@ appFunWithMock mod f e
 type DictInstances = [(Type, DictId)]
 type ReplaceVars = [(CoreBndr, CoreBndr)]
 
-data ReplaceInfo = ReplaceInfo {dictInstances :: DictInstances, replaceBinds :: ReplaceVars, nextReplaceBinds :: ReplaceVars, noMocks :: Bool}
+data ReplaceInfo = ReplaceInfo {dictInstances :: DictInstances, replaceBinds :: ReplaceVars, nextReplaceBinds :: ReplaceVars, mocksSize :: (Int,Int)}
 
 instance Outputable ReplaceInfo where
     ppr (ReplaceInfo dis rb nrb nm) = text "ReplaceInfo{" <+> ppr dis <+> text ","
@@ -1537,7 +1537,7 @@ instance Outputable ReplaceInfo where
                                       <+> ppr nm <+> text "}"
 
 emptyReplaceInfo :: ReplaceInfo
-emptyReplaceInfo = ReplaceInfo [] [] [] True
+emptyReplaceInfo = ReplaceInfo [] [] [] (0,0)
 
 noMoreReplaceBinds :: ReplaceInfo -> Bool
 noMoreReplaceBinds = null . nextReplaceBinds
@@ -1558,16 +1558,33 @@ findReplaceBind :: ModInfo -> Var -> ReplaceInfo -> Maybe Var
 findReplaceBind mod x = fmap snd . find (\(x',_) -> x == x' && varType x == varType x') . replaceBinds
 
 nextReplaceInfo :: ReplaceInfo -> ReplaceInfo
-nextReplaceInfo ri = ReplaceInfo [] (nextReplaceBinds ri) [] True
+nextReplaceInfo ri = ReplaceInfo [] (nextReplaceBinds ri) [] (mocksSize ri)
 
-withMocks :: ReplaceInfo -> ReplaceInfo
-withMocks ri = ri {noMocks = False}
+newMocksSize :: Int -> ReplaceInfo -> ReplaceInfo
+newMocksSize size ri = let (n,m) = mocksSize ri in ri {mocksSize = (size, if n == size then m + 1 else 0)}
+
+-- TODO change to hasMocks :: ... -> Bool
+getMocks :: ModInfo -> CoreProgram -> [Type]
+getMocks mod = nub . concatMap get . fmap snd . flattenBinds
+    where get e | isMockInstance mod e = [exprType e]
+          get (App f e) = get f ++ get e
+          get (Lam x e) = get e
+          get (Let b e) = getMocks mod [b] ++ get e
+          get (Case e x t as) = get e ++ concatMap getAlt as
+          get (Cast e c) = get e
+          get (Tick t e) = get e
+          get _ = []
+          getAlt (con, bs, e) = get e
 
 replaceMocksByInstancesInProgram :: ModInfo -> CoreProgram -> CoreM CoreProgram
 replaceMocksByInstancesInProgram mod bs = go bs emptyReplaceInfo
     where go bs ri = do (bs', ri') <- replace ri bs
                         let bs'' = checkCoreProgram bs'
-                        if noMoreReplaceBinds ri' && noMocks ri' then return bs'' else go bs'' $ nextReplaceInfo ri'
+                        let mocks = getMocks mod bs''
+                        putMsg $ ppWhen (snd (mocksSize ri') > 10) (text "FIX POINT:" <+> ppr mocks) -- FIXME
+                        if noMoreReplaceBinds ri' && (null mocks || snd (mocksSize ri') > 10)
+                        then return bs''
+                        else go bs'' $ nextReplaceInfo $ newMocksSize (length mocks) ri'
           replace ri (b:bs) = do (bs', ri') <- replace ri bs
                                  (b', ri'') <- replaceMocksByInstancesInBind mod (b, [], ri')
                                  if noDictInstances ri''
@@ -1603,7 +1620,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = replace e dis ri
                                 return (mkCoreLams (tvs ++ fmap snd dicts) e'', ri' {dictInstances = dis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
                                  = do x'' <- addMockedInstancesExcept mod False (dictPredicatesFromType mod $ varType x) (Var x')
-                                      return (x'', withMocks ri)
+                                      return (x'', ri)
           replace (App f x) dis ri = do (f', ri') <- replace f dis ri
                                         (x', ri'') <- replace x dis ri'
                                         e <- appWithMock mod f' x'
@@ -1633,7 +1650,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = replace e dis ri
               | Just v <- lookup t dis = return (Var v, ri)
               | isPredicateForMock mod t, Just v <- findDictInstance t ri = return (Var v, ri)
               | Just di <- dictInstance mod t = do di' <- addMockedInstancesExcept mod True [] di
-                                                   return (di', withMocks ri)
+                                                   return (di', ri)
               | Just sc <- findSuperClass t (Var <$> snd <$> dis) = return (sc, ri)
               | isPredicateForMock mod t = do v <- mkPredVar $ getClassPredTys t
                                               return (Var v, addDictInstance (t, v) ri)
