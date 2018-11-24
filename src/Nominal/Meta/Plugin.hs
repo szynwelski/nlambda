@@ -5,7 +5,7 @@ import qualified BooleanFormula as BF
 import Class
 import CoAxiom hiding (toUnbranchedList)
 import Control.Applicative ((<|>))
-import Control.Monad (liftM)
+import Control.Monad (liftM, msum)
 import Data.Char (isLetter, isLower, isUpper)
 import Data.Foldable (foldlM)
 import Data.List ((\\), delete, find, findIndex, intersect, isInfixOf, isPrefixOf, nub, partition)
@@ -348,7 +348,7 @@ mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs), nub (varsWit
                          v' = mkExportedLocalVar
                                 (newIdDetails $ idDetails v)
                                 (newName mod $ varName v)
-                                (maybe t (\c -> addVarContextForHigherOrderClass mod c t) (userClassOpId mod v))
+                                (maybe t (\c -> addVarContextForHigherOrderClass mod c t) (userClassId mod v))
                                 vanillaIdInfo
                      in if isExportedId v then setIdExported v' else setIdNotExported v'
           newIdDetails (RecSelId tc naughty) = RecSelId (newTyCon mod tc) naughty
@@ -488,14 +488,14 @@ createAlgTyConRhs :: ModInfo -> Class -> AlgTyConRhs -> AlgTyConRhs
 createAlgTyConRhs mod cls rhs = create rhs
     where create (AbstractTyCon b) = AbstractTyCon b
           create DataFamilyTyCon = DataFamilyTyCon
-          create (DataTyCon dcs isEnum) = DataTyCon (createDataCon mod <$> dcs) isEnum
-          create (NewTyCon dc ntRhs ntEtadRhs ntCo) = NewTyCon (createDataCon mod dc)
+          create (DataTyCon dcs isEnum) = DataTyCon (createDataCon mod cls <$> dcs) isEnum
+          create (NewTyCon dc ntRhs ntEtadRhs ntCo) = NewTyCon (createDataCon mod cls dc)
                                                                (changeType mod ntRhs)
                                                                (changeType mod <$> ntEtadRhs)
                                                                (changeUnbranchedCoAxiom mod cls ntCo)
 
-createDataCon :: ModInfo -> DataCon -> DataCon
-createDataCon mod dc =
+createDataCon :: ModInfo -> Class -> DataCon -> DataCon
+createDataCon mod cls dc =
     let name = newName mod $ dataConName dc
         workerName = newName mod $ idName $ dataConWorkId dc
         workerId = mkDataConWorkId workerName dc'
@@ -509,7 +509,7 @@ createDataCon mod dc =
                 ex_tvs
                 ((\(tv, t) -> (tv, changeType mod t)) <$> eq_spec)
                 (changePredType mod <$> theta)
-                (changeType mod <$> arg_tys)
+                (addVarContextForHigherOrderClass mod cls <$> changeType mod <$> arg_tys)
                 (changeType mod res_ty)
                 (newTyCon mod $ dataConTyCon dc)
                 (changePredType mod <$> dataConStupidTheta dc)
@@ -587,6 +587,18 @@ userClassOpId mod v
     where classOpPrefix = "$c"
           modClasses = filter (inCurrentModule mod) $ allClasses mod
           userClassMethods = concatMap (\c -> fmap (\m -> (classOpPrefix ++ getNameStr m, c)) (classMethods c)) modClasses
+
+userClassConId :: ModInfo -> Id -> Maybe Class
+userClassConId mod v
+    | isPrefixOf classConPrefix (getNameStr v) = lookup className userClasses
+    | otherwise = Nothing
+    where classConPrefix = "D:"
+          className = drop (length classConPrefix) (getNameStr v)
+          modClasses = filter (inCurrentModule mod) $ allClasses mod
+          userClasses = fmap (\c -> (getNameStr c, c)) modClasses
+
+userClassId :: ModInfo -> Id -> Maybe Class
+userClassId mod v = msum [userClassOpId mod v, userClassConId mod v]
 
 isTyConPair :: TyCon -> TyCon -> Bool
 isTyConPair tc1 tc2 = isNamePair n1 n2 && nameModule n1 == nameModule n2
@@ -689,10 +701,11 @@ changeTypeAndApply mod e t
 addVarContextForHigherOrderClass :: ModInfo -> Class -> Type -> Type
 addVarContextForHigherOrderClass mod cls t
     | all isMonoType $ mkTyVarTys $ classTyVars cls = t
+    | Just (t1,t2) <- splitFunTy_maybe t = mkFunTy (addVarContextForHigherOrderClass mod cls t1) (addVarContextForHigherOrderClass mod cls t2)
     | null tvs = t
     | otherwise = mkForAllTys tvs $ mkFunTys (nub $ preds ++ preds') (addVarContextForHigherOrderClass mod cls t')
     where (tvs, preds, t') = tcSplitSigmaTy t
-          preds' = fmap (varPredType mod) $ filter isMonoType $ mkTyVarTys $ filter (isTyVarWrappedByWithMeta mod t) tvs
+          preds' = fmap (varPredType mod) $ filter isMonoType $ mkTyVarTys tvs
 
 getMainType :: Type -> Type
 getMainType t = if t == t' then t else getMainType t'
@@ -704,16 +717,6 @@ getFunTypeParts t
     | not $ isFunTy t = [t]
     | otherwise = argTys ++ [resTy]
     where (argTys, resTy) = splitFunTys t
-
-isTyVarWrappedByWithMeta :: ModInfo -> Type -> TyVar -> Bool
-isTyVarWrappedByWithMeta mod t tv = all wrappedByWithMeta $ getFunTypeParts t
-    where wrappedByWithMeta t | isWithMetaType mod t = True
-          wrappedByWithMeta (TyVarTy tv') = tv /= tv'
-          wrappedByWithMeta (AppTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
-          wrappedByWithMeta (TyConApp tc ts) = isMetaPreludeTyCon mod tc || all wrappedByWithMeta ts
-          wrappedByWithMeta (FunTy t1 t2) = wrappedByWithMeta t1 && wrappedByWithMeta t2
-          wrappedByWithMeta (ForAllTy _ t') = wrappedByWithMeta t'
-          wrappedByWithMeta (LitTy _) = True
 
 isWithMetaType :: ModInfo -> Type -> Bool
 isWithMetaType mod t
