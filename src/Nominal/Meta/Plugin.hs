@@ -1376,7 +1376,7 @@ convertMetaType mod e t
                                                                         e'' <- convertMetaType mod e' $ substTy subst $ getMainType t
                                                                         return $ mkCoreLams vvs e''
     | not $ null (getAllPreds et \\ getAllPreds t)
-    = do e' <- addMockedInstancesExcept mod True (getAllPreds t) e
+    = do e' <- addMockedInstancesExcept mod (getAllPreds t) e
          if not $ null (getAllPreds (exprType e') \\ getAllPreds t)
          then pprPanic "convertMetaType - invalid number of predicates" (pprE "e" e <+> pprE "e'" e' <+> text "|" <+> ppr t)
          else convertMetaType mod e' t
@@ -1462,10 +1462,10 @@ isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && maybe True (not
 isMockInstance _ _ = False
 
 addMockedInstances :: ModInfo -> CoreExpr -> CoreM CoreExpr
-addMockedInstances mod = addMockedInstancesExcept mod False []
+addMockedInstances mod = addMockedInstancesExcept mod []
 
-addMockedInstancesExcept :: ModInfo -> Bool -> [PredType] -> CoreExpr -> CoreM CoreExpr
-addMockedInstancesExcept mod mockAllPreds exceptTys e
+addMockedInstancesExcept :: ModInfo -> [PredType] -> CoreExpr -> CoreM CoreExpr
+addMockedInstancesExcept mod exceptTys e
     = do (vs, ty, subst) <- splitTypeToExprVarsWithSubst $ exprType e
          let exceptTys' = substTy subst <$> exceptTys
          let (vvs, evs) = (exprVarsToVars vs, exprVarsToExprs vs)
@@ -1477,7 +1477,7 @@ addMockedInstancesExcept mod mockAllPreds exceptTys e
          let (xs, es) = unzip args
          return $ if all isVar es then mkCoreLams vvs' e' else mkCoreLams (vvs' ++ xs) $ mkApps e' es
     where -- isTypeArg checked before call exprType on e
-          forMock exceptTys t = (if mockAllPreds then isPredicate else isPredicateForMock) mod t && notElem t exceptTys
+          forMock exceptTys t = isPredicateForMock mod t && notElem t exceptTys
           mockPredOrDict exceptTys e = if not (isTypeArg e) && forMock exceptTys (exprType e) then mockInstance (exprType e) else e
           mkMockedArgs n (t:ts) = do x <- mkLocalVar ("x" ++ show (n - length ts)) (typeWithoutDictPreds t)
                                      (vs, t') <- splitTypeToExprVars t
@@ -1629,7 +1629,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = replace e dis ri
                                 let dicts = filter (\(t,di) -> notElem t $ getAllPreds $ exprType e'') dis1
                                 return (mkCoreLams (tvs ++ fmap snd dicts) e'', ri' {dictInstances = dis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
-                                 = do x'' <- addMockedInstancesExcept mod False (dictPredicatesFromType mod $ varType x) (Var x')
+                                 = do x'' <- addMockedInstancesExcept mod (dictPredicatesFromType mod $ varType x) (Var x')
                                       return (x'', ri)
           replace (App f x) dis ri = do (f', ri') <- replace f dis ri
                                         (x', ri'') <- replace x dis ri'
@@ -1659,8 +1659,8 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = replace e dis ri
           replaceMock t dis ri
               | Just v <- lookup t dis = return (Var v, ri)
               | isPredicate mod t, Just v <- findDictInstance t ri = return (Var v, ri)
-              | Just di <- dictInstance mod t = do di' <- addMockedInstancesExcept mod True [] di
-                                                         return (di', ri)
+              | Just di <- dictInstance mod t = do di' <- addMockedInstancesExcept mod [] di
+                                                   return (di', ri)
               | Just sc <- findSuperClass t (Var <$> snd <$> dis) = return (sc, ri)
               | isPredicate mod t = do v <- mkPredVar $ getClassPredTys t
                                        return (Var v, addDictInstance (t, v) ri)
