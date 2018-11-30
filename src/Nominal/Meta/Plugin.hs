@@ -231,7 +231,7 @@ namePrefix :: NameSpace -> String -> String -> String
 namePrefix space prefix name
     | all (not . isLetter) (replace "$dm" "" name) = opPrefix
     | isTcClsNameSpace space = classPrefix
-    | isPrefixForClass prefix, isUpper $ head $ name = classPrefix
+    | isPrefixForClass prefix, isUpper $ headPanic "namePrefix" (text name) name = classPrefix
     | otherwise = varPrefix
 
 replaceReservedOperators :: String -> String
@@ -538,7 +538,7 @@ createClass mod tc cls =
           updateMinDef (BF.And fs) = BF.And $ updateMinDef <$> fs
           updateMinDef (BF.Or fs) = BF.Or $ updateMinDef <$> fs
 
-getClassInstance :: ModInfo -> Class -> Type -> CoreExpr
+getClassInstance :: ModInfo -> Class -> Maybe Type -> CoreExpr
 getClassInstance mod cl t
      -- for instances in Meta module
     | Just (Var v) <- getMetaVarMaybe mod Nothing name, isClassInst v = Var v
@@ -547,14 +547,15 @@ getClassInstance mod cl t
      -- for instances in user modules
     | Just v <- find isClassInst $ fmap instanceDFunId $ mg_insts $ guts mod = Var v
     | Just v <- find isClassInst $ filter (isPrefixOf name . getNameStr) (allVars mod) = Var v
-    | otherwise = pgmError ("NLambda plugin requires " ++ className ++ " instance for type: " ++ tcName ++ " (from " ++ getModuleStr tc ++ ")")
-    where Just tc = tyConAppTyCon_maybe t
-          tcName = getNameStr tc
+    | otherwise = pgmError ("NLambda plugin requires " ++ className ++ " instance"
+                  ++ maybe "" (\tc -> " for type: " ++ tcName ++ " (from " ++ getModuleStr tc ++ ")") tcMaybe)
+    where tcMaybe = maybe Nothing tyConAppTyCon_maybe t
+          tcName = maybe "" getNameStr tcMaybe
           className = getNameStr cl
           name = "$f" ++ className ++ tcName
           isClassInst v = case splitTyConApp_maybe (getMainType $ varType v) of
-                            Just (vTc, vTs) -> let vt = headPanic "isClassInst" (pprV "v" v) vTs
-                                               in isDFunId v && Just cl == tyConClass_maybe vTc && Just tc == tyConAppTyCon_maybe vt
+                            Just (vTc, vTs) -> let vt = maybe Nothing tyConAppTyCon_maybe (listToMaybe vTs)
+                                               in isDFunId v && Just cl == tyConClass_maybe vTc && tcMaybe == vt
                             _               -> False
 
 findSuperClass :: Type -> [CoreExpr] -> Maybe CoreExpr
@@ -1153,7 +1154,7 @@ isTV (TV _) = True
 isTV (DI _) = False
 
 substTy :: TvSubst -> Type -> Type
-substTy subst t = head $ substTys subst [t]
+substTy subst t = headPanic "substTy" (ppr subst <+> ppr t) (substTys subst [t])
 
 substFromLists :: [TyVar] -> [TyVar] -> TvSubst
 substFromLists tvs = mkTopTvSubst . zip tvs . mkTyVarTys
@@ -1403,7 +1404,9 @@ getMetaPreludeNameMap mod = Map.fromList $ catMaybes metaPairs
     where fromPrelude e | Imported ss <- gre_prov e = not $ null $ intersect metaModuleNames (moduleNameString <$> is_mod <$> is_decl <$> ss)
           fromPrelude e = False
           preludeNames = fmap gre_name $ filter fromPrelude $ concat $ occEnvElts $ mg_rdr_env $ guts mod
-          preludeNamesWithTypes = fmap (\n -> if isLower $ head $ getNameStr n then (TyThingId, n) else (TyThingTyCon, n)) preludeNames
+          preludeNamesWithTypes = fmap (\n -> if isLower $ headPanic "getMetaPreludeNameMap" (ppr n) (getNameStr n)
+                                              then (TyThingId, n)
+                                              else (TyThingTyCon, n)) preludeNames
           metaPairs = fmap (\(ty, n) -> (\t -> (n, getName t)) <$> findPairThing (metaTyThings mod) ty n) preludeNamesWithTypes
 
 isMetaPreludeTyCon :: ModInfo -> TyCon -> Bool
@@ -1442,7 +1445,7 @@ isPredicate :: ModInfo -> Type -> Bool
 isPredicate mod = isPredicateWith mod $ const True
 
 isPredicateForMock :: ModInfo -> Type -> Bool
-isPredicateForMock mod = isPredicateWith mod (\tc -> isVarTyCon mod tc || metaLevelC mod == tc || hasMetaEquivalent mod tc)
+isPredicateForMock mod = isPredicateWith mod (\tc -> isVarTyCon mod tc || metaLevelC mod == tc || hasMetaEquivalent mod tc || isMetaPreludeTyCon mod tc)
 
 dictPredicatesFromType :: ModInfo -> Type -> [PredType]
 dictPredicatesFromType mod = filter (isPredicateForMock mod) . getAllPreds
@@ -1451,7 +1454,7 @@ mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
 
 isMockInstance :: ModInfo -> CoreExpr -> Bool
-isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && not (isInternalRep $ head $ snd $ getClassPredTys t)
+isMockInstance mod (App (Var x) (Type t)) = uNDEFINED_ID == x && maybe True (not . isInternalRep) (listToMaybe $ snd $ getClassPredTys t)
     where isInternalRep t
             | isAnyType t = True
             | Just tc <- tyConAppTyCon_maybe t, isMonoType t = isAbstractTyCon tc -- for empty datatypes generated for Generics
@@ -1498,11 +1501,15 @@ appWithMock mod f e = do f' <- if isWithMetaType mod (exprType f) && not (isType
 
 appFunWithMock :: ModInfo -> CoreExpr -> CoreExpr -> CoreM CoreExpr
 appFunWithMock mod f e
-    | isTypeArg e && isForAllTy fTy = return $ mkApp f e
+    | isTypeArg e, isForAllTy fTy = return $ mkApp f e
     | isTypeArg e = pprPanic "appFunWithMock - isTypeArg" (pprE "f" f <+> pprE "e" e)
+    | not (isFunTy fTy), dictExpr = return f
+    | not (isFunTy fTy) = pprPanic "appFunWithMock - not isFunTy" (pprE "f" f <+> pprE "e" e)
     | isForAllTy fTy, dictExpr = return f
     | isForAllTy fTy = pprPanic "appFunWithMock - isForAllTy" (pprE "f" f <+> pprE "e" e)
     | argTy == eTy = return $ mkApp f e
+    | argTy == getMainType eTy = do e' <- addMockedInstances mod e
+                                    appWithMock mod f e'
     | isJust $ findSuperClass argTy [e], willMatch = convertApp
     | isJust $ findSuperClass argTy [e],
       tc1 <- fromJust $ tyConAppTyCon_maybe argTy,
@@ -1651,22 +1658,25 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = replace e dis ri
                                               return ((con, xs, e'), ri')
           replaceMock t dis ri
               | Just v <- lookup t dis = return (Var v, ri)
-              | isPredicateForMock mod t, Just v <- findDictInstance t ri = return (Var v, ri)
+              | isPredicate mod t, Just v <- findDictInstance t ri = return (Var v, ri)
               | Just di <- dictInstance mod t = do di' <- addMockedInstancesExcept mod True [] di
-                                                   return (di', ri)
+                                                         return (di', ri)
               | Just sc <- findSuperClass t (Var <$> snd <$> dis) = return (sc, ri)
-              | isPredicateForMock mod t = do v <- mkPredVar $ getClassPredTys t
-                                              return (Var v, addDictInstance (t, v) ri)
-              | otherwise = pprPanic "replaceMock - can't create class instance for " (ppr t)
+              | isPredicate mod t = do v <- mkPredVar $ getClassPredTys t
+                                       return (Var v, addDictInstance (t, v) ri)
+              | otherwise = pprPanic "replaceMock - can't create class instance for:" (ppr t <+> ppr dis <+> ppr ri)
 
 dictInstance :: ModInfo -> Type -> Maybe CoreExpr
 dictInstance mod t
-    | Just (tc, ts) <- splitTyConApp_maybe t' = Just $ mkApps inst (Type <$> ts)
+    | isNothing tMaybe = Just inst
+    | Just (tc, ts') <- splitTyConApp_maybe t' = Just $ mkApps inst (Type <$> ts')
     | isJust (isNumLitTy t') || isJust (isStrLitTy t') = Just inst
     | isFunTy t' = Just inst
     | otherwise = Nothing
-    where Just (cl, [t']) = getClassPredTys_maybe t
-          inst = getClassInstance mod cl t'
+    where Just (cl, ts) = getClassPredTys_maybe t
+          tMaybe = listToMaybe ts
+          inst = getClassInstance mod cl tMaybe
+          t' = fromMaybe (pprPanic "dictInstance" (ppr t)) tMaybe
 
 ----------------------------------------------------------------------------------------
 -- Show
