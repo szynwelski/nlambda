@@ -4,6 +4,7 @@ import Data.Map
 import Nominal.Meta hiding (union)
 import Nominal.Meta.GHC.Base
 import Nominal.Meta.GHC.Classes
+import Nominal.Meta.GHC.Tuple
 import Nominal.Variable
 import Prelude hiding (filter, lookup, map, null)
 
@@ -58,6 +59,10 @@ nlambda_intersection = renameAndApply2 intersection
 
 nlambda_insert :: (Var a, NLambda_Ord k) => WithMeta k -> WithMeta a -> WithMeta (Map k a) -> WithMeta (Map k a)
 nlambda_insert = renameAndApply3 insert
+
+nlambda_insertWith :: (Var a, NLambda_Ord k) => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta k -> WithMeta a -> WithMeta (Map k a) -> WithMeta (Map k a)
+nlambda_insertWith f k v = lift . insertWith f k' (create v' m) . dropMeta
+    where WithMeta (k', v') m = k #### v
 
 nlambda_keys :: WithMeta (Map k a) -> WithMeta [k]
 nlambda_keys = idOp keys

@@ -2,7 +2,7 @@
 module Tests.NLambda where
 
 import Data.Map (Map)
-import NLambda
+import NLambda hiding (toList)
 import Nominal.Atoms.Logic (exclusiveConditions)
 import Nominal.Variants (toList)
 import qualified Prelude as P
@@ -83,9 +83,15 @@ test20 :: [Formula]
 test20 = fmap isJust test18 ++ fmap isNothing test18
 
 test21 :: [Formula]
-test21 = [eq (1::Int) 1, eq ["a"] ["b"], eq (just a) (just a), eq (a,b,c) (c,b,a), eq true false, eq a b, eq (left a) (right a)]
+test21 = [eq (1::Int) 1, eq ["a"] ["b"], eq (just a) (just a), neq (a,b,c) (c,b,a), eq true false, eq a b, neq (left a) (right a)]
 
 test22 :: [Int]
-test22 = [f a, f (1::Int), f true, f [a,b,c], f $ just d]
+test22 = [f a, f (1::Int), f true, f [a,b,c], f $ just d, f $ ite (eq a b) (left a) (right b)]
     where f :: NominalType a => a -> Int
           f = length . toList . variants
+
+test23 :: [Set Atom]
+test23 = [empty, atoms, insert a empty, insert b empty, insert b $ insert a empty, insert a atoms]
+
+test24 :: [Formula]
+test24 = fmap isEmpty test23 ++ fmap isNotEmpty test23

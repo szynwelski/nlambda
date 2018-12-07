@@ -96,8 +96,6 @@ isCompact,
 -- ** Meta equivalents
 nlambda_empty,
 nlambda_isNotEmpty,
-nlambda_insert,
-nlambda_delete,
 nlambda_map,
 nlambda_filter,
 nlambda_sum,
@@ -122,9 +120,9 @@ import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
-import Nominal.Meta (NoMetaFunction(..), WithMeta)
+import Nominal.Meta (NoMetaFunction(..), WithMeta(..), idOp, noMeta)
 import qualified Nominal.Text.Symbols as Symbols
-import Nominal.Type (NominalType(..), NLambda_NominalType, neq)
+import Nominal.Type (NominalType(..), NLambda_NominalType(..), neq)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
 import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
@@ -374,21 +372,16 @@ atoms :: Set Atom
 atoms = let iterVar = iterationVariable 0 1
         in Set $ Map.singleton (variant iterVar) (Set.singleton iterVar, true)
 
+
 ----------------------------------------------------------------------------------------------------
 -- Meta equivalents for basic operations on the set
 ----------------------------------------------------------------------------------------------------
 
 nlambda_empty :: WithMeta (Set a)
-nlambda_empty = undefined
+nlambda_empty = noMeta empty
 
 nlambda_isNotEmpty :: WithMeta (Set a) -> WithMeta Formula
-nlambda_isNotEmpty = undefined
-
-nlambda_insert :: NLambda_NominalType a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
-nlambda_insert = undefined
-
-nlambda_delete :: NLambda_NominalType a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
-nlambda_delete = undefined
+nlambda_isNotEmpty = idOp isNotEmpty
 
 nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 nlambda_map = undefined
@@ -400,7 +393,7 @@ nlambda_sum :: NLambda_NominalType a => WithMeta (Set (Set a)) -> WithMeta (Set 
 nlambda_sum = undefined
 
 nlambda_atoms :: WithMeta (Set Atom)
-nlambda_atoms = undefined
+nlambda_atoms = noMeta atoms
 
 nlambda_element :: (NLambda_Contextual a, NLambda_NominalType a) => WithMeta (Set a) -> WithMeta (NominalMaybe a)
 nlambda_element = undefined
