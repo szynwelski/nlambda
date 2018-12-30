@@ -2,7 +2,7 @@
 
 import Tests.NLambda
 
-#define DO_TEST(number) let (test, nlambda_test) = (show (test/**/number), show (nlambda_test/**/number/**/)) in do {print "============================= Test number ==================================="; print nlambda_test; if test == take (length test) nlambda_test then return () else (error "TEST FAILED")}
+#define DO_TEST(number) let (test, nlambda_test) = (test/**/number, nlambda_test/**/number/**/) in do {print "============================= Test number ==================================="; print nlambda_test; if show test == take (length $ show test) (show nlambda_test) then return () else (error "TEST FAILED")}
 
 main = do DO_TEST(1)
           DO_TEST(2)
@@ -28,3 +28,4 @@ main = do DO_TEST(1)
           DO_TEST(22)
           DO_TEST(23)
           DO_TEST(24)
+          DO_TEST(25)

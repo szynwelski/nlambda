@@ -25,6 +25,12 @@ metaFromMap map = Meta map Set.empty Empty
 emptyMeta :: Meta
 emptyMeta = metaFromMap Map.empty
 
+addMapToMeta :: IdMap -> Meta -> Meta
+addMapToMeta map (Meta m s t) = Meta (Map.union map m) s t
+
+removeMapFromMeta :: IdMap -> Meta -> Meta
+removeMapFromMeta map (Meta m s t) = Meta (Map.difference m map) s t
+
 ------------------------------------------------------------------------------------------
 -- Class WithMeta and instances
 ------------------------------------------------------------------------------------------
@@ -56,7 +62,7 @@ data NoMetaFunction = NoMetaFunction deriving Data
 
 union :: Bool -> Meta -> Meta -> Meta
 union join (Meta map1 set1 tree1) (Meta map2 set2 tree2)
-    = Meta (Map.union (Map.difference map1 toRenameNow1) (Map.difference map2 toRenameNow2))
+    = Meta (Map.unionWith conflict (Map.difference map1 toRenameNow1) (Map.difference map2 toRenameNow2))
            (Set.unions [set1, set2, Set.fromList $ Map.assocs toRenameNow1, Set.fromList $ Map.assocs toRenameNow2])
            (createNode (not join) children)
     where partitionByRenamed map set = Map.partitionWithKey (\k v -> Set.member (k,v) set) map
@@ -65,11 +71,13 @@ union join (Meta map1 set1 tree1) (Meta map2 set2 tree2)
           (inRenamed2, notInRenamed2) = partitionByRenamed map2 set1
           (conflicts1, conflicts2) = (findConflicts notInRenamed1 notInRenamed2, findConflicts notInRenamed2 notInRenamed1)
           (toRenameNow1, toRenameNow2) = if Map.null inRenamed1
-                                         then (Map.empty, Map.union inRenamed2 conflicts2)
-                                         else (Map.union inRenamed1 conflicts1, inRenamed2)
+                                         then (Map.empty, Map.unionWith conflict inRenamed2 conflicts2)
+                                         else (Map.unionWith conflict inRenamed1 conflicts1, inRenamed2)
           tree1' = addMapToTree toRenameNow1 tree1
           tree2' = addMapToTree toRenameNow2 tree2
           children = if join then getChildrenOrNode tree1' ++ getChildrenOrNode tree2' else [tree1', tree2']
+          conflict x y | x == y = x
+          conflict x y = error $ "conflict in union function for " ++ show (Meta map1 set1 tree1) ++ show (Meta map2 set2 tree2)
 
 unions :: [Meta] -> Meta
 unions [] = emptyMeta

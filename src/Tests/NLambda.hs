@@ -95,3 +95,6 @@ test23 = [empty, atoms, insert a empty, insert b empty, insert b $ insert a empt
 
 test24 :: [Formula]
 test24 = fmap isEmpty test23 ++ fmap isNotEmpty test23
+
+test25 :: [Set Atom]
+test25 = [map id empty, map id atoms, map (const a) atoms]

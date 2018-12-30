@@ -46,10 +46,10 @@ pairsWithFilter,
 square,
 atomsPairs,
 differentAtomsPairs,
-triples,
-triplesWith,
-triplesWithFilter,
-atomsTriples,
+--triples,
+--triplesWith,
+--triplesWithFilter,
+--atomsTriples,
 -- ** Replicate
 mapList,
 mapFilterList,
@@ -120,15 +120,16 @@ import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
-import Nominal.Meta (NoMetaFunction(..), WithMeta(..), idOp, noMeta)
+import Nominal.Meta (NoMetaFunction(..), WithMeta(..), addMapToMeta, create, idOp, meta, noMeta, renamed, removeMapFromMeta, toRename)
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (NominalType(..), NLambda_NominalType(..), neq)
 import qualified Nominal.Util.InsertionSet as ISet
 import Nominal.Util.UnionFind (representatives)
 import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
-import Nominal.Variable (FoldVarFun, Identifier, MapVarFun, Scope(..), Var(..), Variable, changeIterationLevel, clearIdentifier, collectWith, constantVar, freeVariables,
-                         getAllVariables, getIterationLevel, hasIdentifierEquals, hasIdentifierNotEquals, isConstant,
-                         iterationVariablesList, iterationVariable, mapVariablesIf, replaceVariables, renameWithFlatTree, setIdentifier)
+import Nominal.Variable (FoldVarFun, Identifier, MapVarFun, Scope(..), Var(..), Variable,
+                         changeIterationLevel, clearIdentifier, collectWith, constantVar, freeVariables, getAllVariables, getIdentifier,
+                         getIterationLevel, hasIdentifierEquals, hasIdentifierNotEquals, isConstant, iterationVariablesList, iterationVariable,
+                         iterationVariableWithId, mapVariablesIf, replaceVariables, renameFreeVariables, renameWithFlatTree, setIdentifier)
 import Nominal.Variants (Variants, fromVariant, readVariant, variant)
 import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
@@ -253,12 +254,12 @@ readIterVars = do optional $ string Symbols.valueCondSep
                   string Symbols.atoms
                   return $ Set.fromList vs
 
-readElements :: (NominalType a, Read a) => ReadPrec [(a, SetElementCondition)]
+readElements :: Read a => ReadPrec (a, SetElementCondition)
 readElements = do (v,c) <- readVariant
                   vs    <- readIterVars <++ return Set.empty
-                  return $ fmap (\(v',c') -> (v', (vs, c/\c'))) $ V.toList $ variants v
+                  return (v, (vs, c))
 
-readSet :: (NominalType a, Read a) => ReadPrec [[(a, SetElementCondition)]]
+readSet :: Read a => ReadPrec [(a, SetElementCondition)]
 readSet = do expectP (Punc "{")
              setRest False +++ setNext
   where setRest started = do Punc c <- lexP
@@ -270,9 +271,9 @@ readSet = do expectP (Punc "{")
                      xs <- setRest True
                      return (x:xs)
 
-instance (NominalType a, Read a) => Read (Set a) where
+instance (Ord a, Read a) => Read (Set a) where
     readPrec = do es <- readSet
-                  return $ Set $ Map.fromListWith sumCondition $ concat es
+                  return $ Set $ Map.fromListWith sumCondition es
 
 instance NominalType a => Conditional (Set a) where
     cond c s1 s2 = filter (const c) s1 `union` filter (const $ not c) s2
@@ -369,9 +370,7 @@ sum = Set . checkVariables
 
 -- | Returns the set of all atoms.
 atoms :: Set Atom
-atoms = let iterVar = iterationVariable 0 1
-        in Set $ Map.singleton (variant iterVar) (Set.singleton iterVar, true)
-
+atoms = let iterVar = iterationVariable 0 1 in Set $ Map.singleton (variant iterVar) (Set.singleton iterVar, true)
 
 ----------------------------------------------------------------------------------------------------
 -- Meta equivalents for basic operations on the set
@@ -383,8 +382,28 @@ nlambda_empty = noMeta empty
 nlambda_isNotEmpty :: WithMeta (Set a) -> WithMeta Formula
 nlambda_isNotEmpty = idOp isNotEmpty
 
+{-# ANN applyWithMeta NoMetaFunction #-}
+applyWithMeta :: NLambda_NominalType b => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition) -> WithMeta [(b, SetElementCondition)]
+applyWithMeta f (WithMeta (v, (vs,c)) m)
+    | length newIds == length oldIds = create res m''
+    | otherwise = error $ "oldIds and newIds have different lengths " ++ show (oldIds, newIds)
+    where id = getVariableId vs
+          oldIds = Maybe.catMaybes $ fmap getIdentifier $ Set.elems vs
+          newIds = take (Set.size vs) $ enumFrom id
+          idMap = Map.fromList $ zip oldIds newIds
+          WithMeta v' m' = f $ create v $ addMapToMeta idMap m
+          map = Map.fromAscList $ Set.toAscList $ Set.filter (\(x,y) -> elem y newIds) $ renamed m'
+          (vs',c') = renameFreeVariables map (vs,c)
+          WithMeta variants m'' = V.nlambda_toList $ nlambda_variants $ create v' $ removeMapFromMeta idMap m'
+          varsInRes = Set.map Just $ Map.keysSet (toRename m') `Set.union` Set.map snd (renamed m')
+          vs'' = Set.filter (\v -> elem (getIdentifier v) varsInRes) vs'
+          c'' = getCondition (Set.difference vs' vs'', c')
+          res = fmap (\(resV, resC) -> (resV, (vs'', c'' /\ resC))) variants
+
 nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
-nlambda_map = undefined
+nlambda_map f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
+    where mapAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m) in (meta es, value es ++ rs)
+          (m', es') = Map.foldrWithKey mapAndMerge (m, []) es
 
 nlambda_filter :: NLambda_NominalType a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
 nlambda_filter = undefined
@@ -393,7 +412,7 @@ nlambda_sum :: NLambda_NominalType a => WithMeta (Set (Set a)) -> WithMeta (Set 
 nlambda_sum = undefined
 
 nlambda_atoms :: WithMeta (Set Atom)
-nlambda_atoms = noMeta atoms
+nlambda_atoms = let iterVar = iterationVariableWithId 0 1 0 in noMeta $ Set $ Map.singleton (variant iterVar) (Set.singleton iterVar, true)
 
 nlambda_element :: (NLambda_Contextual a, NLambda_NominalType a) => WithMeta (Set a) -> WithMeta (NominalMaybe a)
 nlambda_element = undefined

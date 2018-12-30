@@ -6,10 +6,12 @@ Variable,
 constantVar,
 variable,
 iterationVariable,
+iterationVariableWithId,
 iterationVariablesList,
 isConstant,
 isVariableChar,
 constantValue,
+getIdentifier,
 setIdentifier,
 hasIdentifierEquals,
 hasIdentifierNotEquals,
@@ -29,6 +31,7 @@ getAllVariables,
 freeVariables,
 mapVariablesIf,
 replaceVariables,
+renameFreeVariables,
 addMapToTree,
 createNode,
 getChildrenOrNode,
@@ -141,6 +144,9 @@ variable _ = error "variable name is empty"
 iterationVariable :: Int -> Int -> Variable
 iterationVariable level index = IterationVariable level index Nothing
 
+iterationVariableWithId :: Int -> Int -> Identifier -> Variable
+iterationVariableWithId level index id = IterationVariable level index (Just id)
+
 iterationVariablesList :: Int -> Int -> [Variable]
 iterationVariablesList level size = fmap (iterationVariable level) [1..size]
 
@@ -238,6 +244,9 @@ renameVarFun map v = maybe v (\id -> setIdentifier (Map.findWithDefault id id ma
 
 renameWithFlatTree :: Var a => RenameTree -> a -> a
 renameWithFlatTree rt = mapVariables (All, renameVarFun $ flatMap rt)
+
+renameFreeVariables :: Var a => IdMap -> a -> a
+renameFreeVariables map = mapVariables (Free, renameVarFun map)
 
 ----------------------------------------------------------------------------------------------------
 -- Operations on variables
