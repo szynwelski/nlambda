@@ -383,9 +383,9 @@ nlambda_isNotEmpty :: WithMeta (Set a) -> WithMeta Formula
 nlambda_isNotEmpty = idOp isNotEmpty
 
 {-# ANN applyWithMeta NoMetaFunction #-}
-applyWithMeta :: NLambda_NominalType b => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition) -> WithMeta [(b, SetElementCondition)]
+applyWithMeta :: (Var a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition) -> WithMeta (a, [(b, SetElementCondition)])
 applyWithMeta f (WithMeta (v, (vs,c)) m)
-    | length newIds == length oldIds = create res m''
+    | length newIds == length oldIds = create (v'', res) m''
     | otherwise = error $ "oldIds and newIds have different lengths " ++ show (oldIds, newIds)
     where id = getVariableId vs
           oldIds = Maybe.catMaybes $ fmap getIdentifier $ Set.elems vs
@@ -393,7 +393,7 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
           idMap = Map.fromList $ zip oldIds newIds
           WithMeta v' m' = f $ create v $ addMapToMeta idMap m
           renamedMap = Map.fromAscList $ Set.toAscList $ Set.filter (\(x,y) -> elem y newIds) $ renamed m'
-          (vs',c') = renameFreeVariables renamedMap (vs,c)
+          (v'', vs', c') = renameFreeVariables renamedMap (v, vs, c)
           WithMeta variants m'' = V.nlambda_toList $ nlambda_variants $ create v' $ removeMapFromMeta idMap m'
           varsInRes = Set.map Just $ Map.keysSet (toRename m') `Set.union` Set.map snd (renamed m')
           vs'' = Set.filter (\v -> elem (getIdentifier v) varsInRes) vs'
@@ -402,11 +402,15 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
 
 nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 nlambda_map f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where mapAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m) in (meta es, value es ++ rs)
+    where mapAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m) in (meta es, snd (value es) ++ rs)
           (m', es') = Map.foldrWithKey mapAndMerge (m, []) es
 
 nlambda_filter :: NLambda_NominalType a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
-nlambda_filter = undefined
+nlambda_filter f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
+    where filterAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m)
+                                              es' = fmap (\(c', (vs, c)) -> (fst $ value es, (vs, c /\ c'))) $ snd $ value es -- TODO checkEquality
+                                          in (meta es, es' ++ rs)
+          (m', es') = Map.foldrWithKey filterAndMerge (m, []) es
 
 nlambda_sum :: NLambda_NominalType a => WithMeta (Set (Set a)) -> WithMeta (Set a)
 nlambda_sum = undefined

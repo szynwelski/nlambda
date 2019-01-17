@@ -101,3 +101,6 @@ test25 = [map id empty, map id atoms, map (const a) atoms]
 
 test26 :: Set (Set (Atom, Atom))
 test26 = map (\x -> map (\y -> (x,y)) atoms) atoms
+
+test27 :: [Set Atom]
+test27 = [filter (eq a) atoms, filter (neq a) atoms]
