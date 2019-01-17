@@ -98,3 +98,6 @@ test24 = fmap isEmpty test23 ++ fmap isNotEmpty test23
 
 test25 :: [Set Atom]
 test25 = [map id empty, map id atoms, map (const a) atoms]
+
+test26 :: Set (Set (Atom, Atom))
+test26 = map (\x -> map (\y -> (x,y)) atoms) atoms

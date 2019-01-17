@@ -29,7 +29,9 @@ addMapToMeta :: IdMap -> Meta -> Meta
 addMapToMeta map (Meta m s t) = Meta (Map.union map m) s t
 
 removeMapFromMeta :: IdMap -> Meta -> Meta
-removeMapFromMeta map (Meta m s t) = Meta (Map.difference m map) s t
+removeMapFromMeta map (Meta m s t) = Meta (Map.differenceWith (\x y -> if x == y then Nothing else Just x) m map)
+                                          (Set.difference s $ Set.fromAscList $ Map.toAscList map)
+                                          t
 
 ------------------------------------------------------------------------------------------
 -- Class WithMeta and instances

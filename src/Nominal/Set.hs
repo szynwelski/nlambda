@@ -130,7 +130,7 @@ import Nominal.Variable (FoldVarFun, Identifier, MapVarFun, Scope(..), Var(..), 
                          changeIterationLevel, clearIdentifier, collectWith, constantVar, freeVariables, getAllVariables, getIdentifier,
                          getIterationLevel, hasIdentifierEquals, hasIdentifierNotEquals, isConstant, iterationVariablesList, iterationVariable,
                          iterationVariableWithId, mapVariablesIf, replaceVariables, renameFreeVariables, renameWithFlatTree, setIdentifier)
-import Nominal.Variants (Variants, fromVariant, readVariant, variant)
+import Nominal.Variants (Variants, fromVariant, readVariant, variant, nlambda_variant)
 import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
 import qualified Prelude as P
@@ -392,8 +392,8 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
           newIds = take (Set.size vs) $ enumFrom id
           idMap = Map.fromList $ zip oldIds newIds
           WithMeta v' m' = f $ create v $ addMapToMeta idMap m
-          map = Map.fromAscList $ Set.toAscList $ Set.filter (\(x,y) -> elem y newIds) $ renamed m'
-          (vs',c') = renameFreeVariables map (vs,c)
+          renamedMap = Map.fromAscList $ Set.toAscList $ Set.filter (\(x,y) -> elem y newIds) $ renamed m'
+          (vs',c') = renameFreeVariables renamedMap (vs,c)
           WithMeta variants m'' = V.nlambda_toList $ nlambda_variants $ create v' $ removeMapFromMeta idMap m'
           varsInRes = Set.map Just $ Map.keysSet (toRename m') `Set.union` Set.map snd (renamed m')
           vs'' = Set.filter (\v -> elem (getIdentifier v) varsInRes) vs'

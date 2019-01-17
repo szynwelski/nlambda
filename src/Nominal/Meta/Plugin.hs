@@ -983,19 +983,24 @@ changeCoercion :: ModInfo -> Coercion -> Coercion
 changeCoercion mod c = change True c
     where change topLevel (Refl r t) = Refl r $ changeTy topLevel t
           change topLevel (TyConAppCo r tc cs) = TyConAppCo r (newTyCon mod tc) (change False <$> cs)
-          change topLevel (AppCo c1 c2) = AppCo (change False c1) (change False c2)
           change topLevel (ForAllCo tv c) = ForAllCo tv (change topLevel c)
           change topLevel (CoVarCo cv) = let (t1,t2) = coVarKind cv in CoVarCo $ mkCoVar (coVarName cv) (mkCoercionType (coVarRole cv) t1 t2)
-          change topLevel (AxiomInstCo a i cs) = AxiomInstCo (changeBranchedCoAxiom mod a) i (change False <$> cs)
           change topLevel (UnivCo n r t1 t2) = UnivCo n r (changeTy topLevel t1) (changeTy topLevel t2)
-          change topLevel (SymCo c) = SymCo $ change topLevel c
           change topLevel (TransCo c1 c2) = TransCo (change topLevel c1) (change topLevel c2)
           change topLevel (AxiomRuleCo a ts cs) = AxiomRuleCo a (changeTy topLevel <$> ts) (change topLevel <$> cs)
           change topLevel (NthCo i c) = NthCo i $ change topLevel c
           change topLevel (LRCo lr c) = LRCo lr $ change topLevel c
           change topLevel (InstCo c t) = InstCo (change topLevel c) (changeTy topLevel t)
           change topLevel (SubCo c) = SubCo $ change topLevel c
+          change topLevel c = let (c', addWithMeta) = changeWithMeta topLevel c
+                              in if addWithMeta then withMetaCoercion c' else c'
+          changeWithMeta topLevel (AppCo c1 c2) = let (c1', addWithMeta) = changeWithMeta topLevel c1
+                                                  in (AppCo c1' (change False c2), addWithMeta)
+          changeWithMeta topLevel (AxiomInstCo a i cs) = (AxiomInstCo (changeBranchedCoAxiom mod a) i (change False <$> cs), isDataTypeCoAxiom a)
+          changeWithMeta topLevel (SymCo c) = let (c', addWithMeta) = changeWithMeta topLevel c in (SymCo c', addWithMeta)
+          changeWithMeta topLevel c = (change topLevel c, False)
           changeTy topLevel = if topLevel then changeType mod else changeTypeUnderWithMeta mod
+          withMetaCoercion c = mkTyConAppCo Nominal (withMetaC mod) [c]
 
 changeBranchedCoAxiom :: ModInfo -> CoAxiom Branched -> CoAxiom Branched
 changeBranchedCoAxiom mod = changeCoAxiom mod toBranchList Nothing
@@ -1004,8 +1009,7 @@ changeUnbranchedCoAxiom :: ModInfo -> Class -> CoAxiom Unbranched -> CoAxiom Unb
 changeUnbranchedCoAxiom mod cls = changeCoAxiom mod toUnbranchedList $ Just cls
 
 changeCoAxiom :: ModInfo -> ([CoAxBranch] -> BranchList CoAxBranch a) -> Maybe Class -> CoAxiom a -> CoAxiom a
-changeCoAxiom mod toList cls (CoAxiom u n r tc bs imp)
-    = CoAxiom u n r (newTyCon mod tc) (changeBranchList mod toList cls bs) imp
+changeCoAxiom mod toList cls (CoAxiom u n r tc bs imp) = CoAxiom u n r (newTyCon mod tc) (changeBranchList mod toList cls bs) imp
 
 changeBranchList :: ModInfo -> ([CoAxBranch] -> BranchList CoAxBranch a) -> Maybe Class -> BranchList CoAxBranch a -> BranchList CoAxBranch a
 changeBranchList mod toList cls = toList . fmap (changeCoAxBranch mod cls) . fromBranchList
@@ -1026,6 +1030,9 @@ changeCoAxBranch mod cls (CoAxBranch loc tvs roles lhs rhs incpoms)
 toUnbranchedList :: [CoAxBranch] -> BranchList CoAxBranch Unbranched
 toUnbranchedList [b] = FirstBranch b
 toUnbranchedList _ = pprPanic "toUnbranchedList" empty
+
+isDataTypeCoAxiom :: CoAxiom a -> Bool
+isDataTypeCoAxiom a = let tc = coAxiomTyCon a in isDataTyCon tc || isNewTyCon tc && not (isClassTyCon tc)
 
 updateCoercionType :: Type -> Coercion -> Coercion
 updateCoercionType = update True
@@ -1836,11 +1843,11 @@ showLetBind (Rec bs) = hcat $ fmap (\(b,e) -> showVar b <+> text "=" <+> showExp
 showCoercion :: Coercion -> SDoc
 showCoercion c = text "`" <> show c <> text "`"
     where show (Refl role typ) = text "Refl" <+> ppr role <+> showType typ
-          show (TyConAppCo role tyCon cs) = text "TyConAppCo"
-          show (AppCo c1 c2) = text "AppCo"
+          show (TyConAppCo role tyCon cs) = text "TyConAppCo" <+> ppr role <+> ppr tyCon <+> vcat (showCoercion <$> cs)
+          show (AppCo c1 c2) = text "AppCo" <+> showCoercion c1 <+> showCoercion c2
           show (ForAllCo tyVar c) = text "ForAllCo"
           show (CoVarCo coVar) = text "CoVarCo"
-          show (AxiomInstCo coAxiom branchIndex cs) = text "AxiomInstCo" <+> ppr coAxiom <+> ppr branchIndex <+> vcat (fmap showCoercion cs)
+          show (AxiomInstCo coAxiom branchIndex cs) = text "AxiomInstCo" <+> showCoAxiom coAxiom <+> ppr branchIndex <+> vcat (fmap showCoercion cs)
           show (UnivCo fastString role type1 type2) = text "UnivCo"
           show (SymCo c) = text "SymCo" <+> showCoercion c
           show (TransCo c1 c2) = text "TransCo"
@@ -1849,6 +1856,28 @@ showCoercion c = text "`" <> show c <> text "`"
           show (LRCo leftOrRight c) = text "LRCo"
           show (InstCo c typ) = text "InstCo"
           show (SubCo c) = text "SubCo"
+
+showCoAxiom :: CoAxiom br -> SDoc
+showCoAxiom (CoAxiom u n r tc bs imp) =
+    text "'Axiom "
+    <+> ppr u
+    <+> ppr n
+    <+> ppr r
+    <+> ppr tc
+    <+> vcat (showCoAxiomBranch <$> fromBranchList bs)
+    <+> ppr imp
+    <+> text "'"
+
+showCoAxiomBranch :: CoAxBranch -> SDoc
+showCoAxiomBranch (CoAxBranch loc tvs roles lhs rhs incpoms) =
+    text "'AxiomBranch "
+    <+> ppr loc
+    <+> ppr tvs
+    <+> ppr roles
+    <+> ppr lhs
+    <+> ppr rhs
+    <+> vcat (showCoAxiomBranch <$> incpoms)
+    <+> text "'"
 
 showAlt (con, bs, e) = text "|" <> ppr con <+> hcat (fmap showVar bs) <+> showExpr e <> text "|"
 
