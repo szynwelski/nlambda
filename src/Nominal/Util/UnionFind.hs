@@ -1,13 +1,17 @@
+{-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
+{-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
 module Nominal.Util.UnionFind where
 
 import Data.Map (Map)
 import qualified Data.Map as Map
+import GHC.Generics (Generic)
+import Nominal.Variable (Var)
 
 ----------------------------------------------------------------------------------------------------
 -- Disjoint-set data structure
 ----------------------------------------------------------------------------------------------------
 
-data UnionFind a = UnionFind {parents :: Map a a, ranks :: Map a Int} deriving (Show, Read)
+data UnionFind a = UnionFind {parents :: Map a a, ranks :: Map a Int} deriving (Show, Read, Generic, Var)
 
 empty :: UnionFind a
 empty = UnionFind Map.empty Map.empty

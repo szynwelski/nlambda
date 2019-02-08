@@ -1,6 +1,7 @@
 module Nominal.Meta.Plugin where
 
 import Avail
+import Bag (isEmptyBag)
 import qualified BooleanFormula as BF
 import Class
 import CoAxiom hiding (toUnbranchedList)
@@ -8,16 +9,18 @@ import Control.Applicative ((<|>))
 import Control.Monad (liftM, msum)
 import Data.Char (isLetter, isLower, isUpper)
 import Data.Foldable (foldlM)
-import Data.List ((\\), delete, find, findIndex, intersect, isInfixOf, isPrefixOf, nub, partition)
+import Data.List ((\\), delete, elemIndex, find, findIndex, intersect, isInfixOf, isPrefixOf, nub, partition)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.String.Utils (replace)
+import ErrUtils (pprMessageBag)
 import GhcPlugins hiding (ModuleName, mkApps, mkLocalVar, substTy)
-import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, instEnvElts, is_cls_nm, is_flag, is_orphan, mkImportedInstance)
+import InstEnv (ClsInst, instanceDFunId, instanceHead, instanceRoughTcs, instEnvElts, is_cls, is_flag, is_orphan, mkImportedInstance)
 import Kind (defaultKind, isOpenTypeKind)
 import MkId (mkDataConWorkId, mkDictSelRhs)
 import Nominal.Meta
+import Nominal.Meta.CoreLint (lintCoreBindings)
 import Nominal.Meta.Modules
 import Pair (pFst, pSnd)
 import PrelNames (anyTyConKey)
@@ -34,11 +37,10 @@ install :: [CommandLineOption] -> [CoreToDo] -> CoreM [CoreToDo]
 install _ todo = do
   reinitializeGlobals
   env <- getHscEnv
-  let metaPlug = CoreDoPluginPass "MetaPlugin" $ pass env False
-  let showPlug = CoreDoPluginPass "ShowPlugin" $ pass env True
---  return $ showPlug:todo
-  return $ metaPlug:todo
---  return $ metaPlug:todo ++ [showPlug]
+  return $ (metaPlugin env) : todo
+
+metaPlugin :: HscEnv -> CoreToDo
+metaPlugin = CoreDoPluginPass "MetaPlugin" . pass
 
 modInfo :: Outputable a => String -> (ModGuts -> a) -> ModGuts -> CoreM ()
 modInfo label fun guts = putMsg $ text label <> text ": " <> (ppr $ fun guts)
@@ -62,11 +64,9 @@ for mod modName doc
     | modName == getModuleNameStr (mg_module $ guts mod) = putMsg doc
     | otherwise = return ()
 
-pass :: HscEnv -> Bool -> ModGuts -> CoreM ModGuts
-pass env onlyShow guts =
-         do putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:"
-                     <+> (ppr $ mg_module guts)
-                     <+> if onlyShow then text "[only show]" else text ""
+pass :: HscEnv -> ModGuts -> CoreM ModGuts
+pass env guts =
+         do putMsg $ text ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> start:" <+> (ppr $ mg_module guts)
 
             -- mod info - all info in one place
             let metaMods = getMetaModules env
@@ -85,7 +85,7 @@ pass env onlyShow guts =
                 varMap = mkVarMap mod' {tcMap = unionTcMaps tcMap impTcMap}
             let mod'' = mod' {tcMap = unionTcMaps tcMap impTcMap, varMap = unionVarMaps varMap impVarMap}
 
-            guts' <- if onlyShow then return guts else newGuts mod'' guts
+            guts' <- newGuts mod'' guts
 
             -- show info
 --            putMsg $ text "binds:\n" <+> (foldr (<+>) (text "") $ map showBind $ mg_binds guts' ++ getImplicitBinds guts')
@@ -151,13 +151,14 @@ newGuts mod guts = do binds <- newBinds mod (getDataCons guts) (mg_binds guts)
                       let binds' = checkCoreProgram $ simplifyBinds binds
                       binds'' <- replaceMocksByInstancesInProgram mod binds'
                       let binds''' = checkCoreProgram $ simplifyBinds binds''
+                      let allBinds = checkCoreLint mod (mg_binds guts ++ binds''')
                       let exps = newExports mod (mg_exports guts)
                       let usedNames = newUsedNames mod (mg_used_names guts)
                       let clsInsts = newClassInstances mod (mg_insts guts)
                       let tcs = filter (inCurrentModule mod) $ Map.elems (tcsWithPairs mod)
                       let gre = newGlobalRdrEnv mod (mg_rdr_env guts)
                       return $ guts {mg_tcs = mg_tcs guts ++ tcs,
-                                     mg_binds = mg_binds guts ++ binds''',
+                                     mg_binds = allBinds,
                                      mg_exports = mg_exports guts ++ exps,
                                      mg_insts = mg_insts guts ++ clsInsts,
                                      mg_rdr_env = gre,
@@ -222,7 +223,7 @@ ghcClassPrefixes :: [String]
 ghcClassPrefixes = ["$f", "$p1", "$p2", "$p3", "$p4", "$p5", "$p6", "T:", "D:", "NTCo:", "TFCo:"]
 
 ghcPrefixes :: [String]
-ghcPrefixes = ["$c", "$dm", "$s", "$w", "$W"] ++ ghcClassPrefixes
+ghcPrefixes = ["$c", "$dm", "$d", "$s", "$w", "$W"] ++ ghcClassPrefixes
 
 isPrefixForClass :: String -> Bool
 isPrefixForClass p = elem p ghcClassPrefixes
@@ -350,12 +351,16 @@ mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs), nub (varsWit
                                 (newName mod $ varName v)
                                 (maybe t (\c -> addVarContextForHigherOrderClass mod c t) (userClassId mod v))
                                 vanillaIdInfo
-                     in if isExportedId v then setIdExported v' else setIdNotExported v'
+                     in if isGlobalId v && (not (isDataConWorkId v) || isJust (userClassConId mod v))
+                        then globaliseId v'
+                        else if isExportedId v then setIdExported v' else setIdNotExported v'
           newIdDetails (RecSelId tc naughty) = RecSelId (newTyCon mod tc) naughty
           newIdDetails (ClassOpId cls) = ClassOpId $ newClass mod cls
           newIdDetails (PrimOpId op) = PrimOpId op
           newIdDetails (FCallId call) = FCallId call
           newIdDetails (DFunId n b) = DFunId n b
+          newIdDetails (DataConWorkId d) = DataConWorkId (newDataCon mod d)
+          newIdDetails (DataConWrapId d) = DataConWrapId (newDataCon mod d)
           newIdDetails _ = VanillaId
           isIgnoreVar v = isVarDict mod v || isVarInstanceMethod v || hasMetaTyCon v || annotatedWithNoMetaFunction mod v || isNLambdaName (getNameStr v)
 
@@ -458,6 +463,12 @@ newTyCon mod tc
 
 newClass :: ModInfo -> Class -> Class
 newClass mod = fromJust . tyConClass_maybe . newTyCon mod . classTyCon
+
+newDataCon :: ModInfo -> DataCon -> DataCon
+newDataCon mod dc = tyConDataCons (newTyCon mod tc) !! n
+    where tc = dataConTyCon dc
+          n = fromMaybe (pprPanic "newDataCon" (text "data con" <+> ppr dc <+> text "is not in the list for type" <+> ppr tc))
+                        (elemIndex dc $ tyConDataCons tc)
 
 mkTyConMap :: ModInfo -> [TyCon] -> TyConMap
 mkTyConMap mod tcs = let ctcs = filter isClassTyCon tcs
@@ -570,10 +581,10 @@ findSuperClass t [] = Nothing
 newClassInstances :: ModInfo -> [ClsInst] -> [ClsInst]
 newClassInstances mod is = catMaybes $ fmap new is
     where new i = let dFunId = instanceDFunId i
-                      nm = is_cls_nm i
-                  in if varMapMember mod dFunId && nameMember mod nm
+                      tc = classTyCon $ is_cls i
+                  in if varMapMember mod dFunId
                      then Just $ mkImportedInstance
-                                   (newName mod nm)
+                                   (tyConName $ newTyCon mod tc)
                                    (instanceRoughTcs i)
                                    (newVar mod dFunId)
                                    (is_flag i)
@@ -1000,7 +1011,7 @@ changeCoercion mod c = change True c
           changeWithMeta topLevel (SymCo c) = let (c', addWithMeta) = changeWithMeta topLevel c in (SymCo c', addWithMeta)
           changeWithMeta topLevel c = (change topLevel c, False)
           changeTy topLevel = if topLevel then changeType mod else changeTypeUnderWithMeta mod
-          withMetaCoercion c = mkTyConAppCo Nominal (withMetaC mod) [c]
+          withMetaCoercion c = mkTyConAppCo Representational (withMetaC mod) [c]
 
 changeBranchedCoAxiom :: ModInfo -> CoAxiom Branched -> CoAxiom Branched
 changeBranchedCoAxiom mod = changeCoAxiom mod toBranchList Nothing
@@ -1145,6 +1156,10 @@ checkCoreProgram bs = if all checkBinds bs then bs else pprPanic "checkCoreProgr
                                                          text "bind expr:" <+> ppr (snd be) <+> text "::" <+> ppr (exprType $ snd be),
                                                          text "\n=======================================================================|"])
           checkAltConTypes be conDoc pt vt xs = True
+
+checkCoreLint :: ModInfo -> CoreProgram -> CoreProgram
+checkCoreLint mod bs = if isEmptyBag err then bs else pprPanic "checkCoreLint" (pprMessageBag err)
+    where (warn, err) = lintCoreBindings (metaPlugin $ env mod) [] bs -- TODO show warn
 
 ----------------------------------------------------------------------------------------
 -- Apply expression

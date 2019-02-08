@@ -5,8 +5,11 @@ import Nominal.Meta hiding (union, unions)
 import Nominal.Meta.Data.Foldable as Foldable
 import Nominal.Meta.GHC.Base as Base
 import Nominal.Meta.GHC.Classes
+import Nominal.Meta.GHC.Show
 import Nominal.Variable
 import Prelude hiding (filter, null)
+
+instance NLambda_Show a => NLambda_Show (Set a)
 
 instance (Ord a, NLambda_Eq a) => NLambda_Eq (Set a)
 

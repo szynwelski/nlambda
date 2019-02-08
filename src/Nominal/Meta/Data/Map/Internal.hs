@@ -4,6 +4,8 @@ import Data.Map
 import Nominal.Meta hiding (union)
 import Nominal.Meta.GHC.Base
 import Nominal.Meta.GHC.Classes
+import Nominal.Meta.GHC.Read
+import Nominal.Meta.GHC.Show
 import Nominal.Meta.GHC.Tuple
 import Nominal.Variable
 import Prelude hiding (filter, lookup, map, null)
@@ -13,6 +15,10 @@ instance (Ord k, NLambda_Eq k, NLambda_Eq a) => NLambda_Eq (Map k a)
 instance NLambda_Functor (Map k)
 
 instance (NLambda_Ord k, NLambda_Ord a) => NLambda_Ord (Map k a)
+
+instance (NLambda_Ord k, NLambda_Read k, NLambda_Read a) => NLambda_Read (Map k a)
+
+instance (NLambda_Show k, NLambda_Show a) => NLambda_Show (Map k a)
 
 nlambda_assocs :: WithMeta (Map k a) -> WithMeta [(k, a)]
 nlambda_assocs = idOp assocs
