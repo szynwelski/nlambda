@@ -135,3 +135,12 @@ test35 = [isSubsetOf empty (empty::Set Atom), isSubsetOf empty atoms, isSubsetOf
 test36 :: [Formula]
 test36 = [isProperSubsetOf empty (empty::Set Atom), isProperSubsetOf empty atoms, isProperSubsetOf atoms empty, isProperSubsetOf atoms atoms,
           isNotProperSubsetOf empty (empty::Set Atom), isNotProperSubsetOf empty atoms, isNotProperSubsetOf atoms empty, isNotProperSubsetOf atoms atoms]
+
+test37 :: [Set Atom]
+test37 = [intersection atoms empty, intersection atoms atoms, intersection (filter (neq a) atoms) (filter (neq b) atoms),
+          difference atoms empty, difference atoms atoms, difference (filter (neq a) atoms) (filter (neq b) atoms),
+          atoms \\ empty, atoms \\ atoms, (filter (neq a) atoms) \\ (filter (neq b) atoms)]
+
+test38 :: [Formula]
+test38 = [intersect atoms empty, intersect atoms atoms, intersect (filter (neq a) atoms) (filter (neq b) atoms),
+          disjoint atoms empty, disjoint atoms atoms, disjoint (filter (neq a) atoms) (filter (neq b) atoms)]
