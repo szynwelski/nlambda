@@ -351,7 +351,7 @@ mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs), nub (varsWit
                                 (newName mod $ varName v)
                                 (maybe t (\c -> addVarContextForHigherOrderClass mod c t) (userClassId mod v))
                                 vanillaIdInfo
-                     in if isGlobalId v && (not (isDataConWorkId v) || isJust (userClassConId mod v))
+                     in if isGlobalId v && (isNothing (isDataConId_maybe v) || isJust (userClassConId mod v))
                         then globaliseId v'
                         else if isExportedId v then setIdExported v' else setIdNotExported v'
           newIdDetails (RecSelId tc naughty) = RecSelId (newTyCon mod tc) naughty
@@ -359,8 +359,6 @@ mkMapWithVars mod vars = (Map.fromList (varsPairs ++ varsNewPairs), nub (varsWit
           newIdDetails (PrimOpId op) = PrimOpId op
           newIdDetails (FCallId call) = FCallId call
           newIdDetails (DFunId n b) = DFunId n b
-          newIdDetails (DataConWorkId d) = DataConWorkId (newDataCon mod d)
-          newIdDetails (DataConWrapId d) = DataConWrapId (newDataCon mod d)
           newIdDetails _ = VanillaId
           isIgnoreVar v = isVarDict mod v || isVarInstanceMethod v || hasMetaTyCon v || annotatedWithNoMetaFunction mod v || isNLambdaName (getNameStr v)
 
@@ -463,12 +461,6 @@ newTyCon mod tc
 
 newClass :: ModInfo -> Class -> Class
 newClass mod = fromJust . tyConClass_maybe . newTyCon mod . classTyCon
-
-newDataCon :: ModInfo -> DataCon -> DataCon
-newDataCon mod dc = tyConDataCons (newTyCon mod tc) !! n
-    where tc = dataConTyCon dc
-          n = fromMaybe (pprPanic "newDataCon" (text "data con" <+> ppr dc <+> text "is not in the list for type" <+> ppr tc))
-                        (elemIndex dc $ tyConDataCons tc)
 
 mkTyConMap :: ModInfo -> [TyCon] -> TyConMap
 mkTyConMap mod tcs = let ctcs = filter isClassTyCon tcs
