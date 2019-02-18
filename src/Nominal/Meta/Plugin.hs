@@ -523,12 +523,13 @@ createDataCon mod cls dc =
 createClass :: ModInfo -> TyCon -> Class -> Class
 createClass mod tc cls =
     let (tyVars, funDeps, scTheta, scSels, ats, opStuff) = classExtraBigSig cls
+        scTheta' = fmap (uncurry mkClassPred . (\(c,ts) -> (newClass mod c, ts)) . getClassPredTys) scTheta
         scSels' = fmap (newVar mod) scSels
         opStuff' = fmap (\(v, dm) -> (newVar mod v, updateDefMeth dm)) opStuff
     in mkClass
          tyVars
          funDeps
-         scTheta -- FIXME new predType?
+         scTheta'
          scSels'
          ats -- FIXME new associated types?
          opStuff'
