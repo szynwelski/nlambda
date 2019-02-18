@@ -4,6 +4,7 @@ module Tests.NLambda where
 import Data.Map (Map)
 import NLambda hiding (toList)
 import Nominal.Atoms.Logic (exclusiveConditions)
+import Nominal.Variable (iterationVariableWithId)
 import Nominal.Variants (toList)
 import qualified Prelude as P
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
@@ -91,7 +92,7 @@ test22 = [f a, f (1::Int), f true, f [a,b,c], f $ just d, f $ ite (eq a b) (left
           f = length . toList . variants
 
 test23 :: [Set Atom]
-test23 = [empty, atoms, insert a empty, insert b empty, insert b $ insert a empty, insert a atoms]
+test23 = [empty, atoms, insert a empty, insert b empty, insert b $ insert a empty, insert a atoms, delete a empty, delete a atoms]
 
 test24 :: [Formula]
 test24 = fmap isEmpty test23 ++ fmap isNotEmpty test23
@@ -103,4 +104,26 @@ test26 :: Set (Set (Atom, Atom))
 test26 = map (\x -> map (\y -> (x,y)) atoms) atoms
 
 test27 :: [Set Atom]
-test27 = [filter (eq a) atoms, filter (neq a) atoms]
+test27 = [filter (eq a) atoms, filter (neq a) atoms, filter (lt a) atoms]
+
+test28 :: [Set Atom]
+test28 = [singleton a, insertAll [a,b,c] atoms, fromList [a,b,c], deleteAll [a,b,c] atoms]
+
+test29 :: [Formula]
+test29 = [exists (eq a) atoms, exists (neq a) atoms, exists (eq a) empty, exists (neq a) empty,
+          forAll (eq a) atoms, forAll (neq a) atoms, forAll (eq a) empty, forAll (neq a) empty, forAll (eq a) (singleton a)]
+
+test30 :: [Set Atom]
+test30 = [mapFilter just atoms, mapFilter (const nothing) atoms, mapFilter (\x -> maybeIf (eq a x) x) atoms]
+
+test31 :: [(Set Atom, Set Atom)]
+test31 = [partition (eq a) atoms, partition (lt a) atoms]
+
+test32 :: [Set Atom]
+test32 = [union empty atoms, union (singleton a) (singleton b), union atoms atoms, union (singleton a) atoms]
+
+test33 :: [Formula]
+test33 = [contains atoms a, notContains atoms a, contains (delete a atoms) a, notContains (delete a atoms) a]
+
+test34 :: [Formula]
+test34 = [member a atoms, notMember a atoms, member a $ delete a atoms, notMember a $ delete a atoms]
