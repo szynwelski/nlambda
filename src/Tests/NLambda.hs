@@ -123,7 +123,15 @@ test32 :: [Set Atom]
 test32 = [union empty atoms, union (singleton a) (singleton b), union atoms atoms, union (singleton a) atoms]
 
 test33 :: [Formula]
-test33 = [contains atoms a, notContains atoms a, contains (delete a atoms) a, notContains (delete a atoms) a]
+test33 = [contains empty a, contains atoms a, notContains atoms a, contains (delete a atoms) a, notContains (delete a atoms) a]
 
 test34 :: [Formula]
-test34 = [member a atoms, notMember a atoms, member a $ delete a atoms, notMember a $ delete a atoms]
+test34 = [member a empty, member a atoms, notMember a atoms, member a $ delete a atoms, notMember a $ delete a atoms]
+
+test35 :: [Formula]
+test35 = [isSubsetOf empty (empty::Set Atom), isSubsetOf empty atoms, isSubsetOf atoms empty, isSubsetOf atoms atoms,
+          isNotSubsetOf empty (empty::Set Atom), isNotSubsetOf empty atoms, isNotSubsetOf atoms empty, isNotSubsetOf atoms atoms]
+
+test36 :: [Formula]
+test36 = [isProperSubsetOf empty (empty::Set Atom), isProperSubsetOf empty atoms, isProperSubsetOf atoms empty, isProperSubsetOf atoms atoms,
+          isNotProperSubsetOf empty (empty::Set Atom), isNotProperSubsetOf empty atoms, isNotProperSubsetOf atoms empty, isNotProperSubsetOf atoms atoms]
