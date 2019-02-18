@@ -111,6 +111,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Word (Word)
+import Data.Tuple.Extra (thd3)
 import GHC.Read (expectP)
 import Nominal.Atoms
 import Nominal.Atoms.Logic (exclusiveConditions)
@@ -171,19 +172,15 @@ checkVariablesInElement (v, (vs, c)) =
 checkVariables :: NominalType a => Map a SetElementCondition -> Map a SetElementCondition
 checkVariables = Map.fromListWith sumCondition . Map.foldrWithKey (\v c es -> checkVariablesInElement (v, c) : es) []
 
-{-# ANN filterSetElems NoMetaFunction #-}
-filterSetElems :: NominalType a => (a -> SetElementCondition) -> Map a SetElementCondition -> Map a SetElementCondition
-filterSetElems f = filterNotFalse . Map.mapWithKey (\v (vs, c) -> (Set.union vs *** (/\) c) $ f v)
-
 filterNotFalse :: Map a SetElementCondition -> Map a SetElementCondition
 filterNotFalse = Map.filter ((/= false) . snd)
 
 {-# ANN checkEquality NoMetaFunction #-}
-checkEquality :: NominalType a => (a, SetElementCondition) -> (a, SetElementCondition)
-checkEquality (v, (vs, c)) =
+checkEquality :: Var a => Maybe ((a, SetElementCondition) -> (a, SetElementCondition)) -> (a, SetElementCondition) -> (a, SetElementCondition)
+checkEquality postprocess (v, (vs, c)) =
     if Set.null eqs || Map.null eqsMap
     then (v, (vs, c))
-    else checkVariablesInElement (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
+    else (Maybe.fromMaybe id postprocess) (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
     where eqs = getEquationsFromFormula c
           (vs', eqsMap) = foldr checkVars (vs, Map.empty) $ representatives $ Set.elems eqs
           checkVars (x1, x2) (vs, m)
@@ -358,15 +355,18 @@ filter f = Set . filterNotFalse
                . Map.fromListWith sumCondition
                . Map.foldrWithKey (filterAndMerge f) []
                . setElements
-    where filterAndMerge f v cond rs = fmap (\(v', (c, cond')) -> checkEquality (v', (fst cond', c /\ snd cond')))
+    where filterAndMerge f v cond rs = fmap (\(v', (c, cond')) -> checkEquality (Just checkVariablesInElement) (v', (fst cond', c /\ snd cond')))
                                             (applyWithIdentifiers f (v, cond))
                                        ++ rs
 
 -- | For a set of sets returns the union of these sets.
 sum :: NominalType a => Set (Set a) -> Set a
 sum = Set . checkVariables
-          . Map.unionsWith sumCondition . fmap filterSetInSet . Map.assocs . setElements
-    where filterSetInSet (elemSet, elemSetCond) = filterSetElems (const elemSetCond) (setElements elemSet)
+          . Map.unionsWith sumCondition
+          . fmap filterSetInSet
+          . Map.assocs
+          . setElements
+    where filterSetInSet (elemSet, (vs, c)) = filterNotFalse $ Map.map (\(vs', c') -> (Set.union vs vs', c /\ c')) (setElements elemSet)
 
 -- | Returns the set of all atoms.
 atoms :: Set Atom
@@ -383,9 +383,10 @@ nlambda_isNotEmpty :: WithMeta (Set a) -> WithMeta Formula
 nlambda_isNotEmpty = idOp isNotEmpty
 
 {-# ANN applyWithMeta NoMetaFunction #-}
-applyWithMeta :: (Var a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition) -> WithMeta (a, [(b, SetElementCondition)])
+applyWithMeta :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition)
+                 -> WithMeta (a, Set.Set Variable, [(b, SetElementCondition)])
 applyWithMeta f (WithMeta (v, (vs,c)) m)
-    | length newIds == length oldIds = create (v'', res) m''
+    | length newIds == length oldIds = create (v'', vs', res) m''
     | otherwise = error $ "oldIds and newIds have different lengths " ++ show (oldIds, newIds)
     where id = getVariableId vs
           oldIds = Maybe.catMaybes $ fmap getIdentifier $ Set.elems vs
@@ -402,18 +403,20 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
 
 nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 nlambda_map f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where mapAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m) in (meta es, snd (value es) ++ rs)
+    where mapAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m) in (meta es, thd3 (value es) ++ rs)
           (m', es') = Map.foldrWithKey mapAndMerge (m, []) es
 
 nlambda_filter :: NLambda_NominalType a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
 nlambda_filter f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
     where filterAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m)
-                                              es' = fmap (\(c', (vs, c)) -> (fst $ value es, (vs, c /\ c'))) $ snd $ value es -- TODO checkEquality
-                                          in (meta es, es' ++ rs)
+                                              (v', vs', es') = value es
+                                              es'' = fmap (\(c', (_, c)) -> checkEquality Nothing (v', (vs', c /\ c'))) es'
+                                          in (meta es, es'' ++ rs)
           (m', es') = Map.foldrWithKey filterAndMerge (m, []) es
 
 nlambda_sum :: NLambda_NominalType a => WithMeta (Set (Set a)) -> WithMeta (Set a)
-nlambda_sum = undefined
+nlambda_sum (WithMeta (Set es) m) = create (Set $ Map.unionsWith sumCondition $ fmap filterSetInSet $ Map.assocs es) m
+    where filterSetInSet (elemSet, (vs, c)) = filterNotFalse $ Map.map (\(vs', c') -> (Set.union vs vs', c /\ c')) (setElements elemSet)
 
 nlambda_atoms :: WithMeta (Set Atom)
 nlambda_atoms = let iterVar = iterationVariableWithId 0 1 0 in noMeta $ Set $ Map.singleton (variant iterVar) (Set.singleton iterVar, true)
