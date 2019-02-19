@@ -144,3 +144,6 @@ test37 = [intersection atoms empty, intersection atoms atoms, intersection (filt
 test38 :: [Formula]
 test38 = [intersect atoms empty, intersect atoms atoms, intersect (filter (neq a) atoms) (filter (neq b) atoms),
           disjoint atoms empty, disjoint atoms atoms, disjoint (filter (neq a) atoms) (filter (neq b) atoms)]
+
+test39 :: [Set (Atom, Atom)]
+test39 = [pairs atoms atoms, pairsWith (,) atoms empty, atomsPairs, square atoms]
