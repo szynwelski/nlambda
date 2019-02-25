@@ -742,6 +742,16 @@ getAllPreds t
     | otherwise = preds ++ getAllPreds t'
     where (preds, t') = tcSplitPhiTy $ dropForAlls t
 
+getCommonPreds :: Type -> Type -> ThetaType
+getCommonPreds t1 t2
+    | length tvs1 > 0, length tvs1 == length tvs2 = intersect preds1 preds2' ++ getCommonPreds t1'' t2''
+    | otherwise = []
+    where (tvs1, t1') = splitForAllTys t1
+          (tvs2, t2') = splitForAllTys t2
+          (preds1, t1'') = tcSplitPhiTy t1'
+          (preds2, t2'') = tcSplitPhiTy t2'
+          preds2' = substTys (substFromLists tvs2 tvs1) preds2
+
 isInternalType :: Type -> Bool
 isInternalType t = let t' = getMainType t in isVoidTy t' || isPredTy t' || isPrimitiveType t' || isUnLiftedType t'
 
@@ -1462,9 +1472,6 @@ isPredicate mod = isPredicateWith mod $ const True
 isPredicateForMock :: ModInfo -> Type -> Bool
 isPredicateForMock mod = isPredicateWith mod (\tc -> isVarTyCon mod tc || metaLevelC mod == tc || hasMetaEquivalent mod tc || isMetaPreludeTyCon mod tc)
 
-dictPredicatesFromType :: ModInfo -> Type -> [PredType]
-dictPredicatesFromType mod = filter (isPredicateForMock mod) . getAllPreds
-
 mockInstance :: Type -> CoreExpr
 mockInstance t = (mkApp (Var uNDEFINED_ID) . Type) t
 
@@ -1583,7 +1590,7 @@ findReplaceBind :: ModInfo -> Var -> ReplaceInfo -> Maybe Var
 findReplaceBind mod x = fmap snd . find (\(x',_) -> x == x' && varType x == varType x') . replaceBinds
 
 nextReplaceInfo :: ReplaceInfo -> ReplaceInfo
-nextReplaceInfo ri = ReplaceInfo [] (nextReplaceBinds ri) [] (mocksSize ri)
+nextReplaceInfo ri = ReplaceInfo [] (replaceBinds ri ++ nextReplaceBinds ri) [] (mocksSize ri)
 
 newMocksSize :: Int -> ReplaceInfo -> ReplaceInfo
 newMocksSize size ri = let (n,m) = mocksSize ri in ri {mocksSize = (size, if n == size then m + 1 else 0)}
@@ -1607,7 +1614,7 @@ replaceMocksByInstancesInProgram mod bs = go bs emptyReplaceInfo
                         let bs'' = checkCoreProgram bs'
                         let mocks = getMocks mod bs''
                         putMsg $ ppWhen (snd (mocksSize ri') > 10) (text "FIX POINT:" <+> ppr mocks) -- FIXME
-                        if noMoreReplaceBinds ri' && (null mocks || snd (mocksSize ri') > 10)
+                        if noMoreReplaceBinds ri' && (null mocks || snd (mocksSize ri') > 10) -- TODO check actual replaces (not only empty new added)
                         then return bs''
                         else go bs'' $ nextReplaceInfo $ newMocksSize (length mocks) ri'
           replace ri (b:bs) = do (bs', ri') <- replace ri bs
@@ -1644,7 +1651,7 @@ replaceMocksByInstancesInExpr mod (e, dis, ri) = replace e dis ri
                                 let dicts = filter (\(t,di) -> notElem t $ getAllPreds $ exprType e'') dis1
                                 return (mkCoreLams (tvs ++ fmap snd dicts) e'', ri' {dictInstances = dis2})
           replace (Var x) dis ri | Just x' <- findReplaceBind mod x ri
-                                 = do x'' <- addMockedInstancesExcept mod (dictPredicatesFromType mod $ varType x) (Var x')
+                                 = do x'' <- addMockedInstancesExcept mod (getCommonPreds (varType x') (varType x)) (Var x')
                                       return (x'', ri)
           replace (App f x) dis ri = do (f', ri') <- replace f dis ri
                                         (x', ri'') <- replace x dis ri'
