@@ -146,4 +146,7 @@ test38 = [intersect atoms empty, intersect atoms atoms, intersect (filter (neq a
           disjoint atoms empty, disjoint atoms atoms, disjoint (filter (neq a) atoms) (filter (neq b) atoms)]
 
 test39 :: [Set (Atom, Atom)]
-test39 = [pairs atoms atoms, pairsWith (,) atoms empty, atomsPairs, square atoms]
+test39 = [pairs atoms atoms, pairsWith (,) atoms empty, atomsPairs, square atoms, differentAtomsPairs, pairsWithFilter (curry just) atoms atoms]
+
+test40 :: [Set (Atom, Atom, Atom)]
+test40 = [triples atoms atoms atoms, triplesWith (,,) atoms empty atoms, atomsTriples, triplesWithFilter (\x y z -> just (x, y, z)) atoms atoms atoms]
