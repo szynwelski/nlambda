@@ -153,3 +153,7 @@ test40 = [triples atoms atoms atoms, triplesWith (,,) atoms empty atoms, atomsTr
 
 test41 :: [Set [Atom]]
 test41 = [mapList id [atoms, fromList [a,b]], mapFilterList (\l -> maybeIf (eq a $ head l) l) [atoms, atoms]]
+
+test42 :: [Set [Atom]]
+test42 = [replicateSet 3 atoms, replicateDifferentSet 3 atoms, replicateSetUntil 3 atoms, replicateDifferentSetUntil 3 atoms,
+          replicateAtoms 3, replicateDifferentAtoms 3, replicateAtomsUntil 3, replicateDifferentAtomsUntil 3]
