@@ -150,3 +150,6 @@ test39 = [pairs atoms atoms, pairsWith (,) atoms empty, atomsPairs, square atoms
 
 test40 :: [Set (Atom, Atom, Atom)]
 test40 = [triples atoms atoms atoms, triplesWith (,,) atoms empty atoms, atomsTriples, triplesWithFilter (\x y z -> just (x, y, z)) atoms atoms atoms]
+
+test41 :: [Set [Atom]]
+test41 = [mapList id [atoms, fromList [a,b]], mapFilterList (\l -> maybeIf (eq a $ head l) l) [atoms, atoms]]
