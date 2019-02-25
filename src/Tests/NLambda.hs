@@ -169,3 +169,24 @@ test45 = [listSizeWith lt [a,b,c], listSize [a,b,c], sizeWith lt $ fromList [a,b
 
 test46 :: [Int]
 test46 = [listMaxSizeWith lt [a,b,c], listMaxSize [a,b,c], maxSizeWith lt $ fromList [a,b,c], maxSize $ fromList [a,b,c], maxSizeWith lt empty, maxSize (empty::Set Atom)]
+
+test47 :: [Set Atom]
+test47 = [range a b, openRange a b]
+
+test48 :: [Formula]
+test48 = [isLowerBound a empty, isLowerBound a (range b c), isLowerBound a atoms, hasLowerBound empty, hasLowerBound (range b c), hasLowerBound atoms]
+
+test49 :: [Formula]
+test49 = [isUpperBound a empty, isUpperBound a (range b c), isUpperBound a atoms, hasUpperBound empty, hasUpperBound (range b c), hasUpperBound atoms]
+
+test50 :: [Formula]
+test50 = [isMinimum a empty, isMinimum a (range b c), isMinimum a atoms,
+          hasMinimum empty, hasMinimum (range b c), hasMinimum (openRange b c), hasMinimum atoms]
+
+test51 :: [Formula]
+test51 = simplify <$> [isMaximum a empty, isMaximum a (range b c), isMaximum a atoms,
+          hasMaximum empty, hasMaximum (range b c), hasMaximum (openRange b c), hasMaximum atoms]
+
+test52 :: [Formula]
+test52 = simplify <$> [isInfimum a (range b c), isSupremum a (range b c), isConnected atoms, isConnected (range a b),
+          isOpen atoms, isOpen (range a b), isClosed atoms, isClosed (range a b), isCompact atoms, isCompact (range a b)]
