@@ -111,7 +111,6 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Word (Word)
-import Data.Tuple.Extra (thd3)
 import GHC.Read (expectP)
 import Nominal.Atoms
 import Nominal.Atoms.Logic (exclusiveConditions)
@@ -384,9 +383,9 @@ nlambda_isNotEmpty = idOp isNotEmpty
 
 {-# ANN applyWithMeta NoMetaFunction #-}
 applyWithMeta :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition)
-                 -> WithMeta (a, Set.Set Variable, [(b, SetElementCondition)])
+                 -> WithMeta ((a, SetElementCondition), [(b, SetElementCondition)])
 applyWithMeta f (WithMeta (v, (vs,c)) m)
-    | length newIds == length oldIds = create (v'', vs', res) m''
+    | length newIds == length oldIds = create ((v'', (vs',c')), res) m''
     | otherwise = error $ "oldIds and newIds have different lengths " ++ show (oldIds, newIds)
     where id = getVariableId vs
           oldIds = Maybe.catMaybes $ fmap getIdentifier $ Set.elems vs
@@ -403,14 +402,14 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
 
 nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 nlambda_map f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where mapAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m) in (meta es, thd3 (value es) ++ rs)
+    where mapAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m) in (meta es, snd (value es) ++ rs)
           (m', es') = Map.foldrWithKey mapAndMerge (m, []) es
 
 nlambda_filter :: NLambda_NominalType a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
 nlambda_filter f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
     where filterAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m)
-                                              (v', vs', es') = value es
-                                              es'' = fmap (\(c', (_, c)) -> checkEquality Nothing (v', (vs', c /\ c'))) es'
+                                              ((v', cond'), es') = value es
+                                              es'' = fmap (\(c, _) -> checkEquality Nothing (v', (fst cond', snd cond' /\ c))) $ es'
                                           in (meta es, es'' ++ rs)
           (m', es') = Map.foldrWithKey filterAndMerge (m, []) es
 
