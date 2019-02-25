@@ -157,3 +157,15 @@ test41 = [mapList id [atoms, fromList [a,b]], mapFilterList (\l -> maybeIf (eq a
 test42 :: [Set [Atom]]
 test42 = [replicateSet 3 atoms, replicateDifferentSet 3 atoms, replicateSetUntil 3 atoms, replicateDifferentSetUntil 3 atoms,
           replicateAtoms 3, replicateDifferentAtoms 3, replicateAtomsUntil 3, replicateDifferentAtomsUntil 3]
+
+test43 :: [Formula]
+test43 = [hasSizeLessThan (empty::Set Atom) 1, hasSizeLessThan atoms 3, hasSizeLessThan (fromList [a,b,c]) 3]
+
+test44 :: [Formula]
+test44 = [hasSize (empty::Set Atom) 0, hasSize atoms 3, hasSize (fromList [a,b,c]) 3]
+
+test45 :: [Variants Int]
+test45 = [listSizeWith lt [a,b,c], listSize [a,b,c], sizeWith lt $ fromList [a,b,c], size $ fromList [a,b,c], sizeWith lt empty, size (empty::Set Atom)]
+
+test46 :: [Int]
+test46 = [listMaxSizeWith lt [a,b,c], listMaxSize [a,b,c], maxSizeWith lt $ fromList [a,b,c], maxSize $ fromList [a,b,c], maxSizeWith lt empty, maxSize (empty::Set Atom)]
