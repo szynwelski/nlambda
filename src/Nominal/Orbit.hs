@@ -1,9 +1,10 @@
 {-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
-
 module Nominal.Orbit where
 
 import Data.List (elemIndex, delete)
-import Data.Set (elems, insert)
+import qualified Data.Map as Map
+import Data.Maybe (fromJust)
+import qualified Data.Set as Set
 import Nominal.Atoms (Atom)
 import Nominal.Atoms.Signature (minRelations)
 import Nominal.Conditional (ite)
@@ -11,10 +12,11 @@ import Nominal.Contextual (Contextual)
 import Nominal.Formula.Definition (constraint)
 import Nominal.Formula (Formula, (/\), (<==>), and, fromBool, isTrue)
 import Nominal.Maybe (NominalMaybe)
-import Nominal.Meta (WithMeta)
+import qualified Nominal.Meta as Meta
+import Nominal.Meta (WithMeta(..), create, idOp, meta, noMeta, value)
 import Nominal.Set (Set, element, empty, filter, intersect, isSingleton, map, maxSizeWith, member, replicateAtoms, replicateSetUntil, sizeWith, sum, unions)
 import Nominal.Type (NominalType, NLambda_NominalType, eq)
-import Nominal.Variable (Scope(..), freeVariables, mapVariables)
+import Nominal.Variable (Scope(..), freeVariables, getIdentifier, mapVariables, renameVarFun, replaceVariables)
 import Nominal.Variants (Variants, fromVariant, variant, variantsRelation)
 import Prelude hiding (and, filter, map, sum)
 
@@ -24,7 +26,7 @@ import Prelude hiding (and, filter, map, sum)
 
 -- | Returns all free atoms of an element. The result list is also support of an element, but not always the least one.
 support :: NominalType a => a -> [Atom]
-support = fmap variant . elems . freeVariables
+support = fmap variant . Set.elems . freeVariables
 
 -- | Returns the least support of an element. From the result of 'support' function it removes atoms and check if it is still support.
 leastSupport :: NominalType a => a -> [Atom]
@@ -50,7 +52,14 @@ groupAction :: NominalType a => (Atom -> Atom) -> a -> a
 groupAction action = mapVariables (Free, fromVariant . action . variant)
 
 nlambda_groupAction :: NLambda_NominalType a => (WithMeta Atom -> WithMeta Atom) -> WithMeta a -> WithMeta a
-nlambda_groupAction = undefined
+nlambda_groupAction f (WithMeta x m) = create (replaceVariables varMap x) (Meta.metaFromRenamed renamed)
+    where xs = fmap (\x -> (\(WithMeta x' m') -> (x, fromVariant x', m')) $ f $ create (variant x) m) (Set.toList $ freeVariables x)
+          (varMap, renamed) = foldl (\(vm, rn) (x, x', m) -> let x'' = renameVarFun (Meta.toRename m) x'
+                                                             in if x' == x''
+                                                                then (Map.insert x x' vm, rn)
+                                                                else (Map.insert x x'' vm,
+                                                                      Set.insert (fromJust $ getIdentifier x', fromJust $ getIdentifier x'') rn))
+                                    (Map.empty, Set.empty) xs
 
 -- | Returns an orbit of an element with a given support.
 orbit :: NominalType a => [Atom] -> a -> Set a

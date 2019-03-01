@@ -190,3 +190,15 @@ test51 = simplify <$> [isMaximum a empty, isMaximum a (range b c), isMaximum a a
 test52 :: [Formula]
 test52 = simplify <$> [isInfimum a (range b c), isSupremum a (range b c), isConnected atoms, isConnected (range a b),
           isOpen atoms, isOpen (range a b), isClosed atoms, isClosed (range a b), isCompact atoms, isCompact (range a b)]
+
+test53 :: [[Atom]]
+test53 = [support true, support (lt a b), support (empty::Set Atom), support atoms, support (fromList [a,b,c]),
+          support (range a b), support (openRange a b), leastSupport true, leastSupport (lt a b), leastSupport (empty::Set Atom),
+          leastSupport atoms, leastSupport (fromList [a,b,c]), leastSupport (range a b), leastSupport (openRange a b)]
+
+test54 :: [Formula]
+test54 = [supports [a] a, supports [a] b, supports [a] atoms, supports [a] (empty::Set Atom), supports [a] (singleton b), supports [a] (range a b),
+          isEquivariant (empty::Set Atom), isEquivariant atoms, isEquivariant (range a b), isEquivariant a, isEquivariant (lt a b)]
+
+test55 :: [Set Atom]
+test55 = orbit [a] <$> [a, b, constant 0]

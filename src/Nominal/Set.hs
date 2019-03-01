@@ -790,7 +790,7 @@ isMaximum a s = member a s /\ isUpperBound a s
 hasMaximum :: Set Atom -> Formula
 hasMaximum s = exists (`isUpperBound` s) s
 
--- | Checks whether an atom is the infumum of a set.
+-- | Checks whether an atom is the infimum of a set.
 isInfimum :: Atom -> Set Atom -> Formula
 isInfimum a s = isMaximum a $ filter (`isLowerBound` s) atoms
 

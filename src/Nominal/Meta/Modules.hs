@@ -16,6 +16,7 @@ import Nominal.Meta.Data.Set.Base
 import Nominal.Meta.Data.Set.Internal
 import Nominal.Meta.Data.Traversable
 import Nominal.Meta.Data.Tuple
+import Nominal.Meta.Debug.Trace
 import Nominal.Meta.GHC.Base
 import Nominal.Meta.GHC.Classes
 import Nominal.Meta.GHC.Enum
@@ -53,6 +54,7 @@ modules = ["Nominal.Meta.Control.Exception.Base",
            "Nominal.Meta.Data.Set.Internal",
            "Nominal.Meta.Data.Traversable",
            "Nominal.Meta.Data.Tuple",
+           "Nominal.Meta.Debug.Trace",
            "Nominal.Meta.GHC.Base",
            "Nominal.Meta.GHC.Classes",
            "Nominal.Meta.GHC.Enum",

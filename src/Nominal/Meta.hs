@@ -25,6 +25,9 @@ metaFromMap map = Meta map Set.empty Empty
 emptyMeta :: Meta
 emptyMeta = metaFromMap Map.empty
 
+metaFromRenamed :: Set (Identifier, Identifier) -> Meta
+metaFromRenamed renamed = Meta Map.empty renamed Empty
+
 addMapToMeta :: IdMap -> Meta -> Meta
 addMapToMeta map (Meta m s t) = Meta (Map.union map m) s t
 
