@@ -384,7 +384,7 @@ isVar (Var _) = True
 isVar _ = False
 
 isVarPair :: Var -> Var -> Bool
-isVarPair v1 v2 = isNamePair n1 n2 && nameModule n1 == nameModule n2
+isVarPair v1 v2 = isNamePair n1 n2 && nameModule_maybe n1 == nameModule_maybe n2
     where (n1, n2) = (varName v1, varName v2)
 
 ----------------------------------------------------------------------------------------

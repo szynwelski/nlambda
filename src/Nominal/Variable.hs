@@ -18,6 +18,7 @@ hasIdentifierNotEquals,
 clearIdentifier,
 getIterationLevel,
 changeIterationLevel,
+isIteration,
 toParts,
 fromParts,
 FoldVarFun,
@@ -180,6 +181,9 @@ getIterationLevel = onlyForIteration Nothing (\l _ _ -> Just l)
 
 changeIterationLevel :: Map Int Int -> Variable -> Variable
 changeIterationLevel m v = onlyForIteration v (\l i id -> IterationVariable (Map.findWithDefault l l m) i id) v
+
+isIteration :: Variable -> Bool
+isIteration = onlyForIteration False (\_ _ _ -> True)
 
 ----------------------------------------------------------------------------------------------------
 -- Rename tree

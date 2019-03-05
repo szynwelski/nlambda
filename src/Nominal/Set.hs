@@ -121,6 +121,7 @@ import Nominal.Formula
 import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
 import Nominal.Meta (NoMetaFunction(..), WithMeta(..), addMapToMeta, create, idOp, meta, noMeta, renamed, removeMapFromMeta, toRename)
+import Nominal.Meta.GHC.Show
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (NominalType(..), NLambda_NominalType(..), neq)
 import qualified Nominal.Util.InsertionSet as ISet
@@ -128,7 +129,7 @@ import Nominal.Util.UnionFind (representatives)
 import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
 import Nominal.Variable (FoldVarFun, Identifier, MapVarFun, Scope(..), Var(..), Variable,
                          changeIterationLevel, clearIdentifier, collectWith, constantVar, freeVariables, getAllVariables, getIdentifier,
-                         getIterationLevel, hasIdentifierEquals, hasIdentifierNotEquals, isConstant, iterationVariablesList, iterationVariable,
+                         getIterationLevel, hasIdentifierEquals, hasIdentifierNotEquals, isConstant, isIteration, iterationVariablesList, iterationVariable,
                          iterationVariableWithId, mapVariablesIf, replaceVariables, renameFreeVariables, renameWithFlatTree, setIdentifier)
 import Nominal.Variants (Variants, fromVariant, readVariant, variant, nlambda_variant)
 import qualified Nominal.Variants as V
@@ -187,6 +188,31 @@ checkEquality postprocess (v, (vs, c)) =
               | Set.member x2 vs = (Set.delete x2 vs, Map.insert x2 x1 m)
               | otherwise        = (vs, m)
 
+{-# ANN normalizeVariables NoMetaFunction #-}
+normalizeVariables :: Var a => [(a, SetElementCondition)] -> [(a, SetElementCondition)]
+normalizeVariables = foldr (\e es -> normalizeVariablesInElement e : es) []
+
+{-# ANN normalizeVariablesInElement NoMetaFunction #-}
+normalizeVariablesInElement :: Var a => (a, SetElementCondition) -> (a, SetElementCondition)
+normalizeVariablesInElement (v, (vs, c)) | all Maybe.isNothing (getIdentifier <$> Set.toList vs) = (v, (vs, c))
+normalizeVariablesInElement (v, (vs, c)) =
+    let (iterVars, iterLevel) = foldVariables (Free, iterVarsAndLevel) (ISet.empty, 0) v
+        iterVarsAndLevel var (set, lvl) = if isIteration var
+                                          then if Set.member var vs
+                                               then (ISet.insert var set, lvl)
+                                               else (set, max (succ $ Maybe.fromJust $ getIterationLevel var) lvl)
+                                          else (set, lvl)
+        formulaVars = getAllVariables c
+        c' = getCondition (Set.intersection formulaVars (vs Set.\\ ISet.toSet iterVars), c)
+    in if ISet.null iterVars
+       then (v, (Set.empty, c'))
+       else let oldIterVars = ISet.toList iterVars
+                newIterVars = iterationVariablesList iterLevel (length oldIterVars)
+            in if oldIterVars == newIterVars
+               then (v, (Set.fromList oldIterVars, c'))
+               else let replaceMap = (Map.fromList $ zip oldIterVars newIterVars)
+                    in (replaceVariables replaceMap v, (Set.fromList newIterVars, replaceVariables replaceMap c'))
+
 ----------------------------------------------------------------------------------------------------
 -- Identifiers
 ----------------------------------------------------------------------------------------------------
@@ -228,8 +254,9 @@ applyWithIdentifiers f (v, cond) =
 -- | The set of elements, can be infinite.
 newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
 
-instance Show a => Show (Set a) where
-    show s = "{" ++ join ", " (fmap showSetElement (Map.assocs $ setElements s)) ++ "}"
+{-# ANN showSet NoMetaFunction #-}
+showSet :: (Show a, Var a) => Set a -> String
+showSet s = "{" ++ join ", " (fmap showSetElement $ normalizeVariables $ Map.assocs $ setElements s) ++ "}"
       where showSetElement (v, (vs, c)) =
               let formula = if c == true then "" else " " ++ show c
                   variables = if Set.null vs
@@ -237,6 +264,12 @@ instance Show a => Show (Set a) where
                                 else spaces Symbols.for ++ join "," (show <$> Set.elems vs) ++ spaces Symbols.inSet ++ Symbols.atoms
                   condition = formula ++ variables
               in show v ++ (if null condition then "" else " " ++ Symbols.valueCondSep ++ condition)
+
+instance (Show a, Var a) => Show (Set a) where
+    show = showSet
+
+instance (NLambda_Show a, Var a) => NLambda_Show (Set a) where
+    nlambda_show = showSet . value
 
 readIterVars :: ReadPrec (Set.Set Variable)
 readIterVars = do optional $ string Symbols.valueCondSep
