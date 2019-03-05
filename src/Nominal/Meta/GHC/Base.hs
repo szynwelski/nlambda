@@ -7,7 +7,7 @@ import Nominal.Meta
 import Nominal.Variable
 
 -- intentional excessive Var context for MetaPlugin
-class (Applicative f, NLambda_Functor f) => NLambda_Applicative (f :: * -> *) where
+class (NLambda_Functor f, Applicative f) => NLambda_Applicative (f :: * -> *) where
     nlambda_pure :: Var a => WithMeta a -> WithMeta (f a)
     nlambda_pure = idOp pure
     (###<*>) :: (Var a, Var b, Var (f (WithMeta a -> WithMeta b)), Var (f a), Var (f b)) => WithMeta (f (WithMeta a -> WithMeta b)) -> WithMeta (f a) -> WithMeta (f b)
@@ -37,7 +37,7 @@ instance NLambda_Functor ((->) r)
 instance NLambda_Functor ((,) a)
 
 -- intentional excessive Var context for MetaPlugin
-class (Monad m, NLambda_Applicative m) => NLambda_Monad (m :: * -> *) where
+class (NLambda_Applicative m, Monad m) => NLambda_Monad (m :: * -> *) where
     (###>>=) :: (Var b, Var (m b)) => WithMeta (m a) -> (WithMeta a -> WithMeta (m b)) -> WithMeta (m b)
     (###>>=) (WithMeta x m) f = lift $ x >>= (dropMeta . metaFun m f)
     (###>>) :: (Var a, Var b, Var (m a), Var (m b)) => WithMeta (m a) -> WithMeta (m b) -> WithMeta (m b)

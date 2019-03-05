@@ -9,7 +9,7 @@ import Nominal.Meta
 instance NLambda_Enum Float
 instance NLambda_Enum Double
 
-class (Floating a, NLambda_Fractional a) => NLambda_Floating a where
+class (NLambda_Fractional a, Floating a) => NLambda_Floating a where
   nlambda_pi :: WithMeta a
   nlambda_pi = noMeta pi
   nlambda_exp :: WithMeta a -> WithMeta a
@@ -59,7 +59,7 @@ instance NLambda_Num Double
 instance NLambda_Real Float
 instance NLambda_Real Double
 
-class (RealFloat a, NLambda_RealFrac a, NLambda_Floating a) => NLambda_RealFloat a where
+class (NLambda_RealFrac a, NLambda_Floating a, RealFloat a) => NLambda_RealFloat a where
   nlambda_floatRadix :: WithMeta a -> Integer
   nlambda_floatRadix = noMetaResOp floatRadix
   nlambda_floatDigits :: WithMeta a -> Int

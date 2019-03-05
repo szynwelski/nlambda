@@ -7,7 +7,7 @@ import Nominal.Meta.GHC.Integer.Type
 import Nominal.Meta.GHC.Num
 import Nominal.Meta
 
-class (Fractional a, NLambda_Num a) => NLambda_Fractional a where
+class (NLambda_Num a, Fractional a) => NLambda_Fractional a where
     (###/) :: WithMeta a -> WithMeta a -> WithMeta a
     (###/) = renameAndApply2 (/)
     nlambda_recip :: WithMeta a -> WithMeta a
@@ -15,7 +15,7 @@ class (Fractional a, NLambda_Num a) => NLambda_Fractional a where
     nlambda_fromRational :: Rational -> WithMeta a
     nlambda_fromRational = noMeta . fromRational
 
-class (Integral a, NLambda_Real a, NLambda_Enum a) => NLambda_Integral a where
+class (NLambda_Real a, NLambda_Enum a, Integral a) => NLambda_Integral a where
     nlambda_quot :: WithMeta a -> WithMeta a -> WithMeta a
     nlambda_quot = renameAndApply2 quot
     nlambda_rem :: WithMeta a -> WithMeta a -> WithMeta a
@@ -38,7 +38,7 @@ instance NLambda_Integral Int
 instance NLambda_Integral a => NLambda_Num (Ratio a)
 instance NLambda_Integral a => NLambda_Fractional (Ratio a)
 
-class (Real a, NLambda_Num a, NLambda_Ord a) => NLambda_Real a where
+class (NLambda_Num a, NLambda_Ord a, Real a) => NLambda_Real a where
     nlambda_toRational :: WithMeta a -> Rational
     nlambda_toRational = noMetaResOp toRational
 
@@ -46,7 +46,7 @@ instance NLambda_Real Word
 instance NLambda_Real Integer
 instance NLambda_Real Int
 
-class (RealFrac a, NLambda_Real a, NLambda_Fractional a) => NLambda_RealFrac a where
+class (NLambda_Real a, NLambda_Fractional a, RealFrac a) => NLambda_RealFrac a where
     nlambda_properFraction :: NLambda_Integral b => WithMeta a -> WithMeta (b, a)
     nlambda_properFraction = idOp properFraction
     nlambda_truncate :: NLambda_Integral b => WithMeta a -> WithMeta b

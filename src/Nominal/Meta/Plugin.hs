@@ -1449,10 +1449,7 @@ getMetaEquivalent mod v
     | hasMetaEquivalent mod v = pprPanic ("getMetaEquivalent - no meta equivalent variable " ++ metaName ++ " in module " ++ metaModule) (pprV "v" v)
     | otherwise = pprPanic ("getMetaEquivalent - no meta equivalent module " ++ metaModule) (pprV "v" v)
     where metaModule = getMetaEquivalentModule $ getModuleStr v
-          metaName = increaseSuperClassNumber $ occNameString $ nlambdaName $ nameOccName $ getName v
-          metaVar = getMetaVarMaybe mod (Just metaModule) metaName
-          increaseSuperClassNumber name | isPrefixOf "$p" name = "$p" ++ show (succ $ read [name !! 2] :: Int) ++ drop 3 name
-          increaseSuperClassNumber name = name
+          metaName = occNameString $ nlambdaName $ nameOccName $ getName v
 
 getMetaEquivalentTyCon :: ModInfo -> TyCon -> Maybe TyCon
 getMetaEquivalentTyCon mod tc = tyThingTyCon <$> findPairThing (metaTyThings mod) TyThingTyCon (getName tc)

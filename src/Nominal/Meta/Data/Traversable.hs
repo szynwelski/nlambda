@@ -8,7 +8,7 @@ import Nominal.Meta
 import Nominal.Variable
 
 -- intentional excessive Var context for MetaPlugin
-class (Traversable t, NLambda_Functor t, NLambda_Foldable t) => NLambda_Traversable (t :: * -> *) where
+class (NLambda_Functor t, NLambda_Foldable t, Traversable t) => NLambda_Traversable (t :: * -> *) where
     nlambda_traverse :: (Var b, Var (t b), Var (f (t b)), NLambda_Applicative f) => (WithMeta a -> WithMeta (f b)) -> WithMeta (t a) -> WithMeta (f (t b))
     nlambda_traverse f (WithMeta x m) = lift $ fmap lift $ traverse (dropMeta . metaFun m f) x
     nlambda_sequenceA :: NLambda_Applicative f => WithMeta (t (f a)) -> WithMeta (f (t a))

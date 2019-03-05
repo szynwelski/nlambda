@@ -23,7 +23,7 @@ instance NLambda_Eq ()
 instance (NLambda_Eq a, NLambda_Eq b) => NLambda_Eq (a, b)
 instance (NLambda_Eq a, NLambda_Eq b, NLambda_Eq c) => NLambda_Eq (a, b, c)
 
-class (Ord a, NLambda_Eq a) => NLambda_Ord a where
+class (NLambda_Eq a, Ord a) => NLambda_Ord a where
   nlambda_compare :: WithMeta a -> WithMeta a -> Ordering
   nlambda_compare = noMetaRes2ArgOp compare
   (###<) :: WithMeta a -> WithMeta a -> Bool
