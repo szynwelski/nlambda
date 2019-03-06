@@ -121,6 +121,7 @@ import Nominal.Formula
 import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
 import Nominal.Meta (NoMetaFunction(..), WithMeta(..), addMapToMeta, create, idOp, meta, noMeta, renamed, removeMapFromMeta, toRename)
+import Nominal.Meta.GHC.Classes
 import Nominal.Meta.GHC.Show
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (NominalType(..), NLambda_NominalType(..), neq)
@@ -189,8 +190,8 @@ checkEquality postprocess (v, (vs, c)) =
               | otherwise        = (vs, m)
 
 {-# ANN normalizeVariables NoMetaFunction #-}
-normalizeVariables :: Var a => [(a, SetElementCondition)] -> [(a, SetElementCondition)]
-normalizeVariables = foldr (\e es -> normalizeVariablesInElement e : es) []
+normalizeVariables :: (Var a, Ord a) => Map a SetElementCondition -> Map a SetElementCondition
+normalizeVariables = Map.fromListWith sumCondition . Map.foldrWithKey (\v c es -> normalizeVariablesInElement (v, c) : es) []
 
 {-# ANN normalizeVariablesInElement NoMetaFunction #-}
 normalizeVariablesInElement :: Var a => (a, SetElementCondition) -> (a, SetElementCondition)
@@ -255,8 +256,8 @@ applyWithIdentifiers f (v, cond) =
 newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
 
 {-# ANN showSet NoMetaFunction #-}
-showSet :: (Show a, Var a) => Set a -> String
-showSet s = "{" ++ join ", " (fmap showSetElement $ normalizeVariables $ Map.assocs $ setElements s) ++ "}"
+showSet :: (Show a, Ord a, Var a) => Set a -> String
+showSet s = "{" ++ join ", " (fmap showSetElement $ Map.assocs $ normalizeVariables $ setElements s) ++ "}"
       where showSetElement (v, (vs, c)) =
               let formula = if c == true then "" else " " ++ show c
                   variables = if Set.null vs
@@ -265,10 +266,10 @@ showSet s = "{" ++ join ", " (fmap showSetElement $ normalizeVariables $ Map.ass
                   condition = formula ++ variables
               in show v ++ (if null condition then "" else " " ++ Symbols.valueCondSep ++ condition)
 
-instance (Show a, Var a) => Show (Set a) where
+instance (Show a, Ord a, Var a) => Show (Set a) where
     show = showSet
 
-instance (NLambda_Show a, Var a) => NLambda_Show (Set a) where
+instance (NLambda_Show a, NLambda_Ord a, Var a) => NLambda_Show (Set a) where
     nlambda_show = showSet . value
 
 readIterVars :: ReadPrec (Set.Set Variable)
