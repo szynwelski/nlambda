@@ -202,3 +202,14 @@ test54 = [supports [a] a, supports [a] b, supports [a] atoms, supports [a] (empt
 
 test55 :: [Set Atom]
 test55 = orbit [a] <$> [a, b, constant 0]
+
+test56 :: [Graph Atom]
+test56 = [emptyGraph, emptyAtomsGraph, atomsClique, simpleAtomsClique, monotonicGraph]
+
+test57 :: [Graph Atom]
+test57 = [addVertex a emptyAtomsGraph, removeVertex a atomsClique, addEdge (a, b) monotonicGraph, removeEdge (a, b) monotonicGraph,
+          addLoops monotonicGraph, removeLoops atomsClique]
+
+test58 :: [Graph Atom]
+test58 = [reverseEdges monotonicGraph, compose monotonicGraph atomsClique, compose emptyAtomsGraph atomsClique,
+          undirected monotonicGraph, subgraph atomsClique (range a b)]

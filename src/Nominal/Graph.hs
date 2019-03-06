@@ -1,6 +1,5 @@
 {-# OPTIONS_GHC -fplugin Nominal.Meta.Plugin #-}
 {-# LANGUAGE DeriveGeneric, DeriveAnyClass #-}
-
 module Nominal.Graph where
 
 import Data.Tuple (swap)
