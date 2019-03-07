@@ -1,8 +1,10 @@
 {-# LANGUAGE CPP #-}
 
 import Tests.NLambda
+import System.CPUTime
+import Text.Printf
 
-#define DO_TEST(number) let (test, nlambda_test) = (test/**/number, nlambda_test/**/number/**/) in do {print "============================= Test number ==================================="; print nlambda_test; if show test == take (length $ show test) (show nlambda_test) then return () else (print test)}
+#define DO_TEST(number) let (test, nlambda_test) = (test/**/number, nlambda_test/**/number/**/) in do {print "============================= Test number ==================================="; t1 <- getCPUTime; print test; t2 <- getCPUTime; if show test == take (length $ show test) (show nlambda_test) then return () else (print nlambda_test); t3 <- getCPUTime; printf "%0.3f %0.3f\n" (fromIntegral (t3-t2)/10^12::Double) (fromIntegral (t2-t1)/10^12::Double)}
 
 main = do DO_TEST(1)
           DO_TEST(2)
