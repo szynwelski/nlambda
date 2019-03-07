@@ -211,5 +211,43 @@ test57 = [addVertex a emptyAtomsGraph, removeVertex a atomsClique, addEdge (a, b
           addLoops monotonicGraph, removeLoops atomsClique]
 
 test58 :: [Graph Atom]
-test58 = [reverseEdges monotonicGraph, compose monotonicGraph atomsClique, compose emptyAtomsGraph atomsClique,
-          undirected monotonicGraph, subgraph atomsClique (range a b)]
+test58 = [reverseEdges monotonicGraph, compose monotonicGraph atomsClique, compose emptyAtomsGraph atomsClique, subgraph atomsClique (range a b)]
+
+test59 :: [Graph Atom]
+test59 = [undirected emptyAtomsGraph, undirected monotonicGraph, undirected simpleAtomsClique, undirected atomsClique]
+
+test60 :: [Formula]
+test60 = [hasLoop emptyAtomsGraph, hasLoop monotonicGraph, hasLoop atomsClique, isSimple emptyAtomsGraph, isSimple monotonicGraph, isSimple atomsClique,
+          containsEdge emptyAtomsGraph (a, b), containsEdge monotonicGraph (a, b), containsEdge atomsClique  (a, b)]
+
+test61 :: [Set Atom]
+test61 = [preds emptyAtomsGraph a, preds monotonicGraph a, preds atomsClique a,
+          succs emptyAtomsGraph a, succs monotonicGraph a, succs atomsClique a,
+          neighbors emptyAtomsGraph a, neighbors monotonicGraph a, neighbors atomsClique a]
+
+test62 :: [Graph Atom]
+test62 = [transitiveClosure emptyAtomsGraph, transitiveClosure monotonicGraph, transitiveClosure simpleAtomsClique, transitiveClosure atomsClique]
+
+test63 :: [Formula]
+test63 = [existsPath emptyAtomsGraph a b, existsPath monotonicGraph a b, existsPath simpleAtomsClique a b, existsPath atomsClique a b]
+
+test64 :: [Formula]
+test64 = [isStronglyConnected emptyAtomsGraph, isStronglyConnected monotonicGraph, isStronglyConnected simpleAtomsClique, isStronglyConnected atomsClique]
+
+test65 :: [Formula]
+test65 = [isWeaklyConnected emptyAtomsGraph, isWeaklyConnected monotonicGraph, isWeaklyConnected simpleAtomsClique, isWeaklyConnected atomsClique]
+
+test66 :: [Formula]
+test66 = [isBipartite emptyAtomsGraph, isBipartite monotonicGraph, isBipartite simpleAtomsClique, isBipartite atomsClique]
+
+test67 :: [Formula]
+test67 = [hasCycle emptyAtomsGraph, hasCycle monotonicGraph, hasCycle simpleAtomsClique, hasCycle atomsClique,
+          hasEvenLengthCycle emptyAtomsGraph, hasEvenLengthCycle monotonicGraph, hasEvenLengthCycle simpleAtomsClique, hasEvenLengthCycle atomsClique,
+          hasOddLengthCycle emptyAtomsGraph, hasOddLengthCycle monotonicGraph, hasOddLengthCycle simpleAtomsClique, hasOddLengthCycle atomsClique]
+
+test68 :: [Set Atom]
+test68 = [reachable emptyAtomsGraph a, reachable monotonicGraph a, reachable simpleAtomsClique a, reachable atomsClique a]
+
+test69 :: [Set (Graph Atom)]
+test69 = [weaklyConnectedComponents emptyAtomsGraph, weaklyConnectedComponents monotonicGraph, weaklyConnectedComponents simpleAtomsClique,
+          weaklyConnectedComponents atomsClique]
