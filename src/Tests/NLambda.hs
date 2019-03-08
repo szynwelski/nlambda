@@ -249,5 +249,27 @@ test68 :: [Set Atom]
 test68 = [reachable emptyAtomsGraph a, reachable monotonicGraph a, reachable simpleAtomsClique a, reachable atomsClique a]
 
 test69 :: [Set (Graph Atom)]
-test69 = [weaklyConnectedComponents emptyAtomsGraph, weaklyConnectedComponents monotonicGraph, weaklyConnectedComponents simpleAtomsClique,
-          weaklyConnectedComponents atomsClique]
+test69 = [weaklyConnectedComponents emptyAtomsGraph, weaklyConnectedComponents monotonicGraph, stronglyConnectedComponents simpleAtomsClique,
+          stronglyConnectedComponents atomsClique]
+
+test70 :: [Automaton Atom Atom]
+test70 = [atomsDA atoms const a atoms, atomsNA atoms atomsTriples atoms atoms, atomsDA atoms const a (singleton b),
+          atomsNA atoms atomsTriples (singleton a) (singleton b)]
+
+test71 :: [Formula]
+test71 = [accepts aut word | aut <- test70, word <- [[],[a],[b],[a,b]]]
+
+test72 :: [Formula]
+test72 = fmap isNotEmptyAutomaton test70 ++ fmap isEmptyAutomaton test70
+
+test73 :: [Automaton (Set Atom) Atom]
+test73 = fmap minimize $ take 2 test70
+
+createToMinAuto :: Int -> Automaton (Maybe [Atom]) Atom
+createToMinAuto n = atomsDAWithTrashCan (replicateAtomsUntil n) (flip (:)) [] (filter (\(a:l) -> or $ fmap (eq a) l) $ replicateAtoms n)
+
+test74 :: [Automaton (Maybe [Atom]) Atom]
+test74 = fmap createToMinAuto [1..1]
+
+test75 :: [Automaton (Set (Maybe [Atom])) Atom]
+test75 = fmap minimize test74
