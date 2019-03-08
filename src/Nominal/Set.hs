@@ -429,8 +429,8 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
           renamedMap = Map.fromAscList $ Set.toAscList $ Set.filter (\(x,y) -> elem y newIds) $ renamed m'
           (v'', vs', c') = renameFreeVariables renamedMap (v, vs, c)
           WithMeta variants m'' = V.nlambda_toList $ nlambda_variants $ create v' $ removeMapFromMeta idMap m'
-          varsInRes = Set.map Just $ Map.keysSet (toRename m') `Set.union` Set.map snd (renamed m')
-          vs'' = Set.filter (\v -> elem (getIdentifier v) varsInRes) vs'
+          fvs = freeVariables v''
+          vs'' = Set.intersection vs' fvs
           c'' = getCondition (Set.difference vs' vs'', c')
           res = fmap (\(resV, resC) -> (resV, (vs'', c'' /\ resC))) variants
 
