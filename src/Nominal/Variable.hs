@@ -196,10 +196,8 @@ isTreeEmpty :: RenameTree -> Bool
 isTreeEmpty Empty = True
 isTreeEmpty (Node map ts) = null map && all isTreeEmpty ts
 
-createNode :: Bool -> [RenameTree] -> RenameTree
-createNode checkEmpty ts
-    | checkEmpty, all isTreeEmpty ts = Empty
-    | otherwise = Node Map.empty ts
+createNode :: [RenameTree] -> RenameTree
+createNode = Node Map.empty
 
 addMapToTree :: IdMap -> RenameTree -> RenameTree
 addMapToTree map t | null map = t

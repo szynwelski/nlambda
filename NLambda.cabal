@@ -19,11 +19,13 @@ Library
     combinat,
     containers,
     directory,
+    ghc-prim,
     hslogger,
     MissingH,
     mtl,
     multimap,
-    process-extras
+    process-extras,
+    semigroups
   hs-source-dirs:  src
   exposed-modules: NLambda
   if flag(TOTAL_ORDER)
@@ -42,9 +44,7 @@ Library
     Nominal.Contextual,
     Nominal.Either,
     Nominal.Formula,
-    Nominal.Formula.Constructors
     Nominal.Formula.Definition
-    Nominal.Formula.Operators
     Nominal.Formula.Quantification
     Nominal.Formula.Solver
     Nominal.Formula.SmtLogger

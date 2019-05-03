@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternGuards #-}
 module Nominal.Meta.Plugin where
 
 import Avail
@@ -969,6 +970,7 @@ getAllNotLocalVarsFromExpr = nub . get
           get (Cast e c) = get e
           get (Tick t e) = get e
           get (Type t) = []
+          get (Coercion c) = []
           getFromAlt (con, bs, e) = filter (`notElem` bs) (get e)
 
 dataConExpr :: ModInfo -> DataCon -> CoreM CoreExpr

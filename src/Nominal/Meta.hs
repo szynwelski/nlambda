@@ -65,28 +65,29 @@ data NoMetaFunction = NoMetaFunction deriving Data
 -- Rename methods
 ------------------------------------------------------------------------------------------
 
-union :: Bool -> Meta -> Meta -> Meta
-union join (Meta map1 set1 tree1) (Meta map2 set2 tree2)
+union :: Meta -> Meta -> Meta
+union (Meta map1 set1 tree1) (Meta map2 set2 tree2)
     = Meta (Map.unionWith conflict (Map.difference map1 toRenameNow1) (Map.difference map2 toRenameNow2))
            (Set.unions [set1, set2, Set.fromList $ Map.assocs toRenameNow1, Set.fromList $ Map.assocs toRenameNow2])
-           (createNode (not join) children)
+           (createNode children)
     where partitionByRenamed map set = Map.partitionWithKey (\k v -> Set.member (k,v) set) map
           findConflicts mapToRestrict map = Map.filterWithKey (\k v -> Map.findWithDefault v k map /= v) mapToRestrict
           (inRenamed1, notInRenamed1) = partitionByRenamed map1 set2
           (inRenamed2, notInRenamed2) = partitionByRenamed map2 set1
           (conflicts1, conflicts2) = (findConflicts notInRenamed1 notInRenamed2, findConflicts notInRenamed2 notInRenamed1)
+--          (toRenameNow1, toRenameNow2) = (Map.unionWith conflict inRenamed1 conflicts1, Map.unionWith conflict inRenamed2 conflicts2)
           (toRenameNow1, toRenameNow2) = if Map.null inRenamed1
                                          then (Map.empty, Map.unionWith conflict inRenamed2 conflicts2)
                                          else (Map.unionWith conflict inRenamed1 conflicts1, inRenamed2)
           tree1' = addMapToTree toRenameNow1 tree1
           tree2' = addMapToTree toRenameNow2 tree2
-          children = if join then getChildrenOrNode tree1' ++ getChildrenOrNode tree2' else [tree1', tree2']
+          children = getChildrenOrNode tree1' ++ getChildrenOrNode tree2'
           conflict x y | x == y = x
           conflict x y = error $ "conflict in union function for " ++ show (Meta map1 set1 tree1) ++ show (Meta map2 set2 tree2)
 
 unions :: [Meta] -> Meta
 unions [] = emptyMeta
-unions ms = foldr1 (union True) ms
+unions ms = foldr1 union ms
 
 rename :: Var a => WithMeta a -> WithMeta a
 rename (WithMeta x m)
@@ -174,7 +175,7 @@ instance MetaLevel Par1 where
 
 instance MetaLevel f => MetaLevel (Rec1 f) where
     liftMeta (Rec1 x) = let (WithMeta y m) = liftMeta x in WithMeta (Rec1 y) (addTreeLevel m)
-        where addTreeLevel m = m {renameTree = createNode False [renameTree m]}
+        where addTreeLevel m = m {renameTree = createNode [renameTree m]}
     dropMeta (WithMeta (Rec1 x) m) = Rec1 (dropMeta (WithMeta x m))
 
 instance MetaLevel U1 where
@@ -198,7 +199,7 @@ instance (MetaLevel f, MetaLevel g) => MetaLevel (f :+: g) where
 instance (MetaLevel f, MetaLevel g) => MetaLevel (f :*: g) where
     liftMeta (x :*: y) = let (WithMeta x' m1) = liftMeta x
                              (WithMeta y' m2) = liftMeta y
-                         in WithMeta (x' :*: y') (union True m1 m2)
+                         in WithMeta (x' :*: y') (union m1 m2)
     dropMeta (WithMeta (x :*: y) m) = dropMeta (WithMeta x m) :*: dropMeta (WithMeta y m)
 
 instance MetaLevel Maybe

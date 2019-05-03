@@ -77,7 +77,8 @@ nlambda_lookup :: (Var a, NLambda_Ord k) => WithMeta k -> WithMeta (Map k a) -> 
 nlambda_lookup = renameAndApply2 lookup
 
 nlambda_map :: (Var b, Var k, Ord k) => (WithMeta a -> WithMeta b) -> WithMeta (Map k a) -> WithMeta (Map k b)
-nlambda_map f = lift . map f . dropMeta
+nlambda_map f (WithMeta map meta) = lift $ fromList $ fmap f' $ assocs map
+    where f' (k,v) = let WithMeta (k',v') meta' = create k meta #### f (create v meta) in (k', create v' meta')
 
 nlambda_mapKeysWith :: (Var a, NLambda_Ord k2) => (WithMeta a -> WithMeta a -> WithMeta a) -> (WithMeta k1 -> WithMeta k2) -> WithMeta (Map k1 a) -> WithMeta (Map k2 a)
 nlambda_mapKeysWith fv fk (WithMeta map m) = nlambda_fromListWith fv list

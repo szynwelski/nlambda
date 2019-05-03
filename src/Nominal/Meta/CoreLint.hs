@@ -6,7 +6,7 @@
 A ``lint'' pass to check for Core correctness
 -}
 
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, PatternGuards #-}
 {-# OPTIONS_GHC -fprof-auto #-}
 
 module Nominal.Meta.CoreLint (

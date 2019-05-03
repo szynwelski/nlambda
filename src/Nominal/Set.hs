@@ -104,7 +104,7 @@ nlambda_element) where
 
 import Control.Arrow ((***), first)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
-import qualified Data.List as List ((\\), partition, tails)
+import qualified Data.List as List ((\\), find, partition, tails)
 import Data.List.Utils (join)
 import qualified Data.Maybe as Maybe
 import Data.Map (Map)
@@ -126,7 +126,7 @@ import Nominal.Meta.GHC.Show
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (NominalType(..), NLambda_NominalType(..), neq)
 import qualified Nominal.Util.InsertionSet as ISet
-import Nominal.Util.UnionFind (representatives)
+import Nominal.Util.UnionFind (equivalenceClasses)
 import Nominal.Util.Read (optional, readSepBy, skipSpaces, spaces, string)
 import Nominal.Variable (FoldVarFun, Identifier, MapVarFun, Scope(..), Var(..), Variable,
                          changeIterationLevel, clearIdentifier, collectWith, constantVar, freeVariables, getAllVariables, getIdentifier,
@@ -183,11 +183,10 @@ checkEquality postprocess (v, (vs, c)) =
     then (v, (vs, c))
     else (Maybe.fromMaybe id postprocess) (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
     where eqs = getEquationsFromFormula c
-          (vs', eqsMap) = foldr checkVars (vs, Map.empty) $ representatives $ Set.elems eqs
-          checkVars (x1, x2) (vs, m)
-              | Set.member x1 vs = (Set.delete x1 vs, Map.insert x1 x2 m)
-              | Set.member x2 vs = (Set.delete x2 vs, Map.insert x2 x1 m)
-              | otherwise        = (vs, m)
+          classes = equivalenceClasses $ Set.elems eqs
+          eqsMap = Map.fromList $ concatMap (\cl -> fmap (\x -> (x, representative cl)) cl) classes
+          vs' = vs Set.\\ ((Set.fromList $ Map.keys eqsMap) Set.\\ (Set.fromList $ Map.elems eqsMap))
+          representative cl = Maybe.fromMaybe (head cl) (List.find (\x -> P.not $ elem x vs) cl)
 
 {-# ANN normalizeVariables NoMetaFunction #-}
 normalizeVariables :: (Var a, Ord a) => Map a SetElementCondition -> Map a SetElementCondition
@@ -419,17 +418,17 @@ nlambda_isNotEmpty = idOp isNotEmpty
 applyWithMeta :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition)
                  -> WithMeta ((a, SetElementCondition), [(b, SetElementCondition)])
 applyWithMeta f (WithMeta (v, (vs,c)) m)
-    | length newIds == length oldIds = create ((v'', (vs',c')), res) m''
+    | length newIds == length oldIds = create ((v', (vs',c')), res) m''
     | otherwise = error $ "oldIds and newIds have different lengths " ++ show (oldIds, newIds)
     where id = getVariableId vs
           oldIds = Maybe.catMaybes $ fmap getIdentifier $ Set.elems vs
           newIds = take (Set.size vs) $ enumFrom id
           idMap = Map.fromList $ zip oldIds newIds
-          WithMeta v' m' = f $ create v $ addMapToMeta idMap m
+          WithMeta fv m' = f $ create v $ addMapToMeta idMap m
           renamedMap = Map.fromAscList $ Set.toAscList $ Set.filter (\(x,y) -> elem y newIds) $ renamed m'
-          (v'', vs', c') = renameFreeVariables renamedMap (v, vs, c)
-          WithMeta variants m'' = V.nlambda_toList $ nlambda_variants $ create v' $ removeMapFromMeta idMap m'
-          fvs = freeVariables v''
+          (v', vs', c') = renameFreeVariables renamedMap (v, vs, c)
+          WithMeta variants m'' = V.nlambda_toList $ nlambda_variants $ create fv $ removeMapFromMeta idMap m'
+          fvs = freeVariables v'
           vs'' = Set.intersection vs' fvs
           c'' = getCondition (Set.difference vs' vs'', c')
           res = fmap (\(resV, resC) -> (resV, (vs'', c'' /\ resC))) variants

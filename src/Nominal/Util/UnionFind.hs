@@ -4,6 +4,7 @@ module Nominal.Util.UnionFind where
 
 import Data.Map (Map)
 import qualified Data.Map as Map
+import qualified Data.MultiMap as MultiMap
 import GHC.Generics (Generic)
 import Nominal.Variable (Var)
 
@@ -37,5 +38,11 @@ assocs :: Ord a => UnionFind a -> [(a, a)]
 assocs uf@(UnionFind ps rs) = snd $ foldl (\(uf', res) e -> let (repr, uf'') = find e uf'
                                                             in (uf'', (e, repr) : res)) (uf, []) (Map.keys ps)
 
+fromList :: Ord a => [(a,a)] -> UnionFind a
+fromList = foldr (\(e1,e2) uf -> union e1 e2 uf) empty
+
 representatives :: Ord a => [(a,a)] -> [(a,a)]
-representatives = assocs . foldr (\(e1,e2) uf -> union e1 e2 uf) empty
+representatives = assocs . fromList
+
+equivalenceClasses :: Ord a => [(a,a)] -> [[a]]
+equivalenceClasses = fmap (uncurry (:)) . MultiMap.assocs . foldr (\(x,y) m -> MultiMap.insert y x m) MultiMap.empty . assocs . fromList
