@@ -120,7 +120,7 @@ import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
-import Nominal.Meta (NoMetaFunction(..), WithMeta(..), addMapToMeta, create, idOp, meta, noMeta, renamed, removeMapFromMeta, toRename)
+import Nominal.Meta (NoMetaFunction(..), WithMeta(..), addMapToMeta, create, idOp, lift, meta, noMeta, renamed, removeMapFromMeta, toRename)
 import Nominal.Meta.GHC.Classes
 import Nominal.Meta.GHC.Show
 import qualified Nominal.Text.Symbols as Symbols
@@ -176,17 +176,18 @@ checkVariables = Map.fromListWith sumCondition . Map.foldrWithKey (\v c es -> ch
 filterNotFalse :: Map a SetElementCondition -> Map a SetElementCondition
 filterNotFalse = Map.filter ((/= false) . snd)
 
+-- FIXME
 {-# ANN checkEquality NoMetaFunction #-}
 checkEquality :: Var a => Maybe ((a, SetElementCondition) -> (a, SetElementCondition)) -> (a, SetElementCondition) -> (a, SetElementCondition)
-checkEquality postprocess (v, (vs, c)) =
-    if Set.null eqs || Map.null eqsMap
-    then (v, (vs, c))
-    else (Maybe.fromMaybe id postprocess) (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
-    where eqs = getEquationsFromFormula c
-          classes = equivalenceClasses $ Set.elems eqs
-          eqsMap = Map.fromList $ concatMap (\cl -> fmap (\x -> (x, representative cl)) cl) classes
-          vs' = vs Set.\\ ((Set.fromList $ Map.keys eqsMap) Set.\\ (Set.fromList $ Map.elems eqsMap))
-          representative cl = Maybe.fromMaybe (head cl) (List.find (\x -> P.not $ elem x vs) cl)
+checkEquality postprocess = id -- (v, (vs, c)) =
+--    if Set.null eqs || Map.null eqsMap
+--    then (v, (vs, c))
+--    else (Maybe.fromMaybe id postprocess) (replaceVariables eqsMap v, (vs', replaceVariables eqsMap c))
+--    where eqs = getEquationsFromFormula c
+--          classes = equivalenceClasses $ Set.elems eqs
+--          eqsMap = Map.fromList $ concatMap (\cl -> fmap (\x -> (x, representative cl)) cl) classes
+--          vs' = vs Set.\\ ((Set.fromList $ Map.keys eqsMap) Set.\\ (Set.fromList $ Map.elems eqsMap))
+--          representative cl = Maybe.fromMaybe (head cl) (List.find (\x -> P.not $ elem x vs) cl)
 
 {-# ANN normalizeVariables NoMetaFunction #-}
 normalizeVariables :: (Var a, Ord a) => Map a SetElementCondition -> Map a SetElementCondition
@@ -435,16 +436,16 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
 
 nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 nlambda_map f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where mapAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m) in (meta es, snd (value es) ++ rs)
-          (m', es') = Map.foldrWithKey mapAndMerge (m, []) es
+    where map (v, cond) = let es = applyWithMeta f (create (v, cond) m) in fmap (`create` meta es) (snd $ value es)
+          WithMeta es' m' = lift $ concatMap map $ Map.assocs es
 
 nlambda_filter :: NLambda_NominalType a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
 nlambda_filter f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where filterAndMerge v cond (m, rs) = let es = applyWithMeta f (create (v, cond) m)
-                                              ((v', cond'), es') = value es
-                                              es'' = fmap (\(c, _) -> checkEquality Nothing (v', (fst cond', snd cond' /\ c))) $ es'
-                                          in (meta es, es'' ++ rs)
-          (m', es') = Map.foldrWithKey filterAndMerge (m, []) es
+    where filter (v, cond) = let res = applyWithMeta f (create (v, cond) m)
+                                 ((v', cond'), elems) = value res
+                                 elems' = fmap (\(c, _) -> checkEquality Nothing (v', (fst cond', snd cond' /\ c))) elems
+                             in fmap (`create` meta res) elems'
+          WithMeta es' m' = lift $ concatMap filter $ Map.assocs es
 
 nlambda_sum :: NLambda_NominalType a => WithMeta (Set (Set a)) -> WithMeta (Set a)
 nlambda_sum (WithMeta (Set es) m) = create (Set $ Map.unionsWith sumCondition $ fmap filterSetInSet $ Map.assocs es) m

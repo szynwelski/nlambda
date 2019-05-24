@@ -2,6 +2,7 @@ module Nominal.Meta.Data.Map.Internal where
 
 import Data.Map
 import Nominal.Meta hiding (union)
+import qualified Nominal.Meta as Meta
 import Nominal.Meta.GHC.Base
 import Nominal.Meta.GHC.Classes
 import Nominal.Meta.GHC.Read
@@ -19,6 +20,10 @@ instance (NLambda_Ord k, NLambda_Ord a) => NLambda_Ord (Map k a)
 instance (NLambda_Ord k, NLambda_Read k, NLambda_Read a) => NLambda_Read (Map k a)
 
 instance (NLambda_Show k, NLambda_Show a) => NLambda_Show (Map k a)
+
+liftMap :: (Var a, Var k, Ord k) => Meta -> Map k (WithMeta a) -> WithMeta (Map k a)
+liftMap m = lift . fromList . fmap f . assocs
+    where f (k, v) = let WithMeta (k', v') m' = create k m #### v in (k', create v' m')
 
 nlambda_assocs :: WithMeta (Map k a) -> WithMeta [(k, a)]
 nlambda_assocs = idOp assocs
@@ -58,7 +63,7 @@ nlambda_fromList :: NLambda_Ord k => WithMeta [(k, a)] -> WithMeta (Map k a)
 nlambda_fromList = idOp fromList
 
 nlambda_fromListWith :: (Var a, NLambda_Ord k) => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta [(k, a)] -> WithMeta (Map k a)
-nlambda_fromListWith f l = lift $ fromListWith f (dropMeta <$> dropMeta l)
+nlambda_fromListWith f l = liftMap (meta l) $ fromListWith f (dropMeta <$> dropMeta l)
 
 nlambda_intersection :: (Var a, Var b, NLambda_Ord k) => WithMeta (Map k a) -> WithMeta (Map k b) -> WithMeta (Map k a)
 nlambda_intersection = renameAndApply2 intersection
@@ -67,7 +72,7 @@ nlambda_insert :: (Var a, NLambda_Ord k) => WithMeta k -> WithMeta a -> WithMeta
 nlambda_insert = renameAndApply3 insert
 
 nlambda_insertWith :: (Var a, NLambda_Ord k) => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta k -> WithMeta a -> WithMeta (Map k a) -> WithMeta (Map k a)
-nlambda_insertWith f k v = lift . insertWith f k' (create v' m) . dropMeta
+nlambda_insertWith f k v map = liftMap (meta map) $ insertWith f k' (create v' m) $ dropMeta map
     where WithMeta (k', v') m = k #### v
 
 nlambda_keys :: WithMeta (Map k a) -> WithMeta [k]
@@ -77,12 +82,12 @@ nlambda_lookup :: (Var a, NLambda_Ord k) => WithMeta k -> WithMeta (Map k a) -> 
 nlambda_lookup = renameAndApply2 lookup
 
 nlambda_map :: (Var b, Var k, Ord k) => (WithMeta a -> WithMeta b) -> WithMeta (Map k a) -> WithMeta (Map k b)
-nlambda_map f (WithMeta map meta) = lift $ fromList $ fmap f' $ assocs map
-    where f' (k,v) = let WithMeta (k',v') meta' = create k meta #### f (create v meta) in (k', create v' meta')
+nlambda_map f m = liftMap (meta m) $ map f $ dropMeta m
 
 nlambda_mapKeysWith :: (Var a, NLambda_Ord k2) => (WithMeta a -> WithMeta a -> WithMeta a) -> (WithMeta k1 -> WithMeta k2) -> WithMeta (Map k1 a) -> WithMeta (Map k2 a)
 nlambda_mapKeysWith fv fk (WithMeta map m) = nlambda_fromListWith fv list
-    where list = lift $ fmap (\(k, v) -> let WithMeta k' m' = fk $ create k m in create (k', v) m') (assocs map)
+    where list = lift $ fmap f (assocs map)
+          f (k, v) = let k' = fk $ create k m in k' #### create v m
 
 nlambda_member :: (Var a, NLambda_Ord k) => WithMeta k -> WithMeta (Map k a) -> Bool
 nlambda_member = noMetaRes2ArgOp member
@@ -112,4 +117,4 @@ nlambda_union :: (Var a, NLambda_Ord k) => WithMeta (Map k a) -> WithMeta (Map k
 nlambda_union = renameAndApply2 union
 
 nlambda_unionWith :: (Var a, NLambda_Ord k) => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta (Map k a) -> WithMeta (Map k a) -> WithMeta (Map k a)
-nlambda_unionWith f m1 m2 = lift $ unionWith f (dropMeta m1) (dropMeta m2)
+nlambda_unionWith f m1 m2 = liftMap (Meta.union (meta m1) (meta m2)) $ unionWith f (dropMeta m1) (dropMeta m2)
