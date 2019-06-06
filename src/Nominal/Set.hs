@@ -96,6 +96,7 @@ isCompact,
 -- ** Meta equivalents
 nlambda_empty,
 nlambda_isNotEmpty,
+nlambda_insert,
 nlambda_map,
 nlambda_filter,
 nlambda_sum,
@@ -120,9 +121,12 @@ import Nominal.Contextual
 import Nominal.Formula
 import Nominal.Formula.Definition (getConstraintsFromFormula, getEquationsFromFormula)
 import Nominal.Maybe
-import Nominal.Meta (NoMetaFunction(..), WithMeta(..), addMapToMeta, create, idOp, lift, meta, noMeta, renamed, removeMapFromMeta, toRename)
+import Nominal.Meta (NoMetaFunction(..), WithMeta(..), addMapToMeta, create, dropMeta, idOp, lift, meta, noMeta, renameAndApply2, renamed, removeMapFromMeta)
+import Nominal.Meta.Data.Foldable (nlambda_foldr)
+import Nominal.Meta.Data.Map.Internal (nlambda_insertWith)
 import Nominal.Meta.GHC.Classes
 import Nominal.Meta.GHC.Show
+import Nominal.Meta.GHC.Tuple ((####))
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Type (NominalType(..), NLambda_NominalType(..), neq)
 import qualified Nominal.Util.InsertionSet as ISet
@@ -415,11 +419,16 @@ nlambda_empty = noMeta empty
 nlambda_isNotEmpty :: WithMeta (Set a) -> WithMeta Formula
 nlambda_isNotEmpty = idOp isNotEmpty
 
+nlambda_insert :: NLambda_NominalType a => WithMeta a -> WithMeta (Set a) -> WithMeta (Set a)
+nlambda_insert e (WithMeta (Set es) m) = create (Set es') m'
+    where WithMeta es' m' = nlambda_foldr insertVariant (create es m) (V.nlambda_toList $ nlambda_variants e)
+          insertVariant (WithMeta (v, c) m) = nlambda_insertWith (renameAndApply2 sumCondition) (create v m) (create (Set.empty, c) m)
+
 {-# ANN applyWithMeta NoMetaFunction #-}
 applyWithMeta :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition)
-                 -> WithMeta ((a, SetElementCondition), [(b, SetElementCondition)])
+                 -> (a, WithMeta [(b, SetElementCondition)])
 applyWithMeta f (WithMeta (v, (vs,c)) m)
-    | length newIds == length oldIds = create ((v', (vs',c')), res) m''
+    | length newIds == length oldIds = (v', create res m'')
     | otherwise = error $ "oldIds and newIds have different lengths " ++ show (oldIds, newIds)
     where id = getVariableId vs
           oldIds = Maybe.catMaybes $ fmap getIdentifier $ Set.elems vs
@@ -436,15 +445,15 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
 
 nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 nlambda_map f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where map (v, cond) = let es = applyWithMeta f (create (v, cond) m) in fmap (`create` meta es) (snd $ value es)
+    where map (v, cond) = dropMeta $ snd $ applyWithMeta f (create (v, cond) m)
           WithMeta es' m' = lift $ concatMap map $ Map.assocs es
 
 nlambda_filter :: NLambda_NominalType a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
 nlambda_filter f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where filter (v, cond) = let res = applyWithMeta f (create (v, cond) m)
-                                 ((v', cond'), elems) = value res
-                                 elems' = fmap (\(c, _) -> checkEquality Nothing (v', (fst cond', snd cond' /\ c))) elems
-                             in fmap (`create` meta res) elems'
+    where filter (v, cond) = let (v', elems) = applyWithMeta f (create (v, cond) m)
+                                 WithMeta (v'', elems') m' = create v' m #### elems
+                                 elems'' = fmap (\(c, cond') -> checkEquality Nothing (v'', (fst cond', snd cond' /\ c))) elems'
+                             in fmap (`create` m') elems''
           WithMeta es' m' = lift $ concatMap filter $ Map.assocs es
 
 nlambda_sum :: NLambda_NominalType a => WithMeta (Set (Set a)) -> WithMeta (Set a)

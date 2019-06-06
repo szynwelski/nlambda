@@ -75,10 +75,10 @@ union (Meta map1 set1 tree1) (Meta map2 set2 tree2)
           (inRenamed1, notInRenamed1) = partitionByRenamed map1 set2
           (inRenamed2, notInRenamed2) = partitionByRenamed map2 set1
           (conflicts1, conflicts2) = (findConflicts notInRenamed1 notInRenamed2, findConflicts notInRenamed2 notInRenamed1)
---          (toRenameNow1, toRenameNow2) = (Map.unionWith conflict inRenamed1 conflicts1, Map.unionWith conflict inRenamed2 conflicts2)
-          (toRenameNow1, toRenameNow2) = if Map.null inRenamed1
-                                         then (Map.empty, Map.unionWith conflict inRenamed2 conflicts2)
-                                         else (Map.unionWith conflict inRenamed1 conflicts1, inRenamed2)
+          (toRenameNow1, toRenameNow2) = (Map.unionWith conflict inRenamed1 conflicts1, Map.unionWith conflict inRenamed2 conflicts2)
+--          (toRenameNow1, toRenameNow2) = if Map.null inRenamed1
+--                                         then (Map.empty, Map.unionWith conflict inRenamed2 conflicts2)
+--                                         else (Map.unionWith conflict inRenamed1 conflicts1, inRenamed2)
           tree1' = addMapToTree toRenameNow1 tree1
           tree2' = addMapToTree toRenameNow2 tree2
           children = getChildrenOrNode tree1' ++ getChildrenOrNode tree2'
