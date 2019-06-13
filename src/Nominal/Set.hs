@@ -201,7 +201,7 @@ normalizeVariables = Map.fromListWith sumCondition . Map.foldrWithKey (\v c es -
 normalizeVariablesInElement :: Var a => (a, SetElementCondition) -> (a, SetElementCondition)
 normalizeVariablesInElement (v, (vs, c)) | all Maybe.isNothing (getIdentifier <$> Set.toList vs) = (v, (vs, c))
 normalizeVariablesInElement (v, (vs, c)) =
-    let (iterVars, iterLevel) = foldVariables (Free, iterVarsAndLevel) (ISet.empty, 0) v
+    let (iterVars, iterLevel) = foldVariables (All, iterVarsAndLevel) (ISet.empty, 0) v
         iterVarsAndLevel var (set, lvl) = if isIteration var
                                           then if Set.member var vs
                                                then (ISet.insert var set, lvl)
