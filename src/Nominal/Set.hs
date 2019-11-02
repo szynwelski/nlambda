@@ -435,22 +435,22 @@ applyWithMeta f (WithMeta (v, (vs,c)) m)
           newIds = take (Set.size vs) $ enumFrom id
           idMap = Map.fromList $ zip oldIds newIds
           WithMeta fv m' = f $ create v $ addMapToMeta idMap m
+          variantsWithMeta = V.nlambda_toList $ nlambda_variants $ create fv $ removeMapFromMeta idMap m'
           renamedMap = Map.fromAscList $ Set.toAscList $ Set.filter (\(x,y) -> elem y newIds) $ renamed m'
-          (v', vs', c') = renameFreeVariables renamedMap (v, vs, c)
-          WithMeta variants m'' = V.nlambda_toList $ nlambda_variants $ create fv $ removeMapFromMeta idMap m'
-          fvs = freeVariables v'
+          WithMeta ((v', vs', c'), variants') m'' = create (renameFreeVariables renamedMap (v, vs, c)) m #### variantsWithMeta
+          fvs = if forMap then freeVariables fv else freeVariables v'
           vs'' = Set.intersection vs' fvs
           c'' = getCondition (Set.difference vs' vs'', c')
-          res = fmap (\(resV, resC) -> (resV, (vs'', c'' /\ resC))) variants
+          res = fmap (\(resV, resC) -> (resV, (vs'', c'' /\ resC))) variants'
 
 nlambda_map :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (Set a) -> WithMeta (Set b)
 nlambda_map f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where map (v, cond) = dropMeta $ snd $ applyWithMeta f (create (v, cond) m)
+    where map (v, cond) = dropMeta $ snd $ applyWithMeta True f (create (v, cond) m)
           WithMeta es' m' = lift $ concatMap map $ Map.assocs es
 
 nlambda_filter :: NLambda_NominalType a => (WithMeta a -> WithMeta Formula) -> WithMeta (Set a) -> WithMeta (Set a)
 nlambda_filter f (WithMeta (Set es) m) = create (Set $ filterNotFalse $ Map.fromListWith sumCondition es') m'
-    where filter (v, cond) = let (v', elems) = applyWithMeta f (create (v, cond) m)
+    where filter (v, cond) = let (v', elems) = applyWithMeta False f (create (v, cond) m)
                                  WithMeta (v'', elems') m' = create v' m #### elems
                                  elems'' = fmap (\(c, cond') -> checkEquality Nothing (v'', (fst cond', snd cond' /\ c))) elems'
                              in fmap (`create` m') elems''
@@ -587,7 +587,7 @@ square s = pairs s s
 
 -- | Creates a set of all atoms pairs.
 atomsPairs :: Set (Atom, Atom)
-atomsPairs  = square atoms
+atomsPairs = square atoms
 
 -- | Creates a set of all pairs of different atoms.
 differentAtomsPairs :: Set (Atom, Atom)
