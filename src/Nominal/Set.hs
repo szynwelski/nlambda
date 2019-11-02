@@ -425,9 +425,9 @@ nlambda_insert e (WithMeta (Set es) m) = create (Set es') m'
           insertVariant (WithMeta (v, c) m) = nlambda_insertWith (renameAndApply2 sumCondition) (create v m) (create (Set.empty, c) m)
 
 {-# ANN applyWithMeta NoMetaFunction #-}
-applyWithMeta :: (NLambda_NominalType a, NLambda_NominalType b) => (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition)
+applyWithMeta :: (NLambda_NominalType a, NLambda_NominalType b) => Bool -> (WithMeta a -> WithMeta b) -> WithMeta (a, SetElementCondition)
                  -> (a, WithMeta [(b, SetElementCondition)])
-applyWithMeta f (WithMeta (v, (vs,c)) m)
+applyWithMeta forMap f (WithMeta (v, (vs,c)) m)
     | length newIds == length oldIds = (v', create res m'')
     | otherwise = error $ "oldIds and newIds have different lengths " ++ show (oldIds, newIds)
     where id = getVariableId vs
