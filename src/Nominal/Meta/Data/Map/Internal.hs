@@ -11,6 +11,8 @@ import Nominal.Meta.GHC.Tuple
 import Nominal.Variable
 import Prelude hiding (filter, lookup, map, null)
 
+import Debug.Trace
+
 instance (Ord k, NLambda_Eq k, NLambda_Eq a) => NLambda_Eq (Map k a)
 
 instance NLambda_Functor (Map k)
@@ -72,7 +74,7 @@ nlambda_insert :: (Var a, NLambda_Ord k) => WithMeta k -> WithMeta a -> WithMeta
 nlambda_insert = renameAndApply3 insert
 
 nlambda_insertWith :: (Var a, NLambda_Ord k) => (WithMeta a -> WithMeta a -> WithMeta a) -> WithMeta k -> WithMeta a -> WithMeta (Map k a) -> WithMeta (Map k a)
-nlambda_insertWith f k v map = liftMap (meta map) $ insertWith f k' (create v' m) $ dropMeta map
+nlambda_insertWith f k v = liftMap m . insertWith f k' (create v' m) . dropMeta
     where WithMeta (k', v') m = k #### v
 
 nlambda_keys :: WithMeta (Map k a) -> WithMeta [k]
