@@ -4,6 +4,8 @@ module Nominal.Maybe where
 import qualified Data.Maybe as Maybe
 import Nominal.Conditional
 import Nominal.Formula
+import Nominal.Meta (WithMeta, idOp, noMeta)
+import Nominal.Meta.GHC.Classes (NLambda_Ord)
 import Nominal.Variants
 import Prelude hiding (filter, map, or)
 
@@ -45,3 +47,22 @@ isNothing = satisfying Maybe.isNothing
 -- | If a given condition is satisfied returns 'Just' value otherwise returns 'Nothing'.
 maybeIf :: Ord a => Formula -> a -> NominalMaybe a
 maybeIf c v = ite c (just v) nothing
+
+----------------------------------------------------------------------------------------------------
+-- Meta equivalents
+----------------------------------------------------------------------------------------------------
+
+nlambda_nothing :: WithMeta (NominalMaybe a)
+nlambda_nothing = noMeta nothing
+
+nlambda_just :: WithMeta a -> WithMeta (NominalMaybe a)
+nlambda_just = idOp just
+
+nlambda_fromJust :: NLambda_Ord a => WithMeta (NominalMaybe a) -> WithMeta (Variants a)
+nlambda_fromJust = idOp fromJust
+
+nlambda_isJust :: WithMeta (NominalMaybe a) -> WithMeta Formula
+nlambda_isJust = idOp isJust
+
+nlambda_isNothing :: WithMeta (NominalMaybe a) -> WithMeta Formula
+nlambda_isNothing = idOp isNothing

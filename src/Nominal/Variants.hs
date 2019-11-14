@@ -20,6 +20,8 @@ import qualified Data.Map as Map
 import Nominal.Conditional
 import Nominal.Contextual
 import Nominal.Formula
+import Nominal.Meta (WithMeta, idOp)
+import Nominal.Meta.GHC.Classes (NLambda_Ord)
 import Nominal.Util.Read (readSepBy, skipSpaces, spaces, string)
 import Nominal.Variable (Var(..), renameWithFlatTree)
 import qualified Nominal.Text.Symbols as Symbols
@@ -118,3 +120,22 @@ fromVariant vs = case values vs of
 
 variantsRelation :: (a -> a -> Formula) -> Variants a -> Variants a -> Formula
 variantsRelation r vs1 vs2 = or [r v1 v2 /\ c1 /\ c2 | (v1, c1) <- toList vs1, (v2, c2) <- toList vs2]
+
+----------------------------------------------------------------------------------------------------
+-- Meta equivalents
+----------------------------------------------------------------------------------------------------
+
+nlambda_variant :: WithMeta a -> WithMeta (Variants a)
+nlambda_variant = idOp variant
+
+nlambda_toList :: WithMeta (Variants a) -> WithMeta [(a, Formula)]
+nlambda_toList = idOp toList
+
+nlambda_fromList :: NLambda_Ord a => WithMeta [(a, Formula)] -> WithMeta (Variants a)
+nlambda_fromList = idOp fromList
+
+nlambda_values :: WithMeta (Variants a) -> WithMeta [a]
+nlambda_values = idOp values
+
+nlambda_fromVariant :: WithMeta (Variants a) -> WithMeta a
+nlambda_fromVariant = idOp fromVariant

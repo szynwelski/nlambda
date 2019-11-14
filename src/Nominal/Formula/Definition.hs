@@ -5,6 +5,7 @@ import Data.List.Utils (join)
 import qualified Data.MultiMap as MM
 import Data.Set (Set, delete, elems, empty, findMin, foldl, foldr, fromList, insert, map, member, null, partition, singleton, size, union, unions)
 import Nominal.Atoms.Signature (Relation(..), relationFunction, symmetricRelation)
+import Nominal.Meta (WithMeta, idOp, noMeta)
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Util.Read (readSepBy, skipSpaces, spaces, string)
 import Nominal.Variable (Var(..), Variable, constantValue, isConstant, renameWithFlatTree)
@@ -414,3 +415,31 @@ instance Var Formula where
     mapVariables (_, f) = mapFormulaVariables f
     foldVariables (_, f) = foldFormulaVariables f
     renameVariables = renameWithFlatTree
+
+----------------------------------------------------------------------------------------------------
+-- Meta equivalents
+----------------------------------------------------------------------------------------------------
+
+nlambda_true :: WithMeta Formula
+nlambda_true = noMeta true
+
+nlambda_false :: WithMeta Formula
+nlambda_false = noMeta false
+
+nlambda_fromBool :: WithMeta Bool -> WithMeta Formula
+nlambda_fromBool = idOp fromBool
+
+nlambda_andFromSet :: WithMeta (Set Formula) -> WithMeta Formula
+nlambda_andFromSet = idOp andFromSet
+
+nlambda_and :: WithMeta [Formula] -> WithMeta Formula
+nlambda_and = idOp and
+
+nlambda_orFromSet :: WithMeta (Set Formula) -> WithMeta Formula
+nlambda_orFromSet = idOp orFromSet
+
+nlambda_or :: WithMeta [Formula] -> WithMeta Formula
+nlambda_or = idOp or
+
+nlambda_not :: WithMeta Formula -> WithMeta Formula
+nlambda_not = idOp not
