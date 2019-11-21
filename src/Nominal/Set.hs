@@ -136,7 +136,7 @@ import Nominal.Variable (FoldVarFun, Identifier, MapVarFun, Scope(..), Var(..), 
                          changeIterationLevel, clearIdentifier, collectWith, constantVar, freeVariables, getAllVariables, getIdentifier,
                          getIterationLevel, hasIdentifierEquals, hasIdentifierNotEquals, isConstant, isIteration, iterationVariablesList, iterationVariable,
                          iterationVariableWithId, mapVariablesIf, replaceVariables, renameFreeVariables, renameWithFlatTree, setIdentifier)
-import Nominal.Variants (Variants, fromVariant, readVariant, variant, nlambda_variant)
+import Nominal.Variants (Variants, fromVariant, readVariant, variant)
 import qualified Nominal.Variants as V
 import Prelude hiding (or, and, not, sum, map, filter)
 import qualified Prelude as P

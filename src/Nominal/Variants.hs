@@ -10,7 +10,12 @@ satisfying,
 Nominal.Variants.map,
 prod,
 readVariant,
-variantsRelation) where
+variantsRelation,
+nlambda_fromList,
+nlambda_fromVariant,
+nlambda_toList,
+nlambda_values,
+nlambda_variant) where
 
 import Control.Applicative ((<*>))
 import Data.Functor ((<$>))
