@@ -429,8 +429,8 @@ nlambda_false = noMeta false
 nlambda_fromBool :: WithMeta Bool -> WithMeta Formula
 nlambda_fromBool = idOp fromBool
 
---nlambda_constraint :: WithMeta Relation -> WithMeta Variable -> WithMeta Variable -> WithMeta Formula
---nlambda_constraint = renameAndApply3 constraint
+nlambda_constraint :: WithMeta Relation -> WithMeta Variable -> WithMeta Variable -> WithMeta Formula
+nlambda_constraint = renameAndApply3 constraint
 
 nlambda_andFromSet :: WithMeta (Set Formula) -> WithMeta Formula
 nlambda_andFromSet = idOp andFromSet
