@@ -5,7 +5,7 @@ import Data.List.Utils (join)
 import qualified Data.MultiMap as MM
 import Data.Set (Set, delete, elems, empty, findMin, foldl, foldr, fromList, insert, map, member, null, partition, singleton, size, union, unions)
 import Nominal.Atoms.Signature (Relation(..), relationFunction, symmetricRelation)
-import Nominal.Meta (WithMeta, idOp, noMeta)
+import Nominal.Meta (WithMeta, idOp, noMeta, renameAndApply3)
 import qualified Nominal.Text.Symbols as Symbols
 import Nominal.Util.Read (readSepBy, skipSpaces, spaces, string)
 import Nominal.Variable (Var(..), Variable, constantValue, isConstant, renameWithFlatTree)
@@ -428,6 +428,9 @@ nlambda_false = noMeta false
 
 nlambda_fromBool :: WithMeta Bool -> WithMeta Formula
 nlambda_fromBool = idOp fromBool
+
+--nlambda_constraint :: WithMeta Relation -> WithMeta Variable -> WithMeta Variable -> WithMeta Formula
+--nlambda_constraint = renameAndApply3 constraint
 
 nlambda_andFromSet :: WithMeta (Set Formula) -> WithMeta Formula
 nlambda_andFromSet = idOp andFromSet
