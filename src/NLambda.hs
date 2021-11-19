@@ -40,7 +40,7 @@ import Nominal.Set as Export
 #else
 import Nominal.Set as Export hiding (range, openRange, isLowerBound, hasLowerBound, isUpperBound, hasUpperBound, isMinimum, hasMinimum, isMaximum, hasMaximum, isInfimum, isSupremum, isConnected, isOpen, isClosed, isCompact)
 #endif
-import Nominal.Type as Export (NominalType(..), Scope, MapVarFun, FoldVarFun, neq)
+import Nominal.Type as Export (Nominal(..), Scope, MapVarFun, FoldVarFun, neq)
 import Nominal.Variable as Export (Variable, variable)
 import Nominal.Variants as Export (Variants, variant, fromVariant, iteV)
 import Prelude hiding (or, and, not, sum, map, filter, maybe)

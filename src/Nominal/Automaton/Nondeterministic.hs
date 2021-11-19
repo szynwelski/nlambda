@@ -14,21 +14,21 @@ import Prelude hiding (not)
 ----------------------------------------------------------------------------------------------------
 
 -- | The constructor of a nondeterministic automaton.
-na :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a
+na :: (Nominal q, Nominal a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton q a
 na = automaton
 
 -- | The constructor of a nondeterministic automaton with additional not accepting state.
-naWithTrashCan  :: (NominalType q, NominalType a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton (Maybe q) a
+naWithTrashCan  :: (Nominal q, Nominal a) => Set q -> Set a -> Set (q, a, q) -> Set q -> Set q -> Automaton (Maybe q) a
 naWithTrashCan = automatonWithTrashCan
 
 -- | The constructor of a nondeterministic automaton with atoms as states.
-atomsNA :: NominalType q => Set q -> Set (q, Atom, q) -> Set q -> Set q -> Automaton q Atom
+atomsNA :: Nominal q => Set q -> Set (q, Atom, q) -> Set q -> Set q -> Automaton q Atom
 atomsNA q = na q atoms
 
 -- | The constructor of a nondeterministic automaton with atoms as states with additional not accepting state.
-atomsNAWithTrashCan :: NominalType q => Set q -> Set (q, Atom, q) -> Set q -> Set q -> Automaton (Maybe q) Atom
+atomsNAWithTrashCan :: Nominal q => Set q -> Set (q, Atom, q) -> Set q -> Set q -> Automaton (Maybe q) Atom
 atomsNAWithTrashCan q = naWithTrashCan q atoms
 
 -- | Checks whether an automaton is nondeterministic.
-isNondeterministic :: (NominalType q, NominalType a) => Automaton q a -> Formula
+isNondeterministic :: (Nominal q, Nominal a) => Automaton q a -> Formula
 isNondeterministic = not . isDeterministic
