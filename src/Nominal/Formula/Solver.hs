@@ -39,10 +39,10 @@ signed parser = do
     return $ constantVar $ read n
 
 lia :: SmtLogic
-lia = SmtLogic "Int" "LIA" (string8 . show) (signed $ many1 digit)
+lia = SmtLogic "Int" "QF_LIA" (string8 . show) (signed $ many1 digit)
 
 lra :: SmtLogic
-lra = SmtLogic "Real" "LRA" ratioToSmt (signed (parseIntAsRatio <|> parseRatio))
+lra = SmtLogic "Real" "QF_LRA" ratioToSmt (signed (parseIntAsRatio <|> parseRatio))
     where ratioToSmt c =
               let r = show c
                   rs = split "%" r
