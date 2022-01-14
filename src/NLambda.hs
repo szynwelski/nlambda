@@ -33,6 +33,7 @@ import Nominal.Graph as Export
 #else
 import Nominal.Graph as Export hiding (monotonicGraph)
 #endif
+import Nominal.If as Export
 import Nominal.Maybe as Export
 import Nominal.Orbit as Export
 #if TOTAL_ORDER

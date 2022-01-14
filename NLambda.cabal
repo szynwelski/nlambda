@@ -49,6 +49,7 @@ Library
     Nominal.Formula.Solver
     Nominal.Formula.SmtLogger
     Nominal.Graph,
+    Nominal.If,
     Nominal.Maybe,
     Nominal.Orbit,
     Nominal.Set,
