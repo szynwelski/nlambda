@@ -1,4 +1,4 @@
 #!/bin/sh
-runhaskell Setup.hs configure --user
-runhaskell Setup.hs build
-runhaskell Setup.hs install
+cabal v2-configure
+cabal v2-build
+cabal v2-install

@@ -1,0 +1,6 @@
+:set -XNoImplicitPrelude
+:set -XRebindableSyntax
+:m NLambda
+:set prompt "Nλ> "
+import Prelude hiding (or, and, not, sum, map, filter, maybe)
+let [a,b,c,d,e] = fmap atom ["a","b","c","d","e"]

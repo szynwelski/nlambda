@@ -11,18 +11,18 @@ For more information, visit [NLambda website](http://www.mimuw.edu.pl/~szynwelsk
   * check out the source code from git:
 
     `$ git clone https://github.com/szynwelski/nlambda.git`
-  
+
 2. The language is implemented in a Haskell and installation of GHC (at least 7.10) is required.
 
 3. Move into nlambda directory and perform the following commands:
    ```
-   runhaskell Setup configure --user -fTOTAL_ORDER
-   runhaskell Setup build
-   runhaskell Setup install
+   cabal v2-configure -fTOTAL_ORDER
+   cabal v2-build
+   cabal v2-install
    ```
-  The flag `TOTAL_ORDER` is required to install the package with ordered atoms (otherwise equality atoms will be used).
-  
-  To install the package globally (not only for the user account) skip `user` parameter (see: [how to install a Cabal package](https://wiki.haskell.org/Cabal/How_to_install_a_Cabal_package)).
+   The flag `TOTAL_ORDER` is required to install the package with ordered atoms (otherwise equality atoms will be used).
+   
+   More information on how to install a Cabal package can be found [here](https://wiki.haskell.org/Cabal/How_to_install_a_Cabal_package).
 
 4. You can also use dedicated scripts:
   * for ordered atoms
@@ -33,3 +33,15 @@ For more information, visit [NLambda website](http://www.mimuw.edu.pl/~szynwelsk
     `$ ./install-equality.sh`
 
 5. Additionally, you should install [the Z3 Theorem Prover](https://github.com/Z3Prover/z3) and add it to the PATH environment variable.
+
+# Interactive environment
+
+Nλ expressions can be interpreted and evaluated on the fly using the interactive [GHCi](https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/ghci.html) environment. For easier use of the environment, one can use the `.ghci` configuration file, which imports the module with the language, hides Prelude functions that conflict with Nλ, and sets useful options.
+```
+:set -XNoImplicitPrelude
+:set -XRebindableSyntax
+:m NLambda
+:set prompt "Nλ> "
+import Prelude hiding (or, and, not, sum, map, filter, maybe)
+let [a,b,c,d,e] = fmap atom ["a","b","c","d","e"]
+```

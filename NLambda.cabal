@@ -5,7 +5,7 @@ cabal-version:     >= 1.2
 author:            M.Szynwelski, B.Klin, J.Moerman
 license:           BSD3
 license-file:      LICENSE
-copyright:         (c) 2015-2016, M.Szynwelski, B.Klin
+copyright:         (c) 2015-2022, M.Szynwelski, B.Klin
 
 Flag TOTAL_ORDER
   description: Set atoms type with total order
