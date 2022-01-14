@@ -28,7 +28,7 @@ import Text.Read (ReadPrec, (<++), parens, prec, readPrec, step)
 -- Variants
 ----------------------------------------------------------------------------------------------------
 
--- | Storing values under various conditions, which could not be solved as 'true' or 'false'.
+-- | Storing values under various mutually exclusive conditions.
 -- Is often the result of 'ite' or 'iteV' functions.
 newtype Variants a = Variants (Map a Formula) deriving (Eq, Ord)
 

@@ -26,7 +26,7 @@ class Contextual a where
     default when :: (Generic a, GContextual (Rep a)) => Formula -> a -> a
     when f = to . gwhen f . from
 
--- | Evaluates an expression in the context of a 'true' formula. In practice all formulas in expressions are solved.
+-- | Evaluates an expression in the context of a 'true' formula. In practice all formulas in expressions are simplified.
 --
 -- > simplify = when true
 simplify :: Contextual a => a -> a

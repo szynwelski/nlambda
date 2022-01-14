@@ -638,11 +638,11 @@ maxSize = maxSizeWith eq
 ----------------------------------------------------------------------------------------------------
 
 -- | Returns some given element of a set or 'Nothing' if the set is empty.
--- The function report error if the set has condition with constraint between free variable and iteration variable
+-- The function report error if the set has condition with constraint between free and bound atom variable
 element :: (Contextual a, Nominal a) => Set a -> NominalMaybe a
 element s
     | null notEmpty = nothing
-    | P.not $ null bad = error "Cannot get element from set with constraint between free variable and iteration variable"
+    | P.not $ null bad = error "Cannot get element from set with constraint between free and bound atom variable"
     | otherwise = ite condition (V.fromList $ first Just <$> variants) nothing
     where notEmpty = Map.assocs $ Map.filter (P.not . isFalse . snd) (setElements s)
           withConstraints = fmap (\(v, (vs, c)) -> (v, vs, c, getConstraintsFromFormula c)) notEmpty
@@ -718,7 +718,7 @@ isMaximum a s = member a s /\ isUpperBound a s
 hasMaximum :: Set Atom -> Formula
 hasMaximum s = exists (`isUpperBound` s) s
 
--- | Checks whether an atom is the infumum of a set.
+-- | Checks whether an atom is the infimum of a set.
 isInfimum :: Atom -> Set Atom -> Formula
 isInfimum a s = isMaximum a $ filter (`isLowerBound` s) atoms
 
