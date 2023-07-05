@@ -9,7 +9,6 @@ import Nominal.Formula.Operators (and)
 import qualified Nominal.Formula.Solver as S
 import qualified Nominal.Formula.Quantification as Q
 import Nominal.Variable (Variable)
-import Math.Combinat.Partitions.Set (fromSetPartition, setPartitions)
 import Prelude hiding (and)
 
 ----------------------------------------------------------------------------------------------------
@@ -42,27 +41,11 @@ class AtomsLogic where
 -- Current atoms logic
 ----------------------------------------------------------------------------------------------------
 
-partitions :: [Variable] -> [[[Variable]]]
-partitions vars = fmap (fmap (fmap $ (vars !!) . pred) . fromSetPartition) (setPartitions $ length vars)
-
-sortedPartitions :: [Variable] -> [[[Variable]]]
-sortedPartitions = concatMap permutations . partitions
-
-consecutiveRelations :: (Variable -> Variable -> Formula) -> [Variable] -> [Formula]
-consecutiveRelations rel vs = uncurry rel <$> zip vs (tail vs)
-
-pairwiseDifferent :: [Variable] -> [Formula]
-pairwiseDifferent vs = [notEquals v1 v2 | v1 <- vs, v2 <- vs, v1 < v2]
-
-equivalenceClasses :: ([Variable] -> [Formula]) -> [[Variable]] -> Formula
-equivalenceClasses classRelations parts = and (classRelations (fmap head parts) ++ classes)
-    where classes = concatMap (consecutiveRelations equals) parts
-
 #if TOTAL_ORDER
 
 instance AtomsLogic where
     existsVar x = simplifyFormula . Q.existsVar x
-    exclusiveConditions = fmap (equivalenceClasses $ consecutiveRelations lessThan) . sortedPartitions
+    exclusiveConditions = orderedPartitionsFormulas
     forAllVars x = simplifyFormula . Q.forAllVars x
     isTrue = S.isTrue S.lra
     isFalse = S.isFalse S.lra
@@ -73,7 +56,7 @@ instance AtomsLogic where
 
 instance AtomsLogic where
     existsVar x = simplifyFormula . Q.existsVar x
-    exclusiveConditions = fmap (equivalenceClasses pairwiseDifferent) . partitions
+    exclusiveConditions = partitionsFormulas
     forAllVars x = simplifyFormula . Q.forAllVars x
     isTrue = S.isTrue S.lia
     isFalse = S.isFalse S.lia
@@ -81,3 +64,62 @@ instance AtomsLogic where
     model = S.model S.lia
 
 #endif
+
+
+----------------------------------------------------------------------------------------------------
+-- Combinatorics
+----------------------------------------------------------------------------------------------------
+
+-- This function enumerates all possible partitions on a set of elements
+-- (assuming they are distinct elements). Each partitions consists of
+-- 1. a list of constraints (of type c, constructed by rel)
+-- 2. a list of classes, each class represented by an element a
+-- The number of paritions is given by the n-th Bell number, so this function
+-- has an exponential running time.
+partitionsWith :: (a -> a -> c) -> [a] -> [([c], [a])]
+partitionsWith rel = go []
+  where
+    go bins vars = case vars of
+      -- Empty set => one partition
+      [] -> [([], [])]
+      -- If there is an element, the function recurses
+      (v:remainder) -> do
+        newClass <- [True, False]
+        -- We make a case distinction whether v will get its own class
+        if newClass
+          then do
+            -- If so, we create a new "bin" and recurse
+            -- this increases the number of classes
+            (ps, classes) <- go (v:bins) remainder
+            return (ps, v:classes)
+          else do
+            -- If not, v has to be put in an existing bin
+            -- and it is related to the representative
+            representative <- bins
+            (ps, classes) <- go bins remainder
+            return (rel representative v:ps, classes)
+
+-- This function enumerates all paritions on a set, and outputs a formula
+-- describing each partition. (That means: the formula states which elements
+-- are equal, and which are distinct.)
+partitionsFormulas :: [Variable] -> [Formula]
+partitionsFormulas = fmap mkFormula . partitionsWith equals
+  where
+    mkFormula (eqConstraints, classes) = and (neqConstraints classes <> eqConstraints)
+    neqConstraints = distinctPairsWith notEquals
+
+    -- enumerate all distinct pairs, without enumerating all pairs and then
+    -- filtering the distinct ones
+    distinctPairsWith op l = case l of
+      [] -> []
+      (x:xs) -> fmap (op x) xs <> distinctPairsWith op xs
+
+-- This functions enumerates all partitions, including an order on the
+-- classes, and outputs a formula for each. The size of the output is
+-- given by the "ordered Bell numbers", which grow even faster than
+-- the Bell numbers.
+orderedPartitionsFormulas :: [Variable] -> [Formula]
+orderedPartitionsFormulas = concatMap mkFormulas . partitionsWith equals
+  where
+    mkFormulas (eqConstraints, classes) = [and (linear order <> eqConstraints) | order <- permutations classes]
+    linear ls = zipWith lessThan ls (tail ls)

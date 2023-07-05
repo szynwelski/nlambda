@@ -1,22 +1,21 @@
-name:		   NLambda
-version:	   1.1
+name:              NLambda
+version:           1.1.1
 build-type:        Simple
 cabal-version:     >= 1.2
 author:            M.Szynwelski, B.Klin, J.Moerman
 license:           BSD3
 license-file:      LICENSE
-copyright:         (c) 2015-2022, M.Szynwelski, B.Klin
+copyright:         (c) 2015-2023, M.Szynwelski, B.Klin
 
 Flag TOTAL_ORDER
   description: Set atoms type with total order
   default:     False
 
 Library
-  build-depends:   
+  build-depends:
     attoparsec,
     base >= 4.7 && < 5,
     bytestring,
-    combinat,
     containers,
     directory,
     hslogger,
@@ -28,8 +27,8 @@ Library
   exposed-modules: NLambda
   if flag(TOTAL_ORDER)
     cpp-options: -DTOTAL_ORDER
-  if os(windows) 
-    cpp-options: -DDISABLE_UNICODE 
+  if os(windows)
+    cpp-options: -DDISABLE_UNICODE
   other-modules:
     Nominal.Atoms,
     Nominal.Atoms.Logic,
