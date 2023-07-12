@@ -1,6 +1,6 @@
 module Nominal.Formula.Definition where
 
-import Data.List.Utils (join)
+import Data.List (intercalate)
 import Data.Set (Set, elems, fromList)
 import Nominal.Atoms.Signature (Relation)
 import qualified Nominal.Text.Symbols as Symbols
@@ -34,8 +34,8 @@ instance Show FormulaStructure where
     show F = "false"
     show T = "true"
     show (Constraint r x1 x2) = show x1 ++ spaces (show r) ++ show x2
-    show (And fs) = join (spaces Symbols.and) ((showSubformula . formula) <$> elems fs)
-    show (Or fs) = join (spaces Symbols.or) ((showSubformula . formula) <$> elems fs)
+    show (And fs) = intercalate (spaces Symbols.and) ((showSubformula . formula) <$> elems fs)
+    show (Or fs) = intercalate (spaces Symbols.or) ((showSubformula . formula) <$> elems fs)
     show (Not f) = Symbols.not ++ "(" ++ show f ++ ")"
 
 ----------------------------------------------------------------------------------------------------

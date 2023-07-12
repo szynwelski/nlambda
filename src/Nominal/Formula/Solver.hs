@@ -8,7 +8,7 @@ import qualified Data.ByteString.Char8 as S -- strict
 import qualified Data.ByteString.Lazy.Char8 as L -- lazy
 import Data.Char (isSpace, isLetter)
 import Data.List (find)
-import Data.List.Utils (split)
+import Data.List.Split (splitOn)
 import Data.Map (Map, empty, fromList)
 import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>), mconcat, mempty)
@@ -45,7 +45,7 @@ lra :: SmtLogic
 lra = SmtLogic "Real" "QF_LRA" ratioToSmt (signed (parseIntAsRatio <|> parseRatio))
     where ratioToSmt c =
               let r = show c
-                  rs = split "%" r
+                  rs = splitOn "%" r
               in if length rs == 1
                  then string8 r
                  else string8 "(/ " <> string8 (head rs) <> char8 ' ' <> string8 (rs !! 1) <> char8 ')'

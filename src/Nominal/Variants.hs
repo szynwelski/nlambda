@@ -13,7 +13,7 @@ variantsRelation) where
 
 import Control.Applicative ((<*>))
 import Data.Functor ((<$>))
-import Data.List.Utils (join)
+import Data.List (intercalate)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Nominal.Conditional
@@ -41,7 +41,7 @@ variant x = Variants $ Map.singleton x true
 ----------------------------------------------------------------------------------------------------
 
 instance Show a => Show (Variants a) where
-    show (Variants vs) = join (spaces Symbols.variantsSep) (showVariant <$> Map.assocs vs)
+    show (Variants vs) = intercalate (spaces Symbols.variantsSep) (showVariant <$> Map.assocs vs)
       where showVariant (v, c) = show v ++ if c == true then "" else spaces Symbols.valueCondSep ++ show c
 
 readCondition :: ReadPrec Formula

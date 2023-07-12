@@ -1,6 +1,5 @@
 module Nominal.Either where
 
-import qualified Data.Either.Utils as Utils
 import Nominal.Formula
 import Nominal.Variants
 import Prelude hiding (filter, map, or)
@@ -22,15 +21,21 @@ right v = variant (Right v)
 
 -- | Transforms 'Left' variants to values variants, crashes if variants contain a 'Right' value.
 fromLeft :: Ord a => NominalEither a b -> Variants a
-fromLeft = map Utils.fromLeft
+fromLeft = map f
+    where f (Left a) = a
+          f _ = error "Nominal.Either.fromLeft: Right"
 
 -- | Transforms 'Right' variants to values variants, crashes if variants contain a 'Left' value.
 fromRight :: Ord b => NominalEither a b -> Variants b
-fromRight = map Utils.fromRight
+fromRight = map f
+    where f (Right a) = a
+          f _ = error "Nominal.Either.fromRight: Left"
 
 -- | Transforms 'Either' variants to values variants.
 fromEither :: Ord a => NominalEither a a -> Variants a
-fromEither = map Utils.fromEither
+fromEither = map f
+    where f (Left a)  = a
+          f (Right a) = a
 
 -- | Returns a formula describing the condition of occurrence of 'Left' values in variants.
 isLeft :: NominalEither a b -> Formula

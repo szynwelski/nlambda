@@ -96,7 +96,7 @@ isCompact) where
 import Control.Arrow ((***), first)
 import Data.IORef (IORef, readIORef, newIORef, writeIORef)
 import qualified Data.List as List ((\\), partition, tails)
-import Data.List.Utils (join)
+import Data.List (intercalate)
 import qualified Data.Maybe as Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -214,12 +214,12 @@ applyWithIdentifiers f (v, cond) =
 newtype Set a = Set {setElements :: Map a SetElementCondition} deriving (Eq, Ord)
 
 instance Show a => Show (Set a) where
-    show s = "{" ++ join ", " (fmap showSetElement (Map.assocs $ setElements s)) ++ "}"
+    show s = "{" ++ intercalate ", " (fmap showSetElement (Map.assocs $ setElements s)) ++ "}"
       where showSetElement (v, (vs, c)) =
               let formula = if c == true then "" else " " ++ show c
                   variables = if Set.null vs
                                 then ""
-                                else spaces Symbols.for ++ join "," (show <$> Set.elems vs) ++ spaces Symbols.inSet ++ Symbols.atoms
+                                else spaces Symbols.for ++ intercalate "," (show <$> Set.elems vs) ++ spaces Symbols.inSet ++ Symbols.atoms
                   condition = formula ++ variables
               in show v ++ (if null condition then "" else " " ++ Symbols.valueCondSep ++ condition)
 
