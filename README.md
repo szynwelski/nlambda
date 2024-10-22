@@ -21,7 +21,7 @@ For more information, visit [NLambda website](http://www.mimuw.edu.pl/~szynwelsk
    cabal v2-install
    ```
    The flag `TOTAL_ORDER` is required to install the package with ordered atoms (otherwise equality atoms will be used).
-   
+
    More information on how to install a Cabal package can be found [here](https://wiki.haskell.org/Cabal/How_to_install_a_Cabal_package).
 
 4. You can also use dedicated scripts:
@@ -45,3 +45,16 @@ Nλ expressions can be interpreted and evaluated on the fly using the interactiv
 import Prelude hiding (or, and, not, sum, map, filter, maybe)
 let [a,b,c,d,e] = fmap atom ["a","b","c","d","e"]
 ```
+
+# Note on Z3 versions
+
+This was originally developed with Z3 versions between 4.4.0 and 4.6.0
+(roughly). We have since then noticed some differences in the Z3 versions.
+Two are notable:
+
+* From Z3 version 4.8.11 onwards, formulas returned after simplification are
+  noticable longer than before. Consequently, the NLambda library slows down.
+
+* From Z3 version 4.8.10 onwards, the syntax for a model outputted from Z3 has
+  changed. This is relevant for the function `parseModel` in
+  `Nominal.Formula.Solver`. Currently we default to the old syntax.

@@ -354,6 +354,8 @@ parseModelOutput l = do
 
 parseModel :: SmtLogic -> Parser (Map Variable Variable)
 parseModel l = do
+    -- For Z3 version 4.8.10 and higher, the model starts immediately with "(";
+    -- For Z3 version 4.8.9 and lower, it starts with "(model".
     text "(model"
     spaces
     vs <- parseModelVariable l `sepBy1` spaces
