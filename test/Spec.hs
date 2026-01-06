@@ -1,53 +1,99 @@
-{-# language CPP #-}
-{-# OPTIONS_GHC -Wno-missing-signatures -Wno-partial-type-signatures -Wno-unused-top-binds #-}
+{-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -Wno-missing-signatures -Wno-partial-type-signatures -Wno-unused-top-binds -Wno-incomplete-uni-patterns -Wno-x-partial #-}
 
 import NLambda
-import Prelude hiding (filter, sum)
 import Test.Tasty
 import Test.Tasty.HUnit
+import Prelude hiding (filter, map, sum)
 
-{- Currently we only have some high level tests, checking simple boolean
-   properties of sets and graphs. Note: most of these properties could
-   be satisfied, even if the implementation is wrong (for example if all
-   sets happen to be empty, or if `isTrue` always returns True).
+{-
+NOTE: It is not so easy to make test cases for NLambda, as a lot of things are
+symbolic. So we often resort to either 'isTrue' or 'isFalse'. Because of that,
+there are many simple test-cases for sets with 'eq' and 'neq'.
+
+USAGE: run `cabal test` to run all test-cases. Options can be passed as:
+
+  cabal test nlambda --test-options=--hide-successes
+  cabal test nlambda --test-options="-p Set -q"
+
 -}
 
+------------------------------------------------------------------------------
+-- Main setup
+------------------------------------------------------------------------------
 main :: IO ()
 main = defaultMain $ testGroup "All" [sets, graphs]
 
-assertFormula :: Formula -> Assertion
-assertFormula = assertBool "" . isTrue
+assertTrue :: Formula -> Assertion
+assertTrue = assertBool "" . isTrue
 
+assertFalse :: Formula -> Assertion
+assertFalse = assertBool "" . isFalse
+
+------------------------------------------------------------------------------
+-- Test cases for 'NLambda.Set'
+------------------------------------------------------------------------------
 sets :: TestTree
-sets = testGroup "Set tests"
-  [ testGroup "size of A^n"
-    [ testCase ("n = " <> show n) $ (fromVariant . setOrbitsNumber . replicateAtoms $ n) @?= (combinatoric1 !! n) | n <- [1..3] ]
-  , testGroup "size of filter"
-    [ testCase ("n = " <> show n) $ (fromVariant . setOrbitsNumber . filter constr . replicateAtoms $ n) @?= (combinatoric2 !! n) | n <- [1..4] ]
-  , testGroup "sum . orbits = id" -- ideally this would be tested with e.g. QuickCheck
-    [ testCase name $ assertFormula ((sum . setOrbits $ x) `eq` x) | (name, x) <- someSets]
-  , testCase "A^1 != A^2" $ assertFormula (replicateAtoms 1 `neq` replicateAtoms 2)
-  , testCase "filtered A^3 < A^3" $ assertFormula (filter constr (replicateAtoms 3) `isProperSubsetOf` replicateAtoms 3)
-  , testCase "AxA = A^2" $ assertFormula (pairsWith (\x y -> [x, y]) atoms atoms `eq` replicateAtoms 2)
-  , testCase "pairsWithFilter = differentAtomPairs" $ assertFormula (pairsWithFilter (\x y -> maybeIf (x `neq` y) (x, y)) atoms atoms `eq` differentAtomsPairs)
+sets = testGroup "Sets"
+  [ testGroup "Size"
+    [ testGroup "size of A^n"
+      [ testCase ("n = " <> show n) $ (fromVariant . setOrbitsNumber . replicateAtoms $ n) @?= (combinatoric1 !! n) | n <- [1..3] ]
+    , testGroup "size of filter"
+      [ testCase ("n = " <> show n) $ (fromVariant . setOrbitsNumber . filter constr . replicateAtoms $ n) @?= (combinatoric2 !! n) | n <- [1..4] ]
+    ]
+  , testGroup "Equality"
+    [ testGroup "proper subsets"
+      [ testCase ("filtered A^n < A^n, n = " <> show n) $ assertTrue (filter constr (replicateAtoms n) `isProperSubsetOf` replicateAtoms n) | n <- [2, 3, 4]]
+    , testGroup "sum . orbits = id"
+      [ testCase name $ assertTrue ((sum . setOrbits $ x) `eq` x) | (name, x) <- someSets]
+    , testGroup "set equality and inequality"
+      [ testCase ("eq/neq: " <> n1 <> " vs " <> n2) $ assertTrue (s1 `op` s2) | (n1, s1) <- someSets, (n2, s2) <- someSets, let op = if n1 == n2 then eq else neq]
+    ]
+  , testGroup "Algebra"
+    [ testGroup "absorption1"
+      [ testCase ("(" <> n1 <> " ∪ " <> n2 <> ") ∩ " <> n1) $ assertTrue (((s1 `union` s2) `intersection` s1) `eq` s1) | (n1, s1) <- someSets, (n2, s2) <- someSets]
+    , testGroup "absorption2"
+      [ testCase ("(" <> n1 <> " ∩ " <> n2 <> ") ∪ " <> n1) $ assertTrue (((s1 `intersection` s2) `union` s1) `eq` s1) | (n1, s1) <- someSets, (n2, s2) <- someSets]
+    , testGroup "distributivity-symm"
+      [ testCase (n1 <> ", " <> n2 <> ", " <> n3) $ assertTrue (unions [s1 `intersection` s2, s2 `intersection` s3, s3 `intersection` s1] `eq` intersections1 [s1 `union` s2, s2 `union` s3, s3 `union` s1]) | (n1, s1) <- someSets, (n2, s2) <- someSets, (n3, s3) <- someSets]
+    ]
   ]
   where
+    -- constrain the list [a1, a2, a3, ...] so that a1 ≠ a2, a2 ≠ a3, etc
     constr ls = NLambda.and . fmap (uncurry neq) $ zip ls (tail ls)
+    -- collection of test-sets, we include the same set multiple times, with
+    -- a different construction, so that we test equality of different
+    -- constructions as well. (All based on lists of atoms.)
+    -- TODO: Maybe this can be replaced with QuickCheck style testing?
     someSets =
-      [ ("A", replicateAtoms 1)
+      [ ("A^1", replicateAtoms 1)
+      , ("A^2", replicateAtoms 2)
+      , ("A^2", map (\(a, b) -> [a,b]) differentAtomsPairs `union` map (\a -> [a, a]) atoms)
+      , ("A^2", pairsWith (\x y -> [x, y]) atoms atoms)
+      , ("distinct A^2", map (\(a, b) -> [a,b]) differentAtomsPairs)
+      , ("distinct A^2", filter (\[a, b] -> a `neq` b) (replicateAtoms 2))
       , ("A^3", replicateAtoms 3)
-      , ("filtered set", filter constr (replicateAtoms 3)) ]
+      , ("filtered A^3", filter constr (replicateAtoms 3)) ]
+    -- dual to unions, but with at least one term
+    intersections1 = foldl1 intersection
 
+------------------------------------------------------------------------------
+-- Test cases for 'NLambda.Graph'
+------------------------------------------------------------------------------
 graphs :: TestTree
-graphs = testGroup "Graph tests"
-  [ testCase "clique A = reverse (clique A)" $ assertFormula (atomsClique `eq` reverseEdges atomsClique)
-  , testCase "clique A = (clique A)^2" $ assertFormula (atomsClique `eq` compose atomsClique atomsClique)
-  , testCase "isStronglyConnected atomsClique" $ assertFormula (isStronglyConnected atomsClique)
-  , testCase "hasEvenLengthCycle atomsClique" $ assertFormula (hasEvenLengthCycle atomsClique)
-  , testCase "hasOddLengthCycle atomsClique" $ assertFormula (hasOddLengthCycle atomsClique)
-  , testCase "no equiv. colouring" $ assertBool "" $ isFalse (hasEquivariantColoring atomsClique 3)
-  , testCase "atomsClique is not simple" $ assertBool "" $ isFalse (isSimple atomsClique)
+graphs = testGroup "Graphs"
+  [ testCase "clique A = reverse (clique A)" $ assertTrue (atomsClique `eq` reverseEdges atomsClique)
+  , testCase "clique A = (clique A)^2" $ assertTrue (atomsClique `eq` compose atomsClique atomsClique)
+  , testCase "isStronglyConnected atomsClique" $ assertTrue (isStronglyConnected atomsClique)
+  , testCase "hasEvenLengthCycle atomsClique" $ assertTrue (hasEvenLengthCycle atomsClique)
+  , testCase "hasOddLengthCycle atomsClique" $ assertTrue (hasOddLengthCycle atomsClique)
+  , testCase "no equiv. colouring" $ assertFalse (hasEquivariantColoring atomsClique 3)
+  , testCase "atomsClique is not simple" $ assertFalse (isSimple atomsClique)
   ]
+
+------------------------------------------------------------------------------
+-- Combinatorics/Numbers used in test cases, depends on the structure of atoms
+------------------------------------------------------------------------------
 
 -- A000110: The Bell numbers
 a000110 :: [Int]
